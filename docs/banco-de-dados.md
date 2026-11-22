@@ -3,140 +3,224 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Status** | Em definição inicial (`Fase 0`) |
+| **SGBD Alvo** | PostgreSQL (`16+` planejado — **sem migrações ou ORM instalados ainda**) |
 | **Última atualização** | `2026-11-22` |
-| **Documentos relacionados** | [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
+| **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
 ---
 
-## 1. Configuração do SGBD e Ferramental
+## 1. Configuração e Convenções Gerais
 
-| Item | Definição | Observações |
+| Aspecto | Padrão Definido | Observações |
 | :--- | :--- | :--- |
-| **SGBD / Engine** | `[Pendente de definição]` | Ex.: PostgreSQL, SQLite, MySQL, etc. |
-| **Versão Homologada** | `[Pendente de definição]` | Fixar versão exata para dev, CI e produção |
-| **ORM / Query Builder / Driver** | `[Pendente de definição]` | Deve suportar tipagem estrita e migrações versionadas |
-| **Ferramenta de Migração** | `[Pendente de definição]` | DDL versionado em repositório |
-| **Connection Pooling** | `[Pendente de definição]` | Definir limites mínimo/máximo de conexões e timeouts |
-| **Banco de Testes Automatizados** | `[Pendente de definição]` | Isolado por execução (transação/schema/container efêmero) |
+| **Idioma do Schema** | **Inglês (`snake_case`)** | Tabelas no plural, colunas, constraints e índices em inglês |
+| **Chaves Primárias (PK)** | `UUID` (preferencial `UUIDv7` ou `gen_random_uuid()`) | Evita enumeração de IDs em URLs/APIs públicas |
+| **Timestamps** | `TIMESTAMPTZ` em **UTC** | Toda tabela principal possui `created_at` e `updated_at` (e `deleted_at` onde houver exclusão lógica) |
+| **Prefixos de Constraints** | `pk_`, `fk_`, `uq_`, `idx_`, `chk_` | Padronização para leitura clara em logs de erro e migrações |
+| **Integridade Referencial** | `ON DELETE RESTRICT` por padrão | Evita exclusões em cascata acidentais; `CASCADE` apenas em vínculos estritamente dependentes (sessões, arquivos de um projeto excluído definitivamente) |
+| **ORM / Migrações** | `[Em aberto — DEC-001]` | Prisma ORM ou Drizzle ORM + SQL migrations versionadas |
 
 ---
 
-## 2. Padrões e Convenções de Modelagem
+## 2. Regra de Ouro: Isolamento Rigoroso por `user_id`
 
-Todas as entidades do Codit devem seguir estas regras estruturais salvo justificativa documentada em ADR:
+Toda tabela do **Codit** pertence a exatamente uma de duas categorias:
 
-- **Nomenclatura:** `snake_case` em todos os nomes de tabelas, colunas, constraints e índices.
-- **Prefixos de Constraints e Índices:**
-  - Chave primária: `pk_<tabela>`
-  - Chave estrangeira: `fk_<tabela>_<tabela_referenciada>`
-  - Unicidade: `uq_<tabela>_<colunas>`
-  - Índice de busca: `idx_<tabela>_<colunas>`
-  - Regra de verificação: `chk_<tabela>_<regra>`
-- **Estratégia de Chave Primária (PK):** `[Pendente de definição]` (avaliar `UUIDv7` / `ULID` para ordenação temporal e não enumeração em APIs públicas vs `BIGINT` autoincremental interno).
-- **Auditoria Temporal:** todas as tabelas de domínio devem incluir:
-  - `created_at` (obrigatório, UTC, preenchido na criação)
-  - `updated_at` (obrigatório, UTC, atualizado a cada modificação)
-  - `deleted_at` (opcional, UTC — usar *soft delete* apenas nas entidades cuja regra de negócio exigir retenção/histórico)
-- **Integridade Referencial (`ON DELETE`):**
-  - Padrão obrigatório: `ON DELETE RESTRICT` para prevenir exclusões em cascata acidentais.
-  - `ON DELETE CASCADE` permitido apenas em tabelas estritamente dependentes (ex.: tabelas associativas N:N ou itens sem existência própria), mediante aprovação explícita.
-- **Precisão e Tipagem:**
-  - Datas e horários sempre armazenados em **UTC**.
-  - Valores monetários ou decimais exatos nunca devem usar ponto flutuante binário (`FLOAT`/`DOUBLE`); usar tipo decimal exato (`NUMERIC`/`DECIMAL`) ou inteiro na menor unidade (centavos).
+1. **Catálogo Curricular Público/Compartilhado:** conteúdo pedagógico criado pela plataforma (`tracks`, `modules`, `lessons`, `exercises`, `career_milestones`). Leitura pública/autenticada; escrita restrita ao papel `admin`.
+2. **Dados Privados do Usuário (Obrigatório `user_id`):** todos os registros gerados pelo aluno possuem coluna obrigatória `user_id UUID NOT NULL REFERENCES users(id)`:
+   - `auth_accounts` e `user_sessions`
+   - `user_lesson_progress` e `exercise_submissions`
+   - `sandbox_projects` e `sandbox_files`
+   - `octopy_conversations` e `octopy_messages`
+   - `user_career_progress`
+
+### Defesa em Profundidade (Aplicação + PostgreSQL RLS)
+- **Camada de Aplicação/Repositório:** toda consulta e mutação em tabelas privadas **deve** receber o `userId` extraído da sessão validada no servidor (nunca confiado do body/query) e filtrar explicitamente `WHERE user_id = :sessionUserId`.
+- **PostgreSQL Row-Level Security (RLS):** planejado para habilitar RLS nas tabelas privadas usando `current_setting('app.current_user_id', true)::uuid`, garantindo isolamento no próprio SGBD mesmo em caso de falha humana em alguma query.
+- **Exceção controlada para Portfólio:** um mini-projeto em `sandbox_projects` com `visibility IN ('unlisted', 'public_portfolio')` pode ser lido por terceiros em modo **somente leitura** por rota pública dedicada, mantendo edição/exclusão restritas ao dono (`user_id`).
 
 ---
 
 ## 3. Diagrama Entidade-Relacionamento (DER)
 
-> **Estado atual:** Esqueleto estrutural aguardando a definição das entidades reais de domínio após o levantamento em [regras-negocio.md](./regras-negocio.md).
-
 ```mermaid
 erDiagram
-    USUARIO_PENDENTE {
-        uuid id PK "Exemplo de estrutura base"
-        string email UK "Identificador unico"
-        timestamp created_at "UTC"
-        timestamp updated_at "UTC"
+    users ||--o{ auth_accounts : has
+    users ||--o{ user_sessions : owns
+    users ||--o{ user_lesson_progress : tracks
+    users ||--o{ exercise_submissions : submits
+    users ||--o{ sandbox_projects : creates
+    users ||--o{ sandbox_files : owns
+    users ||--o{ octopy_conversations : starts
+    users ||--o{ octopy_messages : owns
+    users ||--o{ user_career_progress : completes
+
+    tracks ||--o{ modules : contains
+    modules ||--o{ lessons : contains
+    lessons ||--o{ exercises : includes
+    lessons ||--o{ user_lesson_progress : referenced_by
+    exercises ||--o{ exercise_submissions : receives
+
+    sandbox_projects ||--o{ sandbox_files : contains
+    octopy_conversations ||--o{ octopy_messages : contains
+    career_milestones ||--o{ user_career_progress : referenced_by
+
+    users {
+        uuid id PK
+        varchar email UK
+        varchar password_hash
+        varchar full_name
+        varchar role
+        timestamptz email_verified_at
+        timestamptz created_at
+    }
+
+    sandbox_projects {
+        uuid id PK
+        uuid user_id FK
+        varchar title
+        varchar language
+        varchar runtime_target
+        varchar visibility
+        int version
+        timestamptz updated_at
+    }
+
+    octopy_conversations {
+        uuid id PK
+        uuid user_id FK
+        uuid lesson_id FK
+        uuid project_id FK
+        int current_hint_level
+        timestamptz updated_at
     }
 ```
 
 ---
 
-## 4. Catálogo de Entidades e Dicionário de Dados
+## 4. Dicionário de Dados Planejado
 
-### Índice de Entidades
+### 4.1 Identidade e Autenticação
 
-| Entidade / Tabela | Propósito no Domínio | Chave Primária | Relacionamentos Principais | Regras Associadas |
+#### `users`
+- **Propósito:** Conta principal do aluno ou administrador na plataforma.
+- **Regras associadas:** `RN-001`, `RN-002`, `RN-003`
+
+| Coluna | Tipo | Nulo | Default / Restrição | Descrição |
 | :--- | :--- | :--- | :--- | :--- |
-| `[Pendente de definição]` | `-` | `-` | `-` | `-` |
+| `id` | `UUID` | Não | `PK` | Identificador único do usuário (`user_id` global) |
+| `email` | `VARCHAR(255)` | Não | `UQ` (case-insensitive) | E-mail principal normalizado em minúsculas |
+| `password_hash` | `TEXT` | Sim | `-` | Hash `Argon2id`/`bcrypt`; nulo para contas criadas apenas via Google OAuth |
+| `full_name` | `VARCHAR(120)` | Não | `-` | Nome de exibição do usuário |
+| `avatar_url` | `TEXT` | Sim | `-` | URL sanitizada de foto de perfil |
+| `role` | `VARCHAR(20)` | Não | `'student'` (`chk_users_role`) | Papel RBAC (`student`, `admin`) |
+| `email_verified_at` | `TIMESTAMPTZ` | Sim | `NULL` | Data/hora UTC da verificação do e-mail |
+| `is_active` | `BOOLEAN` | Não | `TRUE` | Controle de suspensão/desativação imediata |
+| `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação em UTC |
+| `updated_at` | `TIMESTAMPTZ` | Não | `NOW()` | Última atualização em UTC |
+| `deleted_at` | `TIMESTAMPTZ` | Sim | `NULL` | Exclusão lógica/anonimização LGPD |
 
-### Template de Dicionário de Dados (para cada nova tabela)
+#### `auth_accounts`
+- **Propósito:** Vínculos de provedores externos (ex.: Google OAuth 2.0) associados a um `user_id`.
 
-Replicar a tabela abaixo para cada entidade aprovada:
+| Coluna | Tipo | Nulo | Restrição | Descrição |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | Não | `PK` | Identificador do vínculo |
+| `user_id` | `UUID` | Não | `FK -> users(id)` | Dono da conta vinculada |
+| `provider` | `VARCHAR(30)` | Não | `uq_auth_provider_sub` | Provedor (`google`, etc.) |
+| `provider_account_id` | `VARCHAR(255)` | Não | `uq_auth_provider_sub` | Claim `sub` imutável do provedor OIDC |
+| `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Data do vínculo |
 
-```markdown
-#### Tabela: `<nome_da_tabela>`
-- **Propósito:** Descrição objetiva da entidade.
-- **Regras relacionadas:** `RN-XXX`
-- **Índices e Constraints:** `pk_<tabela>`, `uq_...`, `idx_...`
+#### `user_sessions`
+- **Propósito:** Controle explícito de sessões ativas para suportar logout e revogação imediata.
 
-| Coluna | Tipo | Nulo | Default | Restrições / FK | Descrição |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | `[tipo]` | Não | `[gerador]` | `PK` | Identificador único |
-| `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | `-` | Data/hora de criação em UTC |
-| `updated_at` | `TIMESTAMPTZ` | Não | `NOW()` | `-` | Data/hora da última atualização em UTC |
-```
-
----
-
-## 5. Índices, Performance e Controle de Concorrência
-
-### Política de Indexação e Consultas
-1. **Indexação obrigatória de Foreign Keys:** toda coluna com FK deve possuir índice correspondente (exceto quando já for prefixo esquerdo de uma PK/UQ composta).
-2. **Unicidade com Soft Delete:** tabelas com `deleted_at` devem utilizar índice único parcial (`WHERE deleted_at IS NULL`) quando o negócio permitir recriação após exclusão lógica.
-3. **Prevenção de Gargalos:** evitar queries N+1 via carregamento explícito/joins planejados; paginar obrigatoriamente todas as consultas de listagem.
-4. **Validação de Plano de Execução:** consultas críticas ou relatórios devem ser validados com `EXPLAIN (ANALYZE, BUFFERS)` antes da aprovação.
-
-### Concorrência e Integridade Transacional
-- **Transações ACID:** operações que atualizam múltiplas tabelas devem rodar em transação única, mantendo o escopo o mais curto possível (sem chamadas de rede/APIs externas dentro da transação aberta).
-- **Prevenção de *Lost Update*:**
-  - **Lock Otimista (padrão para edição concorrente):** coluna `version` incrementada atomicamente (`UPDATE ... SET version = version + 1 WHERE id = :id AND version = :expected_version`), retornando conflito HTTP `409` se zero linhas forem afetadas.
-  - **Lock Pessimista (recursos críticos/disputados):** `SELECT ... FOR UPDATE` ou nível de isolamento `REPEATABLE READ`/`SERIALIZABLE`, documentando ordem determinística de bloqueio para evitar deadlocks.
-
----
-
-## 6. Migrações, Rollback e Seeds
-
-- **Proibição de DDL Manual:** toda mudança de schema deve existir como arquivo de migração versionado e revisado.
-- **Estratégia Expand-and-Contract (Zero Downtime):**
-  1. *Expand:* adicionar colunas/tabelas novas como anuláveis ou com default seguro.
-  2. *Backfill & Dual-Write:* migrar dados existentes em lotes e atualizar a aplicação.
-  3. *Contract:* somente após o deploy completo, aplicar `NOT NULL` ou remover colunas antigas em migração separada.
-- **Rollback:** toda migração deve documentar o procedimento de reversão segura (ou justificativa explícita quando não reversível, exigindo backup prévio).
-- **Seeds vs. Fixtures:**
-  - *Seeds de produção:* idempotentes (usando `ON CONFLICT DO NOTHING` / `UPSERT`), restritos a dados iniciais obrigatórios (ex.: papéis base do sistema).
-  - *Fixtures de desenvolvimento/teste:* determinísticas, sintéticas e isoladas do ambiente de produção.
-
-### Comandos de Migração e Seed
-- **Aplicar migrações:** `[Pendente de definição]`
-- **Reverter última migração:** `[Pendente de definição]`
-- **Executar seeds locais/teste:** `[Pendente de definição]`
+| Coluna | Tipo | Nulo | Restrição | Descrição |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | Não | `PK` | Identificador da sessão |
+| `user_id` | `UUID` | Não | `FK -> users(id)` | Usuário dono da sessão |
+| `token_hash` | `CHAR(64)` | Não | `UQ` | Hash `SHA-256` do token de sessão (nunca salvar token puro) |
+| `expires_at` | `TIMESTAMPTZ` | Não | `-` | Expiração absoluta em UTC |
+| `revoked_at` | `TIMESTAMPTZ` | Sim | `NULL` | Preenchido no logout ou revogação de segurança |
+| `user_agent` | `VARCHAR(255)` | Sim | `-` | Metadado básico de dispositivo para auditoria |
+| `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação da sessão |
 
 ---
 
-## 7. Segurança, Privacidade (LGPD) e Backup
+### 4.2 Catálogo Educacional (Conteúdo em `pt-BR`) e Progresso
 
-### Classificação de Dados
+#### `tracks`, `modules`, `lessons`, `exercises` (Catálogo Compartilhado)
 
-| Classe | Exemplos | Requisitos de Armazenamento e Exposição |
+| Tabela | Colunas Chave | Propósito |
 | :--- | :--- | :--- |
-| **Público** | Catálogos públicos, metadados abertos | Sem restrição de leitura pública |
-| **Interno** | Logs operacionais sem PII, métricas técnicas | Acesso restrito a serviços/equipe |
-| **PII / Pessoal (LGPD)** | Nome, e-mail, documentos, IP | Acesso autenticado/autorizado, mascaramento em logs |
-| **Credencial / Segredo** | Senhas, hashes de API keys, tokens de sessão | Armazenamento apenas via hash forte (`Argon2id`/`bcrypt` para senhas; `SHA-256`/HMAC para tokens); **nunca** retornar em APIs |
+| `tracks` | `id`, `slug` (`UQ`), `title`, `category` (`programming`, `ai`, `git_github`, `best_practices`, `career`), `level` (`beginner`, `intermediate`, `advanced`), `order_index`, `is_published` | Trilhas principais do Codit |
+| `modules` | `id`, `track_id` (`FK -> tracks`), `slug`, `title`, `order_index` | Agrupamento temático dentro de uma trilha |
+| `lessons` | `id`, `module_id` (`FK -> modules`), `slug`, `title`, `content_markdown`, `estimated_minutes`, `order_index` | Conteúdo didático em `pt-BR` |
+| `exercises` | `id`, `lesson_id` (`FK -> lessons`), `title`, `prompt_markdown`, `language`, `starter_code_json`, `validation_rules_json`, `static_hints_json`, `order_index` | Desafios práticos com dicas estáticas de contingência para o Octopy |
 
-### Proteção, Retenção e Recuperação
-- **Transporte e Repouso:** TLS obrigatório na conexão com o SGBD em ambientes compartilhados/produção e criptografia em repouso habilitada no provedor.
-- **LGPD:** mapear mecanismo de anonimização ou exclusão definitiva sob solicitação do titular quando aplicável às entidades do Codit.
-- **Backup, RPO e RTO:** `[Pendente de definição]` — definir frequência de snapshots automáticos, retenção e periodicidade de testes de restauração (`restore drill`) antes de subir para produção.
+#### `user_lesson_progress` (Privado — `user_id`)
+- **Chave Única:** `uq_progress_user_lesson (user_id, lesson_id)`
+- **Colunas:** `id` (`PK`), `user_id` (`FK -> users`, `NOT NULL`), `lesson_id` (`FK -> lessons`, `NOT NULL`), `status` (`not_started`, `in_progress`, `completed`), `progress_percent` (`SMALLINT` 0..100), `completed_at` (`TIMESTAMPTZ`), `version` (`INTEGER DEFAULT 1`), `updated_at` (`TIMESTAMPTZ`).
+
+#### `exercise_submissions` (Privado — `user_id`)
+- **Propósito:** Histórico de tentativas do aluno nos exercícios sem expor código de outros alunos.
+- **Colunas:** `id` (`PK`), `user_id` (`FK -> users`, `NOT NULL`), `exercise_id` (`FK -> exercises`, `NOT NULL`), `code_snapshot_json` (`JSONB`), `runtime_target` (`VARCHAR(30)`), `passed` (`BOOLEAN`), `feedback_summary` (`TEXT`), `created_at` (`TIMESTAMPTZ`).
+
+---
+
+### 4.3 Sandbox e Mini-Projetos
+
+#### `sandbox_projects` (Privado por padrão — `user_id`)
+- **Regras associadas:** `RN-201` a `RN-205`
+
+| Coluna | Tipo | Nulo | Restrição / Valores | Descrição |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | Não | `PK` | Identificador do mini-projeto |
+| `user_id` | `UUID` | Não | `FK -> users(id)` | Dono exclusivo para edição/exclusão |
+| `title` | `VARCHAR(120)` | Não | `-` | Título do mini-projeto |
+| `description` | `TEXT` | Sim | `-` | Descrição curta para portfólio |
+| `primary_language` | `VARCHAR(30)` | Não | `html_css_js`, `python`, etc. | Stack principal do projeto |
+| `runtime_target` | `VARCHAR(30)` | Não | `client_iframe`, `client_pyodide`, `remote_judge0`, `remote_piston` | Motor de execução associado |
+| `visibility` | `VARCHAR(20)` | Não | `'private'` (`private`, `unlisted`, `public_portfolio`) | Visibilidade padrão estritamente privada |
+| `share_slug` | `VARCHAR(80)` | Sim | `UQ` (parcial `WHERE share_slug IS NOT NULL`) | Slug público somente leitura para portfólio |
+| `version` | `INTEGER` | Não | `1` | Lock otimista anti-sobrescrita multi-aba |
+| `created_at` / `updated_at` / `deleted_at` | `TIMESTAMPTZ` | `created`/`updated` Não | `-` | Auditoria temporal e soft delete |
+
+#### `sandbox_files` (Privado — `user_id`)
+- **Colunas:** `id` (`PK`), `project_id` (`FK -> sandbox_projects`, `ON DELETE CASCADE`), `user_id` (`FK -> users`, `NOT NULL` — garante RLS direta sem join), `file_path` (`VARCHAR(160)`), `language` (`VARCHAR(20)`), `content` (`TEXT`), `is_entry_point` (`BOOLEAN DEFAULT FALSE`), `updated_at` (`TIMESTAMPTZ`).
+- **Unicidade:** `uq_sandbox_files_project_path (project_id, file_path)`.
+
+---
+
+### 4.4 Tutor IA (`Octopy`) e Carreira Tech
+
+#### `octopy_conversations` e `octopy_messages` (Privados — `user_id`)
+- `octopy_conversations`: `id` (`PK`), `user_id` (`FK -> users`, `NOT NULL`), `lesson_id` (`FK -> lessons`, `NULL`), `project_id` (`FK -> sandbox_projects`, `NULL`), `title` (`VARCHAR(140)`), `current_hint_level` (`SMALLINT DEFAULT 1`), `created_at`, `updated_at`.
+- `octopy_messages`: `id` (`PK`), `conversation_id` (`FK -> octopy_conversations`, `ON DELETE CASCADE`), `user_id` (`FK -> users`, `NOT NULL`), `sender` (`student`, `octopy`, `system_fallback`), `content` (`TEXT`), `hint_level` (`SMALLINT`), `provider_model` (`VARCHAR(60)`), `token_usage` (`INTEGER`), `created_at`.
+
+#### `career_milestones` e `user_career_progress`
+- `career_milestones`: `id` (`PK`), `slug` (`UQ`), `category` (`portfolio`, `github`, `resume`, `interview`), `title`, `checklist_markdown`, `order_index`.
+- `user_career_progress`: `id` (`PK`), `user_id` (`FK -> users`, `NOT NULL`), `milestone_id` (`FK -> career_milestones`, `NOT NULL`), `status` (`pending`, `in_progress`, `completed`), `artifact_url` (`TEXT`), `notes` (`TEXT`), `updated_at`.
+- **Unicidade:** `uq_career_user_milestone (user_id, milestone_id)`.
+
+---
+
+## 5. Índices Críticos, Concorrência, Migrações e LGPD
+
+### Índices Obrigatórios
+- `idx_user_sessions_user_active` em `user_sessions (user_id, expires_at) WHERE revoked_at IS NULL`
+- `idx_progress_user_status` em `user_lesson_progress (user_id, status)`
+- `idx_submissions_user_exercise_date` em `exercise_submissions (user_id, exercise_id, created_at DESC)`
+- `idx_projects_user_updated` em `sandbox_projects (user_id, updated_at DESC) WHERE deleted_at IS NULL`
+- `idx_octopy_conv_user_updated` em `octopy_conversations (user_id, updated_at DESC)`
+- Toda chave estrangeira deve possuir índice correspondente.
+
+### Controle de Concorrência
+- **Lock Otimista (`version`):** obrigatório em `sandbox_projects` e `user_lesson_progress` para evitar perda de código quando o aluno alterna entre celular (PWA) e desktop.
+- **Transações ACID:** atualizações compostas (ex.: criar conta + vincular OAuth; salvar projeto + arquivos; registrar submissão aprovada + marcar lição concluída) executam em transação única sem chamadas externas de IA/rede dentro da transação aberta.
+
+### Migrações e LGPD
+- **Migrações:** proibição de DDL manual em produção; mudanças destrutivas seguem estratégia *Expand-and-Contract* em etapas separadas.
+- **LGPD:**
+  - Senhas apenas com hash `Argon2id`/`bcrypt`; tokens de sessão com `SHA-256`.
+  - Conexões PostgreSQL em produção exigem TLS (`sslmode=require`).
+  - Direito de exclusão: ao excluir conta, revogar sessões imediatamente, remover/anonimizar PII em `users`, excluir registros privados vinculados ao `user_id` e revogar visibilidade pública de portfólios associados.

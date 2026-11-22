@@ -1,88 +1,93 @@
 # Status e Progresso do Projeto — Codit (`TCC-Codit`)
 
+> **Estado Atual:** **Fase Inicial (Fase 0) — apenas com estrutura base e documentação.**
+> **Nenhum código de aplicação, `package.json`, migração de banco ou dependência foi criado/instalado ainda.**
+
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Fase Atual** | `Fase 0 — Fundação e Documentação Inicial` |
 | **Última atualização** | `2026-11-22` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [banco-de-dados.md](./banco-de-dados.md) · [regras-negocio.md](./regras-negocio.md) |
 
 ---
 
-## 1. Resumo Executivo Atual (Estado Inspecionado)
+## 1. Resumo Executivo (Estado Real Inspecionado)
 
-| Aspecto | Estado Real | Detalhes |
+| Aspecto | Situação Real | Detalhes |
 | :--- | :--- | :--- |
-| **Repositório Principal (Git)** | Inicializado | `C:/Users/gusta/orca/projects/TCC-Codit` · branch `master` · commit `7815ce3` (`Initial commit`) |
-| **Worktree Secundário Ativo (Orca)** | Ativo | Pasta `C:/Users/gusta/orca/workspaces/TCC-Codit/bichir` · branch `git-worktree-github-guide` (`base: refs/heads/master`) |
-| **Remote GitHub (`origin`)** | Não conectado | Nenhum remote configurado em `git remote -v`; CLI `gh` autenticado na conta `siriuszzz17` |
-| **Documentação Base** | Criada (não commitada) | `GEMINI.md` + 4 arquivos em `docs/` criados no worktree `bichir` |
-| **Código-fonte / Banco / Testes** | Não iniciados | Aguardando definição de escopo, stack e modelagem |
+| **Código da Aplicação** | **Não iniciado** | Sem `src/`, sem `package.json`, sem dependências instaladas e sem rotas/telas implementadas |
+| **Banco de Dados** | **Não provisionado** | Apenas modelagem conceitual/dicionário documentados em [banco-de-dados.md](./banco-de-dados.md) |
+| **Documentação Base** | **Completa (Fase 0)** | `GEMINI.md` (< 100 linhas) + `arquitetura.md`, `banco-de-dados.md`, `regras-negocio.md` e `status.md` refletindo a visão completa do SaaS |
+| **Repositório Principal** | Ativo | `C:/Users/gusta/orca/projects/TCC-Codit` · branch `master` · remote `origin`: `https://github.com/siriuszzz17/Codit.git` |
+| **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/bichir` · branch `git-worktree-github-guide` |
 
 ---
 
-## 2. Roadmap por Fases
+## 2. Roadmap do Projeto
 
-### Fase 0 — Fundação e Governança
-- [x] Inicialização do repositório Git (`7815ce3 — Initial commit`)
-- [x] Criação da constituição operacional [GEMINI.md](../GEMINI.md)
-- [x] Criação da estrutura base em `docs/` ([arquitetura.md](./arquitetura.md), [banco-de-dados.md](./banco-de-dados.md), [regras-negocio.md](./regras-negocio.md), [status.md](./status.md))
-- [ ] Conectar repositório remoto no GitHub (`origin`) e confirmar branch padrão (`master` vs `main`)
-- [ ] Commitar documentação inicial e integrar na branch principal
+### Fase 0 — Fundação e Documentação Inicial *(Em conclusão)*
+- [x] Inicialização do repositório Git e conexão com GitHub (`siriuszzz17/Codit`)
+- [x] Definição da visão completa do SaaS Codit, mascote/tutor **Octopy** e diretrizes de segurança/isolamento
+- [x] Criação do guia rápido [GEMINI.md](../GEMINI.md) e da pasta `docs/` completa
+- [ ] Commit da documentação finalizada na branch atual e merge na `master`
 
-### Fase 1 — Definição de Escopo, Regras e Stack
-- [ ] Definir problema, objetivo, personas/perfis e regras do MVP em [regras-negocio.md](./regras-negocio.md)
-- [ ] Definir stack tecnológica, estrutura de pastas, integrações e ADRs em [arquitetura.md](./arquitetura.md)
-- [ ] Modelar DER, dicionário de dados e estratégia de migrações em [banco-de-dados.md](./banco-de-dados.md)
+### Fase 1 — Decisões Técnicas Finais e Scaffold Base
+- [ ] Fechar decisões `DEC-001` a `DEC-004` (ORM, biblioteca de Auth, provedor LLM do Octopy, ambiente PostgreSQL)
+- [ ] Criar projeto Next.js (App Router) + TypeScript `strict` + Tailwind CSS + configuração PWA (`manifest.webmanifest`, ícones e Service Worker)
+- [ ] Configurar `.env.example`, validação *fail-fast* de variáveis de ambiente, ESLint/Prettier e estrutura de testes
 
-### Fase 2 — Setup Técnico e Infraestrutura Base
-- [ ] Criar scaffold da aplicação com tipagem estrita, linter e formatter configurados
-- [ ] Configurar `.env.example`, `.gitignore` e validação de variáveis de ambiente na inicialização
-- [ ] Configurar SGBD local, ferramentas de migração, seeds e endpoints `/health` e `/ready`
-- [ ] Configurar suíte de testes automatizados e pipeline inicial de CI
+### Fase 2 — Banco PostgreSQL, Autenticação e Isolamento por `user_id`
+- [ ] Provisionar PostgreSQL e implementar migrações iniciais de `users`, `auth_accounts`, `user_sessions` e catálogo curricular
+- [ ] Implementar autenticação tradicional (`Argon2id`/`bcrypt`) + Google OAuth 2.0 (PKCE + `state` + vinculação segura)
+- [ ] Implementar middleware/guard de sessão, proteção anti-IDOR por `user_id` e políticas RLS
 
-### Fase 3 — Implementação do MVP
-- [ ] Implementar autenticação e autorização RBAC (`RN-001..099`)
-- [ ] Implementar fluxos centrais do domínio Codit (`RN-100..199`) com testes unitários e de integração
-- [ ] Implementar integrações externas e planos de contingência (`RN-300..399`)
+### Fase 3 — Trilhas Didáticas, Progresso e Sandbox MVP
+- [ ] Construir interface Mobile-First em `pt-BR` para trilhas, módulos, lições e checklist de carreira
+- [ ] Implementar persistência de progresso (`user_lesson_progress`) e submissões (`exercise_submissions`)
+- [ ] Implementar Sandbox client-side isolado (HTML/CSS/JS em `iframe` sandboxed + Python via Pyodide Web Worker) e CRUD de mini-projetos (`sandbox_projects`, `sandbox_files`) com lock otimista
 
-### Fase 4 — Validação, Polimento e Entrega do TCC
-- [ ] Revisão de segurança (OWASP Top 10), LGPD e testes de concorrência/carga
-- [ ] Verificação integral de rastreabilidade `RN-XXX` ↔ código ↔ testes
-- [ ] Revisão final de documentação, deploy/ambiente de demonstração e apresentação do TCC
+### Fase 4 — Tutor IA (`Octopy`) e Portfólio/Carreira
+- [ ] Implementar proxy server-side `/api/v1/octopy/chat` com streaming SSE, cotas por `user_id`, prompt socrático e contingência estática
+- [ ] Implementar trilha de carreira tech e visualização pública somente leitura de mini-projetos de portfólio
+
+### Fase 5 — Expansão Multi-Linguagem, Auditoria e Entrega do TCC
+- [ ] Integrar adaptador `CodeExecutionProvider` para linguagens adicionais via Judge0 CE / Piston
+- [ ] Executar suíte completa de testes (`RN-XXX`), revisão OWASP/LGPD, testes PWA mobile e deploy de produção
 
 ---
 
 ## 3. Trabalho em Andamento
 
-| Item | Worktree / Branch | Estado | Próxima Ação |
+| Tarefa | Worktree / Branch | Status | Próximo Passo |
 | :--- | :--- | :--- | :--- |
-| Bootstrap da documentação (`GEMINI.md` e `docs/*.md`) | `bichir` (`git-worktree-github-guide`) | Arquivos criados localmente (sem commit) | Revisar conteúdo, commitar e integrar após conectar GitHub ou mergear na `master` |
+| Documentação base da visão do SaaS Codit | `bichir` (`git-worktree-github-guide`) | Finalização e commit inicial dos docs | Revisar coerência, commitar e preparar integração com `master` |
 
 ---
 
 ## 4. Decisões em Aberto (`DEC-XXX`)
 
-| ID | Tema | Documento Alvo | Impacto | Estado |
-| :--- | :--- | :--- | :--- | :--- |
-| `DEC-001` | Definição do escopo funcional, personas, perfis RBAC e regras `RN-XXX` do Codit | [regras-negocio.md](./regras-negocio.md) | Alto — bloqueia modelagem e código | Aberta |
-| `DEC-002` | Definição da stack tecnológica (linguagem, framework backend/frontend, testes, CI) | [arquitetura.md](./arquitetura.md) | Alto — bloqueia scaffold e gates | Aberta |
-| `DEC-003` | Escolha do SGBD, ORM/driver, tipo de PK (`UUIDv7` vs `BIGINT`) e ferramenta de migração | [banco-de-dados.md](./banco-de-dados.md) | Alto — bloqueia schema inicial | Aberta |
-| `DEC-004` | Conexão com GitHub (`siriuszzz17`), visibilidade (privado/público) e branch padrão (`master` vs `main`) | [status.md](./status.md) | Médio — define fluxo de PR e backup remoto | Aberta |
-
----
-
-## 5. Bloqueios e Riscos Ativos
-
-| ID | Severidade | Descrição | Mitigação / Próximo Passo |
+| ID | Tema | Opções em Análise | Documento Impactado |
 | :--- | :--- | :--- | :--- |
-| `RISK-001` | Alta | Repositório existe apenas localmente (`git remote -v` vazio), sem backup remoto no GitHub | Criar/conectar repositório `origin` na conta `siriuszzz17` e enviar branch principal |
-| `RISK-002` | Média | Escopo funcional e stack do Codit ainda não especificados; agentes não devem supor stack/regras sem aprovação | Preencher `DEC-001` a `DEC-003` antes de iniciar geração de código de produção |
+| `DEC-001` | ORM e sistema de migrações PostgreSQL | Prisma ORM vs. Drizzle ORM | [arquitetura.md](./arquitetura.md), [banco-de-dados.md](./banco-de-dados.md) |
+| `DEC-002` | Provedor de IA primário e secundário para o Octopy | Gemini API vs. OpenAI API (e estratégia de fallback) | [arquitetura.md](./arquitetura.md) |
+| `DEC-003` | Biblioteca de autenticação e gestão de sessão | Auth.js (NextAuth v5) vs. Better Auth vs. implementação custom com OIDC | [arquitetura.md](./arquitetura.md) |
+| `DEC-004` | Provedor de hospedagem, PostgreSQL gerenciado e adoção de RLS nativo | Vercel/Railway/Render + Neon/Supabase/RDS | [arquitetura.md](./arquitetura.md), [banco-de-dados.md](./banco-de-dados.md) |
 
 ---
 
-## 6. Changelog / Diário de Evolução
+## 5. Riscos Ativos
+
+| ID | Severidade | Risco | Mitigação Planejada |
+| :--- | :--- | :--- | :--- |
+| `RISK-001` | Alta | Vazamento de dados entre usuários (IDOR) em progresso, projetos ou histórico do Octopy | Filtro obrigatório `user_id` da sessão no servidor + RLS no PostgreSQL + testes automatizados de acesso cruzado |
+| `RISK-002` | Alta | Execução insegura de código de alunos (XSS / RCE) | MVP 100% client-side (`iframe` sem `allow-same-origin` + Web Worker Pyodide); expansão futura apenas em sandbox remoto isolado |
+| `RISK-003` | Média | Custo ou indisponibilidade da API de IA do Octopy | Proxy server-side com rate limit por `user_id`, fallback de modelo e dicas estáticas pré-curadas por exercício |
+
+---
+
+## 6. Changelog
 
 - **`2026-11-22`:**
-  - Commit inicial `7815ce3` (`Initial commit`) registrado na branch `master` do repositório `TCC-Codit`.
-  - Criada a estrutura inicial de documentação no worktree `bichir` (branch `git-worktree-github-guide`): `GEMINI.md`, `docs/arquitetura.md`, `docs/banco-de-dados.md`, `docs/regras-negocio.md` e `docs/status.md`.
+  - `7815ce3`: Commit inicial do repositório `TCC-Codit`.
+  - `0ac8955`: Bootstrap inicial da estrutura de arquivos `GEMINI.md` e `docs/`.
+  - **Atualização atual:** Consolidação completa da visão do SaaS **Codit**, mascote/tutor IA **Octopy**, experiência Web Mobile-First + PWA, stack TypeScript/Next.js/Tailwind/PostgreSQL, Sandbox client-side + expansão Judge0/Piston e isolamento estrito por `user_id` em `GEMINI.md` e `docs/*.md` (ainda sem código de aplicação criado).

@@ -1,118 +1,140 @@
-# Regras de Negócio e Especificação de Domínio — Codit (`TCC-Codit`)
+# Regras de Negócio e Domínio — Codit (`TCC-Codit`)
 
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Status** | Em definição inicial (`Fase 0`) |
+| **Status** | Especificação inicial da visão SaaS (`Fase 0`) |
 | **Última atualização** | `2026-11-22` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [banco-de-dados.md](./banco-de-dados.md) |
 
 ---
 
-## 1. Propósito e Política de Rastreabilidade
+## 1. Propósito e Rastreabilidade
 
-Este documento é a referência canônica para todo comportamento de domínio do **Codit**.
-
-- **Identificador Único:** toda regra de negócio recebe um código sequencial e imutável no formato `RN-XXX`.
-- **Rastreabilidade Bidirecional Obrigatória:**
-  - `regras-negocio.md` (`RN-XXX`) ↔ código de domínio/validação (`src/`) ↔ testes automatizados (`tests/`).
-  - Nenhuma regra de negócio deve existir apenas no frontend; toda invariante crítica deve ser garantida pelo backend e persistência.
+Este documento define as regras funcionais, invariantes e casos de borda do **Codit**. Toda regra possui um código único e imutável `RN-XXX` que deve ser referenciado no código de domínio e nos testes automatizados quando a implementação iniciar.
 
 ---
 
 ## 2. Glossário de Domínio (Linguagem Ubíqua)
 
-Use exclusivamente os termos oficiais abaixo em código, APIs, banco de dados, telas e documentação:
-
-| Termo Oficial | Definição no Domínio Codit | Termos a Evitar | Módulo / Entidade |
-| :--- | :--- | :--- | :--- |
-| `[Pendente de definição]` | `-` | `-` | `-` |
+| Termo | Definição no Domínio Codit | Idioma de Uso |
+| :--- | :--- | :--- |
+| **Codit** | Plataforma SaaS educacional Web Mobile-First + PWA para ensino de tecnologia e carreira | UI/Docs |
+| **Octopy** | Mascote (polvo roxo) e tutor interativo com IA de pedagogia socrática | UI/Código (`octopy`) |
+| **Track (Trilha)** | Jornada macro de aprendizagem (ex.: Programação Base, IA, Git/GitHub, Carreira Tech) | Código (`tracks`) / UI (`Trilhas`) |
+| **Module (Módulo)** | Subdivisão temática dentro de uma trilha | Código (`modules`) / UI (`Módulos`) |
+| **Lesson (Lição)** | Unidade didática em `pt-BR` com explicação teórica e prática guiada | Código (`lessons`) / UI (`Lições`) |
+| **Exercise (Exercício)** | Desafio prático validado no Sandbox ou por critérios de teste | Código (`exercises`) / UI (`Exercícios`) |
+| **Sandbox** | Ambiente isolado para executar código (client-side no MVP; remoto na Fase 2+) | Código (`sandbox`) / UI (`Sandbox`) |
+| **Mini-Projeto** | Projeto de prática criado e salvo pelo aluno em sua área privada ou portfólio | Código (`sandbox_projects`) |
 
 ---
 
-## 3. Perfis de Acesso e Matriz de Permissões (RBAC)
+## 3. Perfis de Acesso e Matriz RBAC
 
-### Perfis Previstos
+| Recurso / Ação | `guest` (Visitante) | `student` (Aluno) | `admin` (Curadoria/Equipe) |
+| :--- | :---: | :---: | :---: |
+| Navegar em trilhas/lições abertas (leitura) | Sim (limitado) | Sim | Sim |
+| Experimentar Sandbox sem persistência em nuvem | Opcional | Sim | Sim |
+| Salvar progresso, submissões e mini-projetos (`user_id`) | Não | Somente próprios | Próprios + moderação |
+| Conversar com o tutor **Octopy** | Não | Sim (com cota) | Sim |
+| Visualizar mini-projeto `public_portfolio` / `unlisted` | Somente leitura | Somente leitura | Somente leitura |
+| Criar/editar currículo (`tracks`, `lessons`, `exercises`) | Não | Não | Sim |
 
-| Perfil / Papel | Descrição | Escopo de Dados | Estado |
-| :--- | :--- | :--- | :--- |
-| `[Pendente de definição]` | `-` | `-` | `Pendente` |
-
-### Matriz de Permissões por Recurso
-
-| Recurso / Operação | Perfil A (`[Pendente]`) | Perfil B (`[Pendente]`) | Observações / Regras |
-| :--- | :--- | :--- | :--- |
-| `[Pendente de definição]` | `-` | `-` | Princípio do menor privilégio; validação server-side obrigatória |
+> Toda autorização deve ser validada no servidor; controles visuais no frontend servem apenas para UX.
 
 ---
 
 ## 4. Catálogo de Regras de Negócio (`RN-XXX`)
 
-### Convenção de Faixas por Domínio
+### Módulo A — Autenticação, Segurança e Isolamento (`RN-001` a `RN-004`)
 
-| Faixa | Domínio / Módulo |
-| :--- | :--- |
-| `RN-001` a `RN-099` | Autenticação, Sessão, Usuários e Autorização (RBAC) |
-| `RN-100` a `RN-199` | Fluxo Principal do Domínio Codit `[Pendente de definição]` |
-| `RN-200` a `RN-299` | Fluxos Secundários, Relatórios e Auditoria `[Pendente de definição]` |
-| `RN-300` a `RN-399` | Integrações Externas, Notificações, Limites e Contingência |
+- **`RN-001` — Autenticação Dupla (Tradicional + Google OAuth 2.0):**
+  - O usuário pode cadastrar-se e autenticar com e-mail/senha ou via Google OAuth 2.0 (OIDC com `state` e PKCE).
+  - Contas Google-only iniciam com `password_hash = NULL` e podem definir senha local posteriormente mediante confirmação autenticada.
+- **`RN-002` — Vinculação Segura de Contas por E-mail:**
+  - Uma conta Google só pode ser vinculada automaticamente a uma conta local existente com o mesmo e-mail quando **ambas** possuírem e-mail verificado (`email_verified === true`). Caso contrário, exige autenticação prévia na conta existente antes de vincular, evitando sequestro de conta (*account takeover*).
+- **`RN-003` — Isolamento Estrito por `user_id` (Anti-IDOR):**
+  - Progresso de lições, submissões, mini-projetos, conversas do Octopy e metas de carreira pertencem estritamente ao `user_id` dono do registro.
+  - Tentativas de leitura/alteração/exclusão usando UUID de outro usuário devem ser bloqueadas no servidor com HTTP `403` ou `404` (sem vazar dados privados).
+- **`RN-004` — Proteção Absoluta de Segredos:**
+  - Nenhuma chave de API (LLM do Octopy, Google OAuth Secret, `DATABASE_URL`, Judge0/Piston) pode ser exposta no bundle client-side ou no repositório Git.
 
-### Índice de Regras Registradas
+### Módulo B — Aprendizagem, Currículo e Experiência PWA (`RN-101` a `RN-104`)
 
-| ID | Título | Módulo | Prioridade | Status | Testes Vinculados |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `[Pendente de definição]` | `-` | `-` | `-` | `-` | `-` |
+- **`RN-101` — Idioma Didático e Técnico:**
+  - Todo conteúdo educacional, interface, mensagens de feedback e falas do Octopy são apresentados em **Português (`pt-BR`)**, enquanto código-fonte do projeto, rotas `/api/v1/*` e schema SQL seguem padrão em **inglês**.
+- **`RN-102` — Progresso Idempotente e Monotônico por Usuário:**
+  - O progresso do aluno em uma lição é registrado por `(user_id, lesson_id)`. Reenvios repetidos de conclusão não duplicam registros nem regridem uma lição já marcada como `completed` (salvo reset explícito solicitado pelo aluno).
+- **`RN-103` — Trilhas de Carreira e Portfólio:**
+  - Além de programação, IA e Git/GitHub, o sistema mantém checklist prático de carreira (`career_milestones`) onde o aluno acompanha progresso de currículo, GitHub, portfólio e preparação para entrevistas de forma isolada pelo seu `user_id`.
+- **`RN-104` — Experiência Mobile-First e PWA:**
+  - Todas as telas principais (dashboard, leitor de lição, sandbox, mini-projetos e chat do Octopy) devem ser utilizáveis a partir de `360px` de largura e instaláveis como PWA. Ações dependentes de rede devem informar o usuário claramente quando offline.
 
-### Template Padrão de Especificação (`RN-XXX`)
+### Módulo C — Sandbox e Mini-Projetos (`RN-201` a `RN-205`)
 
-Toda nova regra adicionada deve seguir integralmente esta ficha:
+- **`RN-201` — Execução Isolada no Cliente (MVP):**
+  - No MVP, o Sandbox suporta **HTML, CSS, JavaScript** (via `<iframe sandbox="allow-scripts">` sem `allow-same-origin`) e **Python** (via Pyodide WASM em Web Worker dedicado).
+  - É proibido enviar código de usuário para execução no processo principal do servidor Next.js/Node.
+- **`RN-202` — Limites de Execução e Proteção contra Travamento:**
+  - Execuções possuem timeout configurável (ex.: `3s`–`5s` por execução), truncamento seguro de saída excessiva (`stdout`/`console`) e encerramento forçado (`worker.terminate()` / recriação do iframe) em caso de loop infinito.
+- **`RN-203` — Persistência de Mini-Projetos com Concorrência Otimista:**
+  - Alunos autenticados podem criar, editar e excluir mini-projetos vinculados ao seu `user_id`, respeitando limites de tamanho por arquivo/projeto e controle de versão (`version`) para impedir sobrescrita silenciosa entre abas ou dispositivos.
+- **`RN-204` — Privacidade Padrão e Portfólio Compartilhável:**
+  - Todo mini-projeto nasce como `private`. O aluno pode optar explicitamente por `unlisted` ou `public_portfolio` para compartilhar no portfólio (exposição pública apenas em modo **somente leitura** e executada exclusivamente no navegador do visitante).
+- **`RN-205` — Expansão Multi-Linguagem via Provedor Remoto (Fase 2+):**
+  - Novas linguagens fora do suporte client-side (ex.: Java, C++, Go, Rust) usarão exclusivamente a interface `CodeExecutionProvider` no backend apontando para ambiente isolado (Judge0 CE / Piston).
 
-```markdown
-### RN-XXX — Título Objetivo da Regra
-- **Módulo:** Nome do módulo
-- **Status:** Rascunho | Aprovada | Implementada | Obsoleta
-- **Descrição:** O que a regra determina de forma clara e sem ambiguidade.
-- **Pré-condições:** Estado ou permissões exigidas antes da execução.
-- **Invariantes e Validações:** Condições que nunca podem ser violadas.
-- **Resposta de Erro:** Status HTTP (`400`/`403`/`404`/`409`/`422`) e código de erro de domínio.
-- **Casos de Borda:** Concorrência, limites, entradas nulas/vazias, fuso horário, retry.
-- **Critérios de Aceite (BDD):**
-  - **Dado** `<contexto inicial>`
-  - **Quando** `<ação executada>`
-  - **Então** `<resultado esperado no estado e na resposta>`
-```
+### Módulo D — Tutor IA Octopy (`RN-301` a `RN-305`)
+
+- **`RN-301` — Pedagogia Socrática Progressiva:**
+  - O **Octopy** atua como guia didático: diante de uma dúvida ou erro no exercício, prioriza explicar o conceito, apontar a região do problema e fazer perguntas orientadoras (`hint_level` 1 → 2 → 3), evitando entregar a solução completa pronta logo na primeira interação.
+- **`RN-302` — Proxy Server-Side e Proteção contra Prompt Injection:**
+  - Toda chamada ao modelo de IA passa pelo backend (`/api/v1/octopy/chat`), que injeta o `system prompt` do Octopy, contextualiza lição/código do aluno em blocos delimitados e impede alteração das instruções de sistema pelo cliente.
+- **`RN-303` — Quotas e Rate Limit por `user_id`:**
+  - Cada aluno possui limite de requisições por janela de tempo e cota diária. Ao atingir o limite, a API retorna HTTP `429` em `pt-BR` indicando o tempo de espera sem falhar de forma opaca.
+- **`RN-304` — Contingência de Disponibilidade da IA:**
+  - Em caso de indisponibilidade, timeout ou esgotamento de cota do provedor LLM, o sistema aciona fallback de modelo/provedor ou entrega dicas estáticas pré-curadas da lição (`static_hints_json`).
+- **`RN-305` — Privacidade do Histórico com o Octopy:**
+  - Conversas (`octopy_conversations` e `octopy_messages`) são estritamente privadas por `user_id` e jamais são compartilhadas entre alunos.
 
 ---
 
 ## 5. Fluxos Críticos e Máquinas de Estado
 
-> **Estado atual:** Diagrama estrutural aguardando a definição dos fluxos reais e estados de entidades do Codit.
+### Ciclo de Aprendizagem e Apoio Socrático do Octopy
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PendenteDefinicao: "Aguardando levantamento de domínio"
-    PendenteDefinicao --> Especificado: "Regras RN-XXX aprovadas"
-    Especificado --> Implementado: "Código + Testes validados"
-    Implementado --> [*]
+    [*] --> NaoIniciada
+    NaoIniciada --> EmAndamento: "Aluno abre lição ou executa Sandbox"
+    EmAndamento --> Validando: "Submete exercício no Sandbox"
+    Validando --> EmAndamento: "Falha nos testes (pode pedir dica ao Octopy)"
+    EmAndamento --> DicaOctopyN1: "Pede ajuda (explicação conceitual)"
+    DicaOctopyN1 --> DicaOctopyN2: "Ainda travado (pista direcionada)"
+    DicaOctopyN2 --> EmAndamento: "Ajusta código e retesta"
+    Validando --> Concluida: "Critérios atendidos (salva progresso por user_id)"
+    Concluida --> [*]
 ```
 
 ---
 
-## 6. Regras Transversais e Casos de Borda Obrigatórios
+## 6. Casos de Borda Obrigatórios para Testes Futuros
 
-Independentemente do domínio específico do Codit, estas regras transversais aplicam-se a todo o sistema:
-
-- [ ] **Idempotência:** operações críticas mutáveis não devem gerar duplicidades em caso de reenvio por falha de rede ou duplo clique.
-- [ ] **Concorrência:** atualizações simultâneas no mesmo registro não devem causar perda silenciosa de dados (*lost update*); aplicar controle otimista/pessimista conforme [banco-de-dados.md](./banco-de-dados.md).
-- [ ] **Datas, Fuso Horário e Precisão:** comparações de prazo/vigência e registros temporais devem operar em UTC (conversão para fuso local apenas na apresentação); cálculos financeiros ou exatos não devem usar ponto flutuante binário.
-- [ ] **Limites, Quotas e Paginação:** toda coleção deve possuir paginação com limite máximo validado no servidor; campos de texto e uploads devem possuir tamanho/tipo validados.
-- [ ] **Revogação e Consistência de Acesso:** ao desativar um usuário ou reduzir seu papel/permissão, acessos subsequentes a recursos protegidos devem ser recusados imediatamente.
-- [ ] **Degradação Graciosa de Integrações Externas:** falhas, timeouts ou limites (`429`) em APIs externas devem retornar erro tratável ou acionar plano de contingência documentado em [arquitetura.md](./arquitetura.md), sem deixar estado parcial inconsistente no banco.
+| Cenário | Comportamento Esperado | Regra |
+| :--- | :--- | :--- |
+| **Loop infinito no Python/JS** | Watchdog interrompe o Web Worker (`terminate`) / iframe após o timeout sem travar a UI principal | `RN-202` |
+| **Tentativa de XSS via HTML/JS no Sandbox** | Script roda em `iframe` sem `allow-same-origin` (origem `null`); não acessa cookies, `DOM` do Codit nem tokens | `RN-201` |
+| **Troca de `projectId` na URL/API (IDOR)** | Usuário B tentando ler/editar mini-projeto privado do Usuário A recebe HTTP `403`/`404` | `RN-003` |
+| **Edição simultânea em celular + desktop** | Segunda gravação com `version` desatualizado recebe HTTP `409 Conflict` e alerta o usuário sem sobrescrever | `RN-203` |
+| **Colisão de e-mail entre login local e Google OAuth** | Se conta local não tiver e-mail verificado, bloqueia auto-vinculação e exige confirmação autenticada | `RN-002` |
+| **Timeout ou cota excedida na API de IA** | Retorna fallback/dica estática da lição ou mensagem amigável HTTP `429`/`503` em `pt-BR` | `RN-303`, `RN-304` |
+| **PWA sem conexão à internet** | Permite leitura de shell/cache estático e exibe aviso claro ao tentar login, Octopy ou salvar na nuvem | `RN-104` |
 
 ---
 
-## 7. Histórico de Alterações de Regras
+## 7. Histórico de Alterações
 
-| Data | ID da Regra | Tipo de Mudança | Resumo e Motivo |
-| :--- | :--- | :--- | :--- |
-| `2026-11-22` | `-` | Criação do documento | Estrutura inicial de especificação de regras do Codit |
+| Data | Escopo | Resumo |
+| :--- | :--- | :--- |
+| `2026-11-22` | Inicial | Formalização completa de glossário, RBAC, regras `RN-001` a `RN-305`, estados e casos de borda do SaaS Codit |
