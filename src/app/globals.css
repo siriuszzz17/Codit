@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8f7fc;
+  --foreground: #141224;
+  --surface: #ffffff;
+  --surface-muted: #f0edfb;
+  --border: #dfd9f3;
+  --muted: #565171;
+  --accent: #7c3aed;
+  --accent-strong: #6d28d9;
+  --accent-soft: #ede9fe;
+  --accent-foreground: #ffffff;
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b0a16;
+    --foreground: #f4f2ff;
+    --surface: #141228;
+    --surface-muted: #1b1836;
+    --border: #2c2752;
+    --muted: #b8b2d8;
+    --accent: #8b5cf6;
+    --accent-strong: #a78bfa;
+    --accent-soft: #231b46;
+    --accent-foreground: #0b0a16;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-foreground: var(--accent-foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+html,
+body {
+  min-height: 100%;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}

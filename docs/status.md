@@ -1,7 +1,7 @@
 # Status e Progresso do Projeto — Codit (`TCC-Codit`)
 
-> **Estado Atual:** **Fase Inicial (Fase 0) — apenas com estrutura base e documentação.**
-> **Nenhum código de aplicação, `package.json`, migração de banco ou dependência foi criado/instalado ainda.**
+> **Estado Atual:** **Fase 1 (Em andamento) — Base inicial Next.js + TypeScript + Tailwind CSS + PWA criada.**
+> **Autenticação, banco de dados PostgreSQL, ORM, sandbox de código e proxy do tutor Octopy ainda não foram implementados.**
 
 | Campo | Valor |
 | :--- | :--- |
@@ -15,26 +15,26 @@
 
 | Aspecto | Situação Real | Detalhes |
 | :--- | :--- | :--- |
-| **Código da Aplicação** | **Não iniciado** | Sem `src/`, sem `package.json`, sem dependências instaladas e sem rotas/telas implementadas |
-| **Banco de Dados** | **Não provisionado** | Apenas modelagem conceitual/dicionário documentados em [banco-de-dados.md](./banco-de-dados.md) |
-| **Documentação Base** | **Completa (Fase 0)** | `GEMINI.md` (< 100 linhas) + `arquitetura.md`, `banco-de-dados.md`, `regras-negocio.md` e `status.md` refletindo a visão completa do SaaS |
+| **Código da Aplicação** | **Base inicial criada (Fase 1)** | Next.js `16.4.6` (App Router), React `19.3.1`, TypeScript strict (`5.9.3`), Tailwind CSS `4.3.5`, suporte PWA (`/manifest.webmanifest`, `/sw.js`, `/offline`, ícones), `src/lib/*` (`env.ts`, `problem-details.ts`, `logger.ts`), `GET /api/v1/health` e testes Vitest (sem auth/banco/sandbox/Octopy) |
+| **Banco de Dados** | **Não provisionado** | Apenas modelagem conceitual/dicionário documentados em [banco-de-dados.md](./banco-de-dados.md); ORM e provedor pendentes em `DEC-001` e `DEC-004` |
+| **Documentação Base** | **Sincronizada (Fase 1)** | `GEMINI.md` + `arquitetura.md`, `banco-de-dados.md`, `regras-negocio.md` e `status.md` atualizados com o estado da fundação |
 | **Repositório Principal** | Ativo | `C:/Users/gusta/orca/projects/TCC-Codit` · branch `master` · remote `origin`: `https://github.com/siriuszzz17/Codit.git` |
-| **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/bichir` · branch `git-worktree-github-guide` |
+| **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/BaseSetup` · branch `siriuszzz17/BaseSetup` |
 
 ---
 
 ## 2. Roadmap do Projeto
 
-### Fase 0 — Fundação e Documentação Inicial *(Em conclusão)*
+### Fase 0 — Fundação e Documentação Inicial *(Concluída)*
 - [x] Inicialização do repositório Git e conexão com GitHub (`siriuszzz17/Codit`)
 - [x] Definição da visão completa do SaaS Codit, mascote/tutor **Octopy** e diretrizes de segurança/isolamento
 - [x] Criação do guia rápido [GEMINI.md](../GEMINI.md) e da pasta `docs/` completa
-- [ ] Commit da documentação finalizada na branch atual e merge na `master`
+- [x] Commit da documentação inicial (`b73c9e8`)
 
-### Fase 1 — Decisões Técnicas Finais e Scaffold Base
+### Fase 1 — Decisões Técnicas Finais e Scaffold Base *(Em andamento)*
 - [ ] Fechar decisões `DEC-001` a `DEC-004` (ORM, biblioteca de Auth, provedor LLM do Octopy, ambiente PostgreSQL)
-- [ ] Criar projeto Next.js (App Router) + TypeScript `strict` + Tailwind CSS + configuração PWA (`manifest.webmanifest`, ícones e Service Worker)
-- [ ] Configurar `.env.example`, validação *fail-fast* de variáveis de ambiente, ESLint/Prettier e estrutura de testes
+- [x] Criar projeto Next.js (App Router) + TypeScript `strict` + Tailwind CSS + configuração PWA (`manifest.webmanifest`, ícones e Service Worker)
+- [x] Configurar `.env.example`, `.gitignore`, validação *fail-fast* de variáveis de ambiente, ESLint e estrutura de testes
 
 ### Fase 2 — Banco PostgreSQL, Autenticação e Isolamento por `user_id`
 - [ ] Provisionar PostgreSQL e implementar migrações iniciais de `users`, `auth_accounts`, `user_sessions` e catálogo curricular
@@ -60,7 +60,7 @@
 
 | Tarefa | Worktree / Branch | Status | Próximo Passo |
 | :--- | :--- | :--- | :--- |
-| Documentação base da visão do SaaS Codit | `bichir` (`git-worktree-github-guide`) | Finalização e commit inicial dos docs | Revisar coerência, commitar e preparar integração com `master` |
+| Scaffold base Next.js + TypeScript + Tailwind CSS + PWA + `.env.example` + `.gitignore` | `BaseSetup` (`siriuszzz17/BaseSetup`) | Entregue e validado localmente (aguardando commit/revisão) | Revisar alterações, commitar e fechar decisões `DEC-001` a `DEC-004` para iniciar a Fase 2 |
 
 ---
 
@@ -90,4 +90,5 @@
 - **`2026-11-22`:**
   - `7815ce3`: Commit inicial do repositório `TCC-Codit`.
   - `0ac8955`: Bootstrap inicial da estrutura de arquivos `GEMINI.md` e `docs/`.
-  - **Atualização atual:** Consolidação completa da visão do SaaS **Codit**, mascote/tutor IA **Octopy**, experiência Web Mobile-First + PWA, stack TypeScript/Next.js/Tailwind/PostgreSQL, Sandbox client-side + expansão Judge0/Piston e isolamento estrito por `user_id` em `GEMINI.md` e `docs/*.md` (ainda sem código de aplicação criado).
+  - `b73c9e8`: Consolidação completa da visão do SaaS **Codit**, mascote/tutor IA **Octopy**, experiência Web Mobile-First + PWA, stack TypeScript/Next.js/Tailwind/PostgreSQL, Sandbox client-side + expansão Judge0/Piston e isolamento estrito por `user_id` em `GEMINI.md` e `docs/*.md`.
+  - **BaseSetup (atual, ainda sem commit):** Criada a estrutura inicial do projeto Next.js `16.4.6` (App Router), React `19.3.1`, TypeScript `strict` (`5.9.3`), Tailwind CSS `4.3.5`, suporte a PWA (`public/manifest.webmanifest`, `public/sw.js`, `public/icons/*`, registro de Service Worker, banner offline e página `/offline`), `.env.example`, `.gitignore`, base server-side (`src/lib/env.ts`, `src/lib/problem-details.ts`, `src/lib/logger.ts`), endpoint `GET /api/v1/health` e testes unitários Vitest (`tests/unit/*`), sem autenticação, ORM/PostgreSQL, sandbox ou proxy do Octopy. Validado localmente com `npm install` (`388` pacotes, `0 vulnerabilities`), `npm run typecheck`, `npm run lint`, `npm run test` (`3` arquivos, `6` testes aprovados), `npm run build` e smoke test HTTP em `next start` (`127.0.0.1:3099`).

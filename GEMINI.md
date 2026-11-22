@@ -1,6 +1,6 @@
 # GEMINI.md — Guia Rápido e Constituição do Projeto Codit
 
-> **Estado atual:** Fase inicial apenas com estrutura base e documentação — **nenhum código de aplicação, `package.json` ou dependência foi instalado ainda**.
+> **Estado atual:** Fase 1 (base inicial criada) — Next.js (App Router), TypeScript `strict`, Tailwind CSS, suporte a PWA, `.env.example`, `.gitignore` e `GET /api/v1/health` operacionais. **Ainda sem autenticação, banco de dados/ORM, sandbox ou tutor Octopy.**
 
 ## 1. Visão Geral e Stack Alvo (Planejada)
 - **Produto:** **Codit** — plataforma SaaS educacional Web Responsiva Mobile-First + PWA instalável, para ensinar programação (básico ao avançado), Inteligência Artificial, Git/GitHub, boas práticas e preparação para carreira tech (portfólio e entrevistas).
@@ -25,7 +25,7 @@
   - Worktree principal (`master`): `C:/Users/gusta/orca/projects/TCC-Codit` — **nunca** execute `git checkout master` em worktrees secundários.
   - Limpeza após merge: `orca worktree rm --worktree branch:<branch> --delete-branch`
   - Commits no padrão **Conventional Commits** (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`).
-- **Aplicação (`dev`, `lint`, `typecheck`, `test`, `build`, `migrate`):** `[Pendente — disponíveis após scaffold Next.js e escolha do ORM]` (ver [docs/arquitetura.md](./docs/arquitetura.md)).
+- **Aplicação:** `npm run dev` · `npm run lint` · `npm run typecheck` · `npm run test` · `npm run build` · `migrate` `[Pendente — após fechamento de DEC-001]` (ver [docs/arquitetura.md](./docs/arquitetura.md)).
 
 ## 5. Índice da Documentação (`docs/`)
 

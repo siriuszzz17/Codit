@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Estado Atual** | Arquitetura planejada (`Fase 0` — **sem código de aplicação ou dependências instaladas ainda**) |
+| **Estado Atual** | Base inicial criada (`Fase 1` — Next.js App Router + TypeScript strict + Tailwind CSS + PWA + `/api/v1/health`; ainda sem autenticação, banco, sandbox ou proxy do Octopy) |
 | **Última atualização** | `2026-11-22` |
 | **Guia Rápido** | [GEMINI.md](../GEMINI.md) |
 
@@ -28,7 +28,7 @@ O **Codit** é uma plataforma SaaS educacional projetada para funcionar de forma
 
 ## 2. Stack Tecnológica Alvo (Planejada)
 
-> **Importante:** Nenhuma biblioteca listada abaixo foi instalada no repositório ainda (`package.json` inexistente nesta fase). Os itens marcados com `DEC-XXX` aguardam decisão final antes do scaffold.
+> **Estado das dependências:** O scaffold base já conta com `Next.js 16.4.6`, `React 19.3.1`, `TypeScript 5.9.3`, `Tailwind CSS 4.3.5`, `zod`, `server-only`, `eslint` e `vitest` instalados em `package.json`. Os itens marcados com `DEC-XXX` (ORM/PostgreSQL, Auth e provedor LLM do Octopy) aguardam decisão final antes de serem instalados.
 
 | Camada | Tecnologia Planejada | Observações / Decisão |
 | :--- | :--- | :--- |
@@ -197,32 +197,51 @@ Nenhuma chave secreta pode usar prefixo `NEXT_PUBLIC_*` ou ser commitada. A apli
 
 ## 8. Estrutura de Diretórios (Atual vs. Planejada)
 
-### Atual (`2026-11-22`)
+### Atual (`2026-11-22` — Base Inicial Fase 1)
 ```text
 TCC-Codit/
 ├── GEMINI.md
-└── docs/
-    ├── arquitetura.md
-    ├── banco-de-dados.md
-    ├── regras-negocio.md
-    └── status.md
+├── .env.example               # Contrato de variáveis server-side sem segredos
+├── .gitignore
+├── eslint.config.mjs
+├── next.config.ts
+├── package.json
+├── postcss.config.mjs
+├── tsconfig.json
+├── vitest.config.ts
+├── docs/
+│   ├── arquitetura.md
+│   ├── banco-de-dados.md
+│   ├── regras-negocio.md
+│   └── status.md
+├── public/
+│   ├── icons/                 # Ícones PNG PWA + octopy-mark.svg
+│   ├── manifest.webmanifest
+│   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
+├── src/
+│   ├── app/                   # App Router (UI pt-BR, /offline, /api/v1/health)
+│   ├── components/            # Brand (OctopyBadge) e PWA (SW, Banner, Reload)
+│   └── lib/                   # env.ts (fail-fast), problem-details.ts (RFC 9457), logger.ts
+└── tests/
+    ├── mocks/
+    └── unit/                  # Testes unitários Vitest (env, problem-details, health)
 ```
 
-### Planejada (após scaffold Next.js + TypeScript)
+### Planejada (Expansão Fases 2–4)
 ```text
 TCC-Codit/
 ├── GEMINI.md
 ├── docs/                      # Documentação viva e ADRs
-├── public/                    # Ícones PWA, manifest.webmanifest e assets do Octopy
+├── public/                    # Ícones PWA, manifest.webmanifest, sw.js e assets
 ├── src/
-│   ├── app/                   # Next.js App Router (páginas em UI pt-BR + /api/v1/*)
+│   ├── app/                   # Páginas autenticadas e rotas /api/v1/* (Auth, Tracks, Octopy)
 │   ├── components/            # Componentes React Mobile-First (Editor, Preview, Octopy)
 │   ├── modules/               # Domínios desacoplados (auth, curriculum, sandbox, octopy, career)
 │   ├── lib/                   # Validação env, DB client, logger JSON, erros RFC 9457
 │   └── workers/               # Web Workers client-side (ex.: Pyodide runner)
 ├── tests/                     # Testes unitários, integração e E2E
 ├── .env.example               # Contrato de variáveis sem segredos
-└── package.json               # [Ainda não criado]
+└── package.json
 ```
 
 ---
