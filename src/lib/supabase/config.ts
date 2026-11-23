@@ -22,12 +22,14 @@ export interface RawSupabaseConfigInput {
   url?: string | undefined;
   anonKey?: string | undefined;
   authRedirectUrl?: string | undefined;
+  nativeRedirectUrl?: string | undefined;
 }
 
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
   authRedirectUrl?: string | undefined;
+  nativeRedirectUrl?: string | undefined;
 }
 
 function emptyStringToUndefined(value: unknown): unknown {
@@ -40,6 +42,12 @@ function emptyStringToUndefined(value: unknown): unknown {
 function isAllowedSupabaseUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(rawUrl);
+    if (parsed.pathname.replace(/\/+$/, "") !== "") {
+      return false;
+    }
+    if (parsed.search !== "" || parsed.hash !== "") {
+      return false;
+    }
     if (parsed.protocol === "https:") {
       return true;
     }
@@ -68,6 +76,15 @@ function isAllowedRedirectUrl(rawUrl: string): boolean {
   }
 }
 
+function isAllowedNativeRedirectUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === "com.codit.app:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const supabaseConfigSchema = z.object({
   url: z
     .string({ error: "NEXT_PUBLIC_SUPABASE_URL é obrigatória." })
@@ -75,7 +92,7 @@ const supabaseConfigSchema = z.object({
     .min(1, "NEXT_PUBLIC_SUPABASE_URL é obrigatória.")
     .refine(
       isAllowedSupabaseUrl,
-      "NEXT_PUBLIC_SUPABASE_URL deve ser uma URL HTTPS válida (ou http://localhost em desenvolvimento).",
+      "NEXT_PUBLIC_SUPABASE_URL deve ser a URL raiz HTTPS do projeto (ex.: https://<ref>.supabase.co, sem /rest/v1).",
     )
     .transform((value) => value.replace(/\/+$/, "")),
   anonKey: z
@@ -94,6 +111,18 @@ const supabaseConfigSchema = z.object({
       .transform((value) => value.replace(/\/+$/, ""))
       .optional(),
   ),
+  nativeRedirectUrl: z.preprocess(
+    emptyStringToUndefined,
+    z
+      .string()
+      .trim()
+      .refine(
+        isAllowedNativeRedirectUrl,
+        "NEXT_PUBLIC_SUPABASE_NATIVE_REDIRECT_URL deve usar esquema com.codit.app:// ou https://.",
+      )
+      .transform((value) => value.replace(/\/+$/, ""))
+      .optional(),
+  ),
 });
 
 export type SupabaseConfigValidationResult =
@@ -107,6 +136,7 @@ export function validateSupabaseConfig(
     url: input.url ?? "",
     anonKey: input.anonKey ?? "",
     authRedirectUrl: input.authRedirectUrl,
+    nativeRedirectUrl: input.nativeRedirectUrl,
   });
 
   if (!parsed.success) {
@@ -135,6 +165,7 @@ export function getRuntimeSupabaseConfig(): SupabaseConfig | null {
     url: process.env.NEXT_PUBLIC_SUPABASE_URL,
     anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     authRedirectUrl: process.env.NEXT_PUBLIC_SUPABASE_AUTH_REDIRECT_URL,
+    nativeRedirectUrl: process.env.NEXT_PUBLIC_SUPABASE_NATIVE_REDIRECT_URL,
   });
 }
 

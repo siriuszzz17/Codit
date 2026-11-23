@@ -1,15 +1,25 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import {
+  closeCapacitorOAuthBrowser,
+  completeOAuthCallbackUrl,
+  isCapacitorNative,
+  isSupportedNativeCallbackUrl,
+  subscribeCapacitorOAuthCallback,
+  subscribeDesktopOAuthCallback,
+} from "@/lib/native-oauth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileRow } from "@/lib/supabase/database.types";
@@ -31,6 +41,14 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
   const configured = isSupabaseConfigured();
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -73,6 +91,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    let unsubDesktop: () => void = () => {};
+    let unsubCapacitor: () => void = () => {};
+
+    async function handleNativeCallbackUrl(rawUrl: string) {
+      if (!client || cancelled || !isSupportedNativeCallbackUrl(rawUrl)) {
+        return;
+      }
+
+      if (isCapacitorNative()) {
+        await closeCapacitorOAuthBrowser();
+      }
+
+      try {
+        const result = await completeOAuthCallbackUrl(rawUrl, client);
+        if (cancelled) {
+          return;
+        }
+
+        if (result.session || result.user) {
+          setSession(result.session);
+          setUser(result.user);
+          if (result.user) {
+            await syncUserProfile(result.user);
+          }
+          if (!cancelled && pathnameRef.current !== "/conta") {
+            router.replace("/conta");
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAuthError(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível concluir o login externo.",
+          );
+        }
+      }
+    }
 
     async function loadInitialSession() {
       if (!client) {
@@ -115,6 +171,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void loadInitialSession();
 
+    void subscribeDesktopOAuthCallback((url) => {
+      void handleNativeCallbackUrl(url);
+    }).then((cleanup) => {
+      if (cancelled) {
+        cleanup();
+      } else {
+        unsubDesktop = cleanup;
+      }
+    });
+
+    void subscribeCapacitorOAuthCallback((url) => {
+      void handleNativeCallbackUrl(url);
+    }).then((cleanup) => {
+      if (cancelled) {
+        cleanup();
+      } else {
+        unsubCapacitor = cleanup;
+      }
+    });
+
     const {
       data: { subscription },
     } = client.auth.onAuthStateChange((_event, nextSession) => {
@@ -136,9 +212,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      unsubDesktop();
+      unsubCapacitor();
       subscription.unsubscribe();
     };
-  }, [syncUserProfile]);
+  }, [router, syncUserProfile]);
 
   const refreshProfile = useCallback(async () => {
     return syncUserProfile(user);

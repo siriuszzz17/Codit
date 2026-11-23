@@ -1,9 +1,18 @@
 import type { Session, User } from "@supabase/supabase-js";
+import {
+  cancelDesktopOAuth,
+  getAuthPlatform,
+  openCapacitorOAuthBrowser,
+  openDesktopOAuthUrl,
+  prepareDesktopOAuth,
+} from "@/lib/native-oauth";
 import { requireSupabaseClient, type CoditSupabaseClient } from "@/lib/supabase/client";
 import { getRuntimeSupabaseConfig } from "@/lib/supabase/config";
 import { mapSupabaseAuthError } from "@/lib/supabase/errors";
 import {
   loginSchema,
+  resolveEmailConfirmationRedirectUrl,
+  resolveNativeMobileRedirectUrl,
   resolveOAuthRedirectUrl,
   signUpSchema,
   type LoginInput,
@@ -14,6 +23,11 @@ export interface AuthActionResult {
   user: User | null;
   session: Session | null;
   needsEmailConfirmation: boolean;
+}
+
+export interface GoogleSignInResult {
+  mode: "redirect" | "external_desktop" | "external_mobile";
+  url: string | null;
 }
 
 export class AuthValidationError extends Error {
@@ -71,15 +85,17 @@ export async function signUpWithEmail(
   }
 
   const runtimeConfig = getRuntimeSupabaseConfig();
-  const emailRedirectTo = resolveOAuthRedirectUrl({
+  const emailRedirectTo = resolveEmailConfirmationRedirectUrl({
+    platform: getAuthPlatform(),
     configuredRedirectUrl: runtimeConfig?.authRedirectUrl,
+    nativeRedirectUrl: runtimeConfig?.nativeRedirectUrl,
   });
 
   const { data, error } = await client.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      emailRedirectTo,
+      ...(emailRedirectTo ? { emailRedirectTo } : {}),
       data: {
         full_name: parsed.data.fullName,
       },
@@ -99,8 +115,86 @@ export async function signUpWithEmail(
 
 export async function signInWithGoogle(
   client: CoditSupabaseClient = requireSupabaseClient(),
-): Promise<{ url: string | null }> {
+): Promise<GoogleSignInResult> {
   const runtimeConfig = getRuntimeSupabaseConfig();
+  const platform = getAuthPlatform();
+
+  if (platform === "tauri") {
+    const prepared = await prepareDesktopOAuth();
+    try {
+      const { data, error } = await client.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: prepared.redirectUrl,
+          skipBrowserRedirect: true,
+          queryParams: {
+            prompt: "select_account",
+          },
+        },
+      });
+
+      if (error) {
+        throw new AuthServiceError(mapSupabaseAuthError(error));
+      }
+
+      if (!data.url) {
+        throw new AuthServiceError(
+          "Não foi possível iniciar o login com o Google.",
+        );
+      }
+
+      await openDesktopOAuthUrl(data.url);
+      return { mode: "external_desktop", url: data.url };
+    } catch (error) {
+      await cancelDesktopOAuth();
+      if (error instanceof AuthServiceError) {
+        throw error;
+      }
+      throw new AuthServiceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível abrir o navegador para entrar com o Google.",
+      );
+    }
+  }
+
+  if (platform === "capacitor") {
+    const redirectTo = resolveNativeMobileRedirectUrl(
+      runtimeConfig?.nativeRedirectUrl,
+    );
+
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true,
+        queryParams: {
+          prompt: "select_account",
+        },
+      },
+    });
+
+    if (error) {
+      throw new AuthServiceError(mapSupabaseAuthError(error));
+    }
+
+    if (!data.url) {
+      throw new AuthServiceError(
+        "Não foi possível iniciar o login com o Google.",
+      );
+    }
+
+    try {
+      await openCapacitorOAuthBrowser(data.url);
+    } catch {
+      throw new AuthServiceError(
+        "Não foi possível abrir o navegador seguro para login com o Google.",
+      );
+    }
+
+    return { mode: "external_mobile", url: data.url };
+  }
+
   const redirectTo = resolveOAuthRedirectUrl({
     configuredRedirectUrl: runtimeConfig?.authRedirectUrl,
   });
@@ -119,7 +213,7 @@ export async function signInWithGoogle(
     throw new AuthServiceError(mapSupabaseAuthError(error));
   }
 
-  return { url: data.url ?? null };
+  return { mode: "redirect", url: data.url ?? null };
 }
 
 export async function signOutUser(

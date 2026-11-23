@@ -16,11 +16,12 @@ describe("supabase client configuration", () => {
     ).toBeNull();
   });
 
-  it("validates HTTPS URLs and strips trailing slashes", () => {
+  it("validates HTTPS root URLs, rejects extra path segments like /rest/v1, and strips trailing slashes", () => {
     const result = validateSupabaseConfig({
       url: "https://example-project.supabase.co///",
       anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example",
       authRedirectUrl: "https://codit.app/auth/callback/",
+      nativeRedirectUrl: "com.codit.app://auth/callback/",
     });
 
     expect(result.ok).toBe(true);
@@ -29,7 +30,16 @@ describe("supabase client configuration", () => {
       expect(result.data.authRedirectUrl).toBe(
         "https://codit.app/auth/callback",
       );
+      expect(result.data.nativeRedirectUrl).toBe(
+        "com.codit.app://auth/callback",
+      );
     }
+
+    const withRestPath = validateSupabaseConfig({
+      url: "https://example-project.supabase.co/rest/v1/",
+      anonKey: "anon-key",
+    });
+    expect(withRestPath.ok).toBe(false);
   });
 
   it("allows http only for localhost and rejects insecure remote http URLs", () => {
