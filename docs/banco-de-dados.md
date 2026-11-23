@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migração inicial aplicada para `public.profiles` e `public.sandbox_projects` com RLS em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql)) |
-| **Última atualização** | `2026-11-22` |
+| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql) e [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql)) |
+| **Última atualização** | `2026-11-23` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
 ---
@@ -111,8 +111,8 @@ erDiagram
 
 > **Autenticação delegada ao Supabase Auth (`auth.users`):** credenciais de e-mail/senha, verificação de e-mail, fluxos Google OAuth 2.0 (PKCE) e tokens de sessão são gerenciados pelo esquema interno `auth` do Supabase. O esquema público (`public`) mantém a tabela `public.profiles` sincronizada 1:1 com `auth.users`.
 
-#### `public.profiles` *(Implementada na migração `20261122000001`)*
-- **Propósito:** Perfil do estudante/administrador espelhado 1:1 com `auth.users(id)`.
+#### `public.profiles` *(Implementada na migração `20261122000001` e expandida na `20261123000001`)*
+- **Propósito:** Perfil do estudante/administrador espelhado 1:1 com `auth.users(id)`, com personalização visual e dados de portfólio.
 - **Regras associadas:** `RN-001`, `RN-002`, `RN-003`
 - **Triggers:**
   - `on_auth_user_created` (`AFTER INSERT ON auth.users` via `public.handle_new_user()` `SECURITY DEFINER`): cria automaticamente o perfil com `role = 'student'`, extraindo `full_name` e `avatar_url` dos metadados OAuth/cadastro (`ON CONFLICT (id) DO NOTHING`).
@@ -125,10 +125,20 @@ erDiagram
 | `id` | `UUID` | Não | `PK`, `FK -> auth.users(id) ON DELETE CASCADE` | Identificador único do usuário (`user_id` global) |
 | `email` | `VARCHAR(255)` | Não | `uq_profiles_email_lower` (case-insensitive) | E-mail normalizado em minúsculas |
 | `full_name` | `VARCHAR(120)` | Não | `''` | Nome de exibição do usuário |
-| `avatar_url` | `TEXT` | Sim | `-` | URL sanitizada (`http`/`https`) da foto de perfil |
+| `avatar_url` | `TEXT` | Sim | `-` | URL sanitizada (`http`/`https`) ou avatar oficial `/icons/octopy-*.png` |
 | `role` | `VARCHAR(20)` | Não | `'student'` (`chk_profiles_role`: `'student'`, `'admin'`) | Papel RBAC do aluno ou equipe |
 | `bio` | `TEXT` | Sim | `chk_profiles_bio_length` (máx. 500 chars) | Resumo/objetivo de carreira do aluno |
 | `github_username` | `VARCHAR(60)` | Sim | `chk_profiles_github_format` | Identificador público no GitHub (sem `@`) |
+| `headline` | `VARCHAR(120)` | Sim | `-` | Título ou foco profissional do perfil |
+| `location` | `VARCHAR(80)` | Sim | `-` | Cidade/país exibido no perfil |
+| `website_url` | `TEXT` | Sim | `chk_profiles_website_url` (`https?://`) | Link do site ou portfólio pessoal |
+| `linkedin_url` | `TEXT` | Sim | `chk_profiles_linkedin_url` (`https?://`) | Link do perfil no LinkedIn |
+| `banner_preset` | `VARCHAR(40)` | Não | `'nebula'` (`chk_profiles_banner_preset`) | Capa visual selecionada no perfil |
+| `accent_theme` | `VARCHAR(30)` | Não | `'violet'` (`chk_profiles_accent_theme`) | Tema de cor de destaque do perfil |
+| `avatar_frame` | `VARCHAR(30)` | Não | `'glow'` (`chk_profiles_avatar_frame`) | Estilo de moldura do avatar |
+| `octopy_companion` | `VARCHAR(20)` | Não | `'coding'` (`chk_profiles_octopy_companion`) | Humor/variante do mascote Octopy no perfil |
+| `skills` | `TEXT[]` | Não | `'{}'` (`chk_profiles_skills_limit`, máx. 12) | Lista de habilidades e tecnologias |
+| `show_email` | `BOOLEAN` | Não | `FALSE` | Define se o e-mail aparece no cartão de perfil |
 | `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação em UTC |
 | `updated_at` | `TIMESTAMPTZ` | Não | `NOW()` | Última atualização em UTC |
 
@@ -157,7 +167,7 @@ erDiagram
 
 ### 4.3 Sandbox e Mini-Projetos
 
-#### `public.sandbox_projects` *(Implementada na migração `20261122000001` — Privado por padrão)*
+#### `public.sandbox_projects` *(Implementada na migração `20261122000001` e expandida na `20261123000001` — Privado por padrão)*
 - **Regras associadas:** `RN-201` a `RN-205`
 - **Políticas RLS:** `sandbox_projects_select_own`, `sandbox_projects_select_public_portfolio`, `sandbox_projects_insert_own`, `sandbox_projects_update_own`, `sandbox_projects_delete_own`.
 
@@ -167,11 +177,15 @@ erDiagram
 | `user_id` | `UUID` | Não | `fk_sandbox_projects_user_id -> public.profiles(id) ON DELETE CASCADE` | Dono exclusivo para edição/exclusão |
 | `title` | `VARCHAR(120)` | Não | `chk_sandbox_projects_title` (não vazio) | Título do mini-projeto |
 | `description` | `TEXT` | Sim | `chk_sandbox_projects_description` (máx. 500 chars) | Descrição curta para portfólio |
-| `primary_language` | `VARCHAR(30)` | Não | `'html_css_js'`, `'python'`, `'javascript'`, `'typescript'` | Stack principal do projeto |
+| `primary_language` | `VARCHAR(30)` | Não | `'html_css_js'`, `'html'`, `'css'`, `'javascript'`, `'typescript'`, `'python'`, `'react'`, `'nodejs'`, `'java'`, `'csharp'`, `'cpp'`, `'go'`, `'rust'`, `'sql'`, `'php'` | Linguagem / stack principal (com ícone associado na UI) |
 | `runtime_target` | `VARCHAR(30)` | Não | `'client_iframe'`, `'client_pyodide'`, `'remote_judge0'`, `'remote_piston'` | Motor de execução associado |
 | `source_code` | `TEXT` | Não | `''` (`chk_sandbox_projects_source_size`, máx. 200.000 chars) | Código-fonte principal do mini-projeto no MVP |
 | `visibility` | `VARCHAR(20)` | Não | `'private'` (`'private'`, `'unlisted'`, `'public_portfolio'`) | Visibilidade padrão estritamente privada |
 | `share_slug` | `VARCHAR(80)` | Sim | `uq_sandbox_projects_share_slug` (parcial `WHERE share_slug IS NOT NULL AND deleted_at IS NULL`) | Slug público somente leitura para portfólio |
+| `is_pinned` | `BOOLEAN` | Não | `FALSE` | Destaca o projeto no topo da lista |
+| `tags` | `TEXT[]` | Não | `'{}'` (`chk_sandbox_projects_tags_limit`, máx. 6) | Etiquetas de organização/tema |
+| `repository_url` | `TEXT` | Sim | `chk_sandbox_projects_repo_url` (`https?://`) | Link opcional para repositório externo (GitHub) |
+| `live_url` | `TEXT` | Sim | `chk_sandbox_projects_live_url` (`https?://`) | Link opcional para demonstração publicada |
 | `version` | `INTEGER` | Não | `1` (`chk_sandbox_projects_version >= 1`) | Lock otimista anti-sobrescrita multi-aba (`RN-203`) |
 | `created_at` / `updated_at` / `deleted_at` | `TIMESTAMPTZ` | `created`/`updated` Não | `trg_sandbox_projects_set_updated_at` | Auditoria temporal e soft delete |
 

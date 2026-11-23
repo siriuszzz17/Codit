@@ -1,12 +1,12 @@
 # Status e Progresso do Projeto — Codit (`TCC-Codit`)
 
-> **Estado Atual:** **Fase 2 (Em andamento) — Integração client-side com Supabase (`@supabase/supabase-js`) implementada para autenticação (e-mail/senha + Google OAuth PKCE) e persistência em `profiles` e `sandbox_projects` com RLS, preservando exportação estática `out/` para Web/PWA, Tauri `.exe` e Capacitor `.apk`.**
-> **Pendente para etapas seguintes:** catálogo curricular (`tracks`/`lessons`), sandbox de execução client-side (`iframe` + Pyodide) e proxy server-side do tutor Octopy.
+> **Estado Atual:** **Fase 3 (Em andamento) — Área `/conta` evoluída com perfil personalizável (capas, temas de cor, molduras, avatares do Octopy/GitHub/Google, links e habilidades), estúdio funcional de projetos salvos em `sandbox_projects` com ícones vetoriais de 15 linguagens, filtros, fixação, duplicação e preview client-side isolado em `iframe`, mantendo compatibilidade com exportação estática `out/`.**
+> **Pendente para etapas seguintes:** catálogo curricular (`tracks`/`lessons`), execução Python via Pyodide Web Worker e proxy server-side do tutor Octopy.
 
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Última atualização** | `2026-11-22` |
+| **Última atualização** | `2026-11-23` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [banco-de-dados.md](./banco-de-dados.md) · [regras-negocio.md](./regras-negocio.md) |
 
 ---
@@ -20,7 +20,7 @@
 | **Banco de Dados** | **Supabase PostgreSQL + RLS (Migração Inicial Pronta)** | Migração SQL versionada em [supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql) criando `public.profiles` e `public.sandbox_projects` com triggers e policies RLS (`auth.uid()`); configurar `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em `.env.local` |
 | **Documentação Base** | **Sincronizada (Fase 2)** | `GEMINI.md`, `arquitetura.md`, `banco-de-dados.md`, `regras-negocio.md` e `status.md` atualizados com a integração Supabase |
 | **Repositório Principal** | Ativo | `C:/Users/gusta/orca/projects/TCC-Codit` · branch `master` · remote `origin`: `https://github.com/siriuszzz17/Codit.git` |
-| **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/Fase2` · branch `siriuszzz17/Fase2` |
+| **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/Fase3` · branch `siriuszzz17/Fase3` |
 
 ---
 
@@ -44,10 +44,12 @@
 - [x] Implementar serviços tipados de perfil (`profiles`) e mini-projetos (`sandbox_projects` com lock otimista `version` e soft delete) na área `/conta`
 - [ ] Aplicar migração e configurar Google OAuth no painel do projeto Supabase real + expandir schema para catálogo curricular (`tracks`, `lessons`, `user_lesson_progress`)
 
-### Fase 3 — Trilhas Didáticas, Progresso e Sandbox MVP
+### Fase 3 — Trilhas Didáticas, Progresso e Sandbox MVP *(Em andamento)*
+- [x] Implementar migração SQL `20261123000001_enhance_profiles_and_projects.sql` e experiência `/conta` com perfil personalizável (capas, temas, molduras, humor do Octopy, habilidades e links) + projetos funcionais com ícones SVG de 15 linguagens, filtros, fixação e fallback resiliente
+- [x] Implementar Sandbox client-side isolado (`iframe sandbox="allow-scripts"` + ponte de console + watchdog 4s) integrado ao Estúdio de Mini-Projetos (`sandbox_projects`) para HTML/CSS/JS, HTML5, CSS3 e JavaScript
 - [ ] Construir interface Mobile-First em `pt-BR` para trilhas, módulos, lições e checklist de carreira
 - [ ] Implementar persistência de progresso (`user_lesson_progress`) e submissões (`exercise_submissions`)
-- [ ] Implementar Sandbox client-side isolado (HTML/CSS/JS em `iframe` sandboxed + Python via Pyodide Web Worker) integrado ao editor dos mini-projetos (`sandbox_projects`)
+- [ ] Integrar execução Python client-side via Pyodide Web Worker ao Estúdio e lições práticas
 
 ### Fase 4 — Tutor IA (`Octopy`) e Portfólio/Carreira
 - [ ] Implementar proxy server-side `/api/v1/octopy/chat` (ou Supabase Edge Function / backend dedicado) com streaming SSE, cotas por `user_id`, prompt socrático e contingência estática
@@ -101,3 +103,4 @@
 - **`2026-11-23`:**
   - **Fase2 (`v0.1.2` — Google OAuth Nativo Multiplataforma — RFC 8252):** Corrigido retorno OAuth fora do app no Android e bloqueio na WebView2 no Windows: implementado listener loopback local no backend Tauri (`src-tauri/src/oauth.rs` + `tauri-plugin-opener` abrindo navegador padrão em `127.0.0.1:43823/auth/callback` e emitindo `codit://oauth-callback` com testes Rust); configurados `@capacitor/browser`, `@capacitor/app` e `<intent-filter>` de Deep Link `com.codit.app://auth/callback` em `android/app/src/main/AndroidManifest.xml`; adicionados `src/lib/native-oauth.ts`, proteção de URL raiz em `src/lib/supabase/config.ts`, fallback PKCE em `/auth/callback`, botão de cancelamento de espera externa em `AuthScreen`, ajuste de `emailRedirectTo` por plataforma, suíte `tests/unit/native-oauth.test.ts` e elevação da versão para `0.1.2` (`versionCode 3` no Android).
   - **Identidade Visual (Octopy Pixel-Art + Ícone Multiplataforma + `Codit-mobile.apk`):** Substituído o mascote Octopy pelo novo design em pixel-art (`public/icons/octopy-{default,coding,headphones,happy}.png`, `public/icons/octopy-mark.svg` e `OctopyBadge` com suporte a variantes em `src/app/page.tsx` e `src/components/auth/auth-screen.tsx`); atualizado o ícone oficial do Codit em Web/PWA (`public/icons/*`, `public/manifest.webmanifest`, `public/sw.js`), Desktop Tauri (`src-tauri/icons/*`) e Android (`android/app/src/main/res/mipmap-*` e `ic_launcher_background.xml`); configurado `outputFileName = "Codit-mobile.apk"` em `android/app/build.gradle`, publicado o `Codit-mobile.apk` (`v0.1.2`) no GitHub (`v0.1.2`, `v0.1.1` e `Arquivos` com `latest.json` atualizado) e compilado localmente `Codit_0.1.2_x64-setup.exe` pronto para assinatura do updater.
+  - **Fase 3 (Perfil Personalizável + Estúdio de Projetos com Ícones e Sandbox Isolado):** Criada migração idempotente `supabase/migrations/20261123000001_enhance_profiles_and_projects.sql` expandindo `public.profiles` (`headline`, `location`, `website_url`, `linkedin_url`, `banner_preset`, `accent_theme`, `avatar_frame`, `octopy_companion`, `skills`, `show_email`) e `public.sandbox_projects` (15 linguagens, `is_pinned`, `tags`, `repository_url`, `live_url`); implementados catálogo `language-catalog.ts` com ícones SVG inline (`LanguageIcon`, `LanguageBadge`), catálogo de temas `profile-themes.ts`, runner isolado `sandbox-runner.ts` + `SandboxPreview` (`iframe sandbox="allow-scripts"` sem `allow-same-origin` + watchdog 4s), fallback resiliente para bancos ainda na Fase 2 em `profile-service.ts` e `sandbox-project-service.ts`, nova UI `/conta` (`ProfileHeroCard`, `ProfileCustomizerPanel`, `ProjectsShowcasePanel`, `ProjectStudioModal`), avatar no header (`AuthHeaderControls`), permissão CSP para `https://avatars.githubusercontent.com` e novos testes unitários Vitest.

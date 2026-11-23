@@ -1,10 +1,14 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@/modules/auth/auth-provider";
 
-function resolveDisplayLabel(fullName: string | undefined, email: string | undefined): string {
+function resolveDisplayLabel(
+  fullName: string | undefined,
+  email: string | undefined,
+): string {
   const trimmedName = fullName?.trim();
   if (trimmedName) {
     const firstWord = trimmedName.split(/\s+/)[0];
@@ -20,6 +24,7 @@ function resolveDisplayLabel(fullName: string | undefined, email: string | undef
 export function AuthHeaderControls() {
   const { user, profile, isLoading, signOut } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
 
   async function handleSignOut() {
     setIsSigningOut(true);
@@ -44,17 +49,31 @@ export function AuthHeaderControls() {
       profile?.full_name ?? (user.user_metadata?.full_name as string | undefined),
       user.email,
     );
+    const avatarUrl = profile?.avatar_url ?? null;
+    const showAvatar = Boolean(avatarUrl) && failedAvatarUrl !== avatarUrl;
 
     return (
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Link
           href="/conta"
-          className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-accent-soft px-3.5 py-1.5 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
+          className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-accent-soft px-3 py-1 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
         >
-          <span
-            aria-hidden="true"
-            className="inline-flex h-2 w-2 rounded-full bg-accent"
-          />
+          {showAvatar && avatarUrl ? (
+            <Image
+              src={avatarUrl}
+              alt=""
+              width={20}
+              height={20}
+              unoptimized
+              onError={() => setFailedAvatarUrl(avatarUrl)}
+              className="h-5 w-5 rounded-full object-cover"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="inline-flex h-2 w-2 rounded-full bg-accent"
+            />
+          )}
           <span>Olá, {label}</span>
         </Link>
         <button

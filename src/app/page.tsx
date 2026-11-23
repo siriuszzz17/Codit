@@ -38,19 +38,19 @@ const PRODUCT_PILLARS: ReadonlyArray<PillarCard> = [
 const ACTIVE_FOUNDATION: ReadonlyArray<string> = [
   "Next.js App Router com TypeScript em modo strict e exportação estática out/",
   "Autenticação client-side via Supabase (e-mail/senha + Google OAuth 2.0 PKCE)",
-  "Persistência isolada por usuário nas tabelas profiles e sandbox_projects com RLS",
+  "Perfil personalizável e projetos salvos com ícones de 15 linguagens e RLS",
+  "Estúdio de projetos com Sandbox HTML/CSS/JS isolado client-side",
   "PWA instalável com manifest.webmanifest, Tauri v2 (.exe) e Capacitor 8 (.apk)",
-  "Endpoint de verificação de saúde operacional em /api/v1/health",
 ];
 
 const NEXT_MILESTONES: ReadonlyArray<{ phase: string; title: string }> = [
   {
-    phase: "Fase 2 (Em andamento)",
-    title: "Catálogo curricular, progresso por lição e políticas RLS completas",
+    phase: "Fase 3 (Em andamento)",
+    title: "Perfil personalizável, projetos com ícones e sandbox MVP + trilhas didáticas",
   },
   {
-    phase: "Fase 3",
-    title: "Trilhas didáticas, Sandbox client-side (iframe + Pyodide) e editor interativo",
+    phase: "Fase 3 (Próxima entrega)",
+    title: "Catálogo de trilhas/lições em pt-BR e execução Python via Pyodide Web Worker",
   },
   {
     phase: "Fase 4",
@@ -223,7 +223,7 @@ export default function HomePage() {
       </main>
 
       <footer className="flex flex-col gap-1 border-t border-border pt-4 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-        <p>Codit · Fase 2 (Supabase Auth, profiles e sandbox_projects em build estático)</p>
+        <p>Codit · Fase 3 (Perfil personalizável, projetos salvos e sandbox isolado)</p>
         <p className="font-mono">GET /api/v1/health</p>
       </footer>
     </div>

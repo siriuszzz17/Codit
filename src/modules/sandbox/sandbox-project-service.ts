@@ -1,19 +1,26 @@
 import { z } from "zod";
-import { requireSupabaseClient, type CoditSupabaseClient } from "@/lib/supabase/client";
+import {
+  requireSupabaseClient,
+  type CoditSupabaseClient,
+} from "@/lib/supabase/client";
 import type {
   SandboxLanguage,
   SandboxProjectRow,
   SandboxRuntimeTarget,
   SandboxVisibility,
 } from "@/lib/supabase/database.types";
-import { mapSupabaseDatabaseError } from "@/lib/supabase/errors";
+import {
+  isSchemaMismatchError,
+  mapSupabaseDatabaseError,
+} from "@/lib/supabase/errors";
+import {
+  getLanguageMeta,
+  ORDERED_SANDBOX_LANGUAGES,
+  toLegacySandboxLanguage,
+} from "@/modules/sandbox/language-catalog";
 
-export const SANDBOX_LANGUAGES: readonly SandboxLanguage[] = [
-  "html_css_js",
-  "python",
-  "javascript",
-  "typescript",
-];
+export const SANDBOX_LANGUAGES: readonly SandboxLanguage[] =
+  ORDERED_SANDBOX_LANGUAGES;
 
 export const SANDBOX_VISIBILITIES: readonly SandboxVisibility[] = [
   "private",
@@ -22,6 +29,7 @@ export const SANDBOX_VISIBILITIES: readonly SandboxVisibility[] = [
 ];
 
 export const MAX_SANDBOX_SOURCE_LENGTH = 200_000;
+const PROJECT_META_STORAGE_PREFIX = "codit:project-meta:";
 
 function emptyStringToNull(value: unknown): unknown {
   if (typeof value === "string" && value.trim() === "") {
@@ -29,6 +37,68 @@ function emptyStringToNull(value: unknown): unknown {
   }
   return value;
 }
+
+function isSafeHttpUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeTagsList(rawTags: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const raw of rawTags) {
+    const cleaned = raw.replace(/^#+/, "").trim();
+    if (!cleaned || cleaned.length > 24) {
+      continue;
+    }
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push(cleaned);
+    if (normalized.length >= 6) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+const sandboxLanguageEnum = z.enum([
+  "html_css_js",
+  "html",
+  "css",
+  "javascript",
+  "typescript",
+  "python",
+  "react",
+  "nodejs",
+  "java",
+  "csharp",
+  "cpp",
+  "go",
+  "rust",
+  "sql",
+  "php",
+]);
+
+const optionalTagsSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .min(1, "Tag não pode ficar vazia.")
+      .max(24, "Cada tag pode ter no máximo 24 caracteres."),
+  )
+  .max(6, "Adicione no máximo 6 tags por projeto.")
+  .transform(normalizeTagsList)
+  .optional();
 
 export const createSandboxProjectSchema = z.object({
   title: z
@@ -45,9 +115,7 @@ export const createSandboxProjectSchema = z.object({
       .nullable()
       .optional(),
   ),
-  primaryLanguage: z
-    .enum(["html_css_js", "python", "javascript", "typescript"])
-    .default("html_css_js"),
+  primaryLanguage: sandboxLanguageEnum.default("html_css_js"),
   sourceCode: z
     .string()
     .max(
@@ -58,6 +126,34 @@ export const createSandboxProjectSchema = z.object({
   visibility: z
     .enum(["private", "unlisted", "public_portfolio"])
     .default("private"),
+  isPinned: z.boolean().optional(),
+  tags: optionalTagsSchema,
+  repositoryUrl: z.preprocess(
+    emptyStringToNull,
+    z
+      .string()
+      .trim()
+      .max(300, "A URL do repositório pode ter no máximo 300 caracteres.")
+      .refine(
+        isSafeHttpUrl,
+        "A URL do repositório deve começar com http:// ou https://.",
+      )
+      .nullable()
+      .optional(),
+  ),
+  liveUrl: z.preprocess(
+    emptyStringToNull,
+    z
+      .string()
+      .trim()
+      .max(300, "A URL da demonstração pode ter no máximo 300 caracteres.")
+      .refine(
+        isSafeHttpUrl,
+        "A URL da demonstração deve começar com http:// ou https://.",
+      )
+      .nullable()
+      .optional(),
+  ),
 });
 
 export const updateSandboxProjectSchema = z.object({
@@ -76,9 +172,7 @@ export const updateSandboxProjectSchema = z.object({
       .nullable()
       .optional(),
   ),
-  primaryLanguage: z
-    .enum(["html_css_js", "python", "javascript", "typescript"])
-    .optional(),
+  primaryLanguage: sandboxLanguageEnum.optional(),
   sourceCode: z
     .string()
     .max(
@@ -89,6 +183,34 @@ export const updateSandboxProjectSchema = z.object({
   visibility: z
     .enum(["private", "unlisted", "public_portfolio"])
     .optional(),
+  isPinned: z.boolean().optional(),
+  tags: optionalTagsSchema,
+  repositoryUrl: z.preprocess(
+    emptyStringToNull,
+    z
+      .string()
+      .trim()
+      .max(300, "A URL do repositório pode ter no máximo 300 caracteres.")
+      .refine(
+        isSafeHttpUrl,
+        "A URL do repositório deve começar com http:// ou https://.",
+      )
+      .nullable()
+      .optional(),
+  ),
+  liveUrl: z.preprocess(
+    emptyStringToNull,
+    z
+      .string()
+      .trim()
+      .max(300, "A URL da demonstração pode ter no máximo 300 caracteres.")
+      .refine(
+        isSafeHttpUrl,
+        "A URL da demonstração deve começar com http:// ou https://.",
+      )
+      .nullable()
+      .optional(),
+  ),
   expectedVersion: z
     .number({ error: "Versão esperada do projeto é obrigatória." })
     .int()
@@ -125,13 +247,166 @@ export class SandboxProjectServiceError extends Error {
   }
 }
 
+interface ProjectFallbackMeta {
+  primary_language?: SandboxLanguage;
+  runtime_target?: SandboxRuntimeTarget;
+  is_pinned?: boolean;
+  tags?: string[];
+  repository_url?: string | null;
+  live_url?: string | null;
+}
+
+type ProjectFallbackMap = Record<string, ProjectFallbackMeta>;
+
+type RawSandboxProjectDbRow = Pick<
+  SandboxProjectRow,
+  | "id"
+  | "user_id"
+  | "title"
+  | "description"
+  | "primary_language"
+  | "runtime_target"
+  | "source_code"
+  | "visibility"
+  | "share_slug"
+  | "version"
+  | "created_at"
+  | "updated_at"
+  | "deleted_at"
+> &
+  Partial<
+    Pick<
+      SandboxProjectRow,
+      "is_pinned" | "tags" | "repository_url" | "live_url"
+    >
+  >;
+
+function readProjectFallbackMap(userId: string): ProjectFallbackMap {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(
+      `${PROJECT_META_STORAGE_PREFIX}${userId}`,
+    );
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as ProjectFallbackMap)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeProjectFallbackMap(
+  userId: string,
+  map: ProjectFallbackMap,
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      `${PROJECT_META_STORAGE_PREFIX}${userId}`,
+      JSON.stringify(map),
+    );
+  } catch {
+    // Ignora falha de cota ou modo privado
+  }
+}
+
+async function syncProjectFallbackEntry(
+  userId: string,
+  projectId: string,
+  entry: ProjectFallbackMeta | null,
+  client: CoditSupabaseClient,
+): Promise<ProjectFallbackMeta | null> {
+  const currentMap = readProjectFallbackMap(userId);
+  const nextMap: ProjectFallbackMap = { ...currentMap };
+
+  if (entry === null) {
+    delete nextMap[projectId];
+  } else {
+    nextMap[projectId] = {
+      ...currentMap[projectId],
+      ...entry,
+    };
+  }
+
+  writeProjectFallbackMap(userId, nextMap);
+
+  try {
+    if (typeof client.auth?.updateUser === "function") {
+      await client.auth.updateUser({
+        data: {
+          codit_project_meta: nextMap,
+        },
+      });
+    }
+  } catch {
+    // Mantém fallback local mesmo se auth metadata não aceitar atualização
+  }
+
+  return nextMap[projectId] ?? null;
+}
+
+export function normalizeSandboxProjectRow(
+  raw: RawSandboxProjectDbRow,
+  fallbackMeta?: ProjectFallbackMeta | null,
+): SandboxProjectRow {
+  const hasExtendedColumns = raw.is_pinned !== undefined;
+  const resolvedLanguage =
+    !hasExtendedColumns && fallbackMeta?.primary_language
+      ? fallbackMeta.primary_language
+      : raw.primary_language;
+  const resolvedRuntime =
+    !hasExtendedColumns && fallbackMeta?.runtime_target
+      ? fallbackMeta.runtime_target
+      : raw.runtime_target;
+
+  return {
+    id: raw.id,
+    user_id: raw.user_id,
+    title: raw.title,
+    description: raw.description,
+    primary_language: resolvedLanguage,
+    runtime_target: resolvedRuntime,
+    source_code: raw.source_code,
+    visibility: raw.visibility,
+    share_slug: raw.share_slug,
+    is_pinned:
+      raw.is_pinned !== undefined
+        ? raw.is_pinned
+        : (fallbackMeta?.is_pinned ?? false),
+    tags: Array.isArray(raw.tags)
+      ? raw.tags
+      : Array.isArray(fallbackMeta?.tags)
+        ? fallbackMeta.tags
+        : [],
+    repository_url:
+      raw.repository_url !== undefined
+        ? raw.repository_url
+        : (fallbackMeta?.repository_url ?? null),
+    live_url:
+      raw.live_url !== undefined
+        ? raw.live_url
+        : (fallbackMeta?.live_url ?? null),
+    version: raw.version,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    deleted_at: raw.deleted_at,
+  };
+}
+
 export function resolveDefaultRuntimeTarget(
   language: SandboxLanguage,
 ): SandboxRuntimeTarget {
-  if (language === "python") {
-    return "client_pyodide";
-  }
-  return "client_iframe";
+  return getLanguageMeta(language).defaultRuntimeTarget;
 }
 
 export async function listUserSandboxProjects(
@@ -149,7 +424,35 @@ export async function listUserSandboxProjects(
     throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
   }
 
-  return data ?? [];
+  let fallbackMap = readProjectFallbackMap(userId);
+  const rows = (data ?? []) as RawSandboxProjectDbRow[];
+
+  if (
+    Object.keys(fallbackMap).length === 0 &&
+    rows.some((row) => row.is_pinned === undefined) &&
+    typeof client.auth?.getUser === "function"
+  ) {
+    try {
+      const authUserResult = await client.auth.getUser();
+      const metadataMap = authUserResult.data.user?.user_metadata
+        ?.codit_project_meta as unknown;
+      if (metadataMap && typeof metadataMap === "object") {
+        fallbackMap = metadataMap as ProjectFallbackMap;
+        writeProjectFallbackMap(userId, fallbackMap);
+      }
+    } catch {
+      // Ignora indisponibilidade de metadata
+    }
+  }
+
+  return rows
+    .map((row) => normalizeSandboxProjectRow(row, fallbackMap[row.id]))
+    .sort((a, b) => {
+      if (a.is_pinned !== b.is_pinned) {
+        return a.is_pinned ? -1 : 1;
+      }
+      return Date.parse(b.updated_at) - Date.parse(a.updated_at);
+    });
 }
 
 export async function getUserSandboxProjectById(
@@ -169,7 +472,15 @@ export async function getUserSandboxProjectById(
     throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
   }
 
-  return data;
+  if (!data) {
+    return null;
+  }
+
+  const fallbackMap = readProjectFallbackMap(userId);
+  return normalizeSandboxProjectRow(
+    data as RawSandboxProjectDbRow,
+    fallbackMap[projectId],
+  );
 }
 
 export async function createSandboxProject(
@@ -189,26 +500,83 @@ export async function createSandboxProject(
     parsed.data.primaryLanguage,
   );
 
+  const corePayload = {
+    user_id: userId,
+    title: parsed.data.title,
+    description: parsed.data.description ?? null,
+    primary_language: parsed.data.primaryLanguage,
+    runtime_target: runtimeTarget,
+    source_code: parsed.data.sourceCode,
+    visibility: parsed.data.visibility,
+    version: 1,
+  };
+
+  const extendedPayload = {
+    ...(parsed.data.isPinned !== undefined
+      ? { is_pinned: parsed.data.isPinned }
+      : {}),
+    ...(parsed.data.tags !== undefined ? { tags: parsed.data.tags } : {}),
+    ...(parsed.data.repositoryUrl !== undefined
+      ? { repository_url: parsed.data.repositoryUrl }
+      : {}),
+    ...(parsed.data.liveUrl !== undefined
+      ? { live_url: parsed.data.liveUrl }
+      : {}),
+  };
+
   const { data, error } = await client
     .from("sandbox_projects")
     .insert({
-      user_id: userId,
-      title: parsed.data.title,
-      description: parsed.data.description ?? null,
-      primary_language: parsed.data.primaryLanguage,
-      runtime_target: runtimeTarget,
-      source_code: parsed.data.sourceCode,
-      visibility: parsed.data.visibility,
-      version: 1,
+      ...corePayload,
+      ...extendedPayload,
     })
     .select("*")
     .single();
 
-  if (error) {
+  if (!error) {
+    return normalizeSandboxProjectRow(data as RawSandboxProjectDbRow);
+  }
+
+  if (!isSchemaMismatchError(error)) {
     throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
   }
 
-  return data;
+  // Fallback resiliente quando o banco remoto ainda está na migração Fase 2
+  const legacyLanguage = toLegacySandboxLanguage(parsed.data.primaryLanguage);
+  const legacyRuntime = resolveDefaultRuntimeTarget(legacyLanguage);
+
+  const fallbackInsert = await client
+    .from("sandbox_projects")
+    .insert({
+      ...corePayload,
+      primary_language: legacyLanguage,
+      runtime_target: legacyRuntime,
+    })
+    .select("*")
+    .single();
+
+  if (fallbackInsert.error) {
+    throw new SandboxProjectServiceError(
+      mapSupabaseDatabaseError(fallbackInsert.error),
+    );
+  }
+
+  const createdRow = fallbackInsert.data as RawSandboxProjectDbRow;
+  const fallbackEntry = await syncProjectFallbackEntry(
+    userId,
+    createdRow.id,
+    {
+      primary_language: parsed.data.primaryLanguage,
+      runtime_target: runtimeTarget,
+      is_pinned: parsed.data.isPinned ?? false,
+      tags: parsed.data.tags ?? [],
+      repository_url: parsed.data.repositoryUrl ?? null,
+      live_url: parsed.data.liveUrl ?? null,
+    },
+    client,
+  );
+
+  return normalizeSandboxProjectRow(createdRow, fallbackEntry);
 }
 
 export async function updateSandboxProject(
@@ -226,7 +594,7 @@ export async function updateSandboxProject(
   }
 
   const nextLanguage = parsed.data.primaryLanguage;
-  const updatePayload = {
+  const coreUpdatePayload = {
     ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
     ...(parsed.data.description !== undefined
       ? { description: parsed.data.description }
@@ -246,9 +614,25 @@ export async function updateSandboxProject(
     version: parsed.data.expectedVersion + 1,
   };
 
+  const extendedUpdatePayload = {
+    ...(parsed.data.isPinned !== undefined
+      ? { is_pinned: parsed.data.isPinned }
+      : {}),
+    ...(parsed.data.tags !== undefined ? { tags: parsed.data.tags } : {}),
+    ...(parsed.data.repositoryUrl !== undefined
+      ? { repository_url: parsed.data.repositoryUrl }
+      : {}),
+    ...(parsed.data.liveUrl !== undefined
+      ? { live_url: parsed.data.liveUrl }
+      : {}),
+  };
+
   const { data, error } = await client
     .from("sandbox_projects")
-    .update(updatePayload)
+    .update({
+      ...coreUpdatePayload,
+      ...extendedUpdatePayload,
+    })
     .eq("id", projectId)
     .eq("user_id", userId)
     .eq("version", parsed.data.expectedVersion)
@@ -256,15 +640,93 @@ export async function updateSandboxProject(
     .select("*")
     .maybeSingle();
 
-  if (error) {
+  if (!error) {
+    if (!data) {
+      throw new SandboxProjectConflictError();
+    }
+    return normalizeSandboxProjectRow(data as RawSandboxProjectDbRow);
+  }
+
+  if (!isSchemaMismatchError(error)) {
     throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
   }
 
-  if (!data) {
+  const legacyUpdatePayload = {
+    ...coreUpdatePayload,
+    ...(nextLanguage !== undefined
+      ? {
+          primary_language: toLegacySandboxLanguage(nextLanguage),
+          runtime_target: resolveDefaultRuntimeTarget(
+            toLegacySandboxLanguage(nextLanguage),
+          ),
+        }
+      : {}),
+  };
+
+  const fallbackUpdate = await client
+    .from("sandbox_projects")
+    .update(legacyUpdatePayload)
+    .eq("id", projectId)
+    .eq("user_id", userId)
+    .eq("version", parsed.data.expectedVersion)
+    .is("deleted_at", null)
+    .select("*")
+    .maybeSingle();
+
+  if (fallbackUpdate.error) {
+    throw new SandboxProjectServiceError(
+      mapSupabaseDatabaseError(fallbackUpdate.error),
+    );
+  }
+
+  if (!fallbackUpdate.data) {
     throw new SandboxProjectConflictError();
   }
 
-  return data;
+  const fallbackEntry = await syncProjectFallbackEntry(
+    userId,
+    projectId,
+    {
+      ...(nextLanguage !== undefined
+        ? {
+            primary_language: nextLanguage,
+            runtime_target: resolveDefaultRuntimeTarget(nextLanguage),
+          }
+        : {}),
+      ...(parsed.data.isPinned !== undefined
+        ? { is_pinned: parsed.data.isPinned }
+        : {}),
+      ...(parsed.data.tags !== undefined ? { tags: parsed.data.tags } : {}),
+      ...(parsed.data.repositoryUrl !== undefined
+        ? { repository_url: parsed.data.repositoryUrl }
+        : {}),
+      ...(parsed.data.liveUrl !== undefined
+        ? { live_url: parsed.data.liveUrl }
+        : {}),
+    },
+    client,
+  );
+
+  return normalizeSandboxProjectRow(
+    fallbackUpdate.data as RawSandboxProjectDbRow,
+    fallbackEntry,
+  );
+}
+
+export async function togglePinSandboxProject(
+  userId: string,
+  project: Pick<SandboxProjectRow, "id" | "is_pinned" | "version">,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<SandboxProjectRow> {
+  return updateSandboxProject(
+    userId,
+    project.id,
+    {
+      isPinned: !project.is_pinned,
+      expectedVersion: project.version,
+    },
+    client,
+  );
 }
 
 export async function softDeleteSandboxProject(
@@ -283,6 +745,13 @@ export async function softDeleteSandboxProject(
 
   if (error) {
     throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
+  }
+
+  if (data !== null) {
+    const existingMap = readProjectFallbackMap(userId);
+    if (projectId in existingMap) {
+      await syncProjectFallbackEntry(userId, projectId, null, client);
+    }
   }
 
   return data !== null;

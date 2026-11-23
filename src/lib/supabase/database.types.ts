@@ -1,10 +1,50 @@
 export type ProfileRole = "student" | "admin";
 
+export type ProfileBannerPreset =
+  | "nebula"
+  | "aurora"
+  | "midnight_grid"
+  | "sunset_code"
+  | "emerald_matrix"
+  | "cyber_ocean";
+
+export type ProfileAccentTheme =
+  | "violet"
+  | "cyan"
+  | "emerald"
+  | "amber"
+  | "rose"
+  | "indigo";
+
+export type ProfileAvatarFrame =
+  | "none"
+  | "glow"
+  | "pixel"
+  | "gradient"
+  | "emerald";
+
+export type OctopyCompanionMood =
+  | "default"
+  | "coding"
+  | "headphones"
+  | "happy";
+
 export type SandboxLanguage =
   | "html_css_js"
-  | "python"
+  | "html"
+  | "css"
   | "javascript"
-  | "typescript";
+  | "typescript"
+  | "python"
+  | "react"
+  | "nodejs"
+  | "java"
+  | "csharp"
+  | "cpp"
+  | "go"
+  | "rust"
+  | "sql"
+  | "php";
 
 export type SandboxRuntimeTarget =
   | "client_iframe"
@@ -22,6 +62,16 @@ export type ProfileRow = {
   role: ProfileRole;
   bio: string | null;
   github_username: string | null;
+  headline: string | null;
+  location: string | null;
+  website_url: string | null;
+  linkedin_url: string | null;
+  banner_preset: ProfileBannerPreset;
+  accent_theme: ProfileAccentTheme;
+  avatar_frame: ProfileAvatarFrame;
+  octopy_companion: OctopyCompanionMood;
+  skills: string[];
+  show_email: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -34,6 +84,16 @@ export type ProfileInsert = {
   role?: ProfileRole;
   bio?: string | null;
   github_username?: string | null;
+  headline?: string | null;
+  location?: string | null;
+  website_url?: string | null;
+  linkedin_url?: string | null;
+  banner_preset?: ProfileBannerPreset;
+  accent_theme?: ProfileAccentTheme;
+  avatar_frame?: ProfileAvatarFrame;
+  octopy_companion?: OctopyCompanionMood;
+  skills?: string[];
+  show_email?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -45,6 +105,16 @@ export type ProfileUpdate = {
   role?: ProfileRole;
   bio?: string | null;
   github_username?: string | null;
+  headline?: string | null;
+  location?: string | null;
+  website_url?: string | null;
+  linkedin_url?: string | null;
+  banner_preset?: ProfileBannerPreset;
+  accent_theme?: ProfileAccentTheme;
+  avatar_frame?: ProfileAvatarFrame;
+  octopy_companion?: OctopyCompanionMood;
+  skills?: string[];
+  show_email?: boolean;
   updated_at?: string;
 };
 
@@ -58,6 +128,10 @@ export type SandboxProjectRow = {
   source_code: string;
   visibility: SandboxVisibility;
   share_slug: string | null;
+  is_pinned: boolean;
+  tags: string[];
+  repository_url: string | null;
+  live_url: string | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -74,6 +148,10 @@ export type SandboxProjectInsert = {
   source_code?: string;
   visibility?: SandboxVisibility;
   share_slug?: string | null;
+  is_pinned?: boolean;
+  tags?: string[];
+  repository_url?: string | null;
+  live_url?: string | null;
   version?: number;
   created_at?: string;
   updated_at?: string;
@@ -88,6 +166,10 @@ export type SandboxProjectUpdate = {
   source_code?: string;
   visibility?: SandboxVisibility;
   share_slug?: string | null;
+  is_pinned?: boolean;
+  tags?: string[];
+  repository_url?: string | null;
+  live_url?: string | null;
   version?: number;
   updated_at?: string;
   deleted_at?: string | null;
