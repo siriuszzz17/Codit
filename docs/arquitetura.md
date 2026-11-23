@@ -159,9 +159,10 @@ Nenhuma chave secreta (`SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `AUTH_SECRET
 
 | Variável | Escopo | Finalidade | Obrigatória |
 | :--- | :--- | :--- | :--- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Público (`out/`) | URL do projeto Supabase (Auth + PostgREST) | Sim (Fase 2+) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Público (`out/`) | URL raiz do projeto Supabase (Auth + PostgREST, sem `/rest/v1`) | Sim (Fase 2+) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Público (`out/` + RLS) | Chave pública `anon` do Supabase (depende de RLS) | Sim (Fase 2+) |
-| `NEXT_PUBLIC_SUPABASE_AUTH_REDIRECT_URL` | Público (`out/`) | Sobrescrita opcional da URL de callback OAuth | Não |
+| `NEXT_PUBLIC_SUPABASE_AUTH_REDIRECT_URL` | Público (`out/`) | Sobrescrita opcional da URL de callback OAuth na Web | Não |
+| `NEXT_PUBLIC_SUPABASE_NATIVE_REDIRECT_URL` | Público (`out/`) | Sobrescrita opcional do Deep Link OAuth no Android (padrão: `com.codit.app://auth/callback`) | Não |
 | `DATABASE_URL` | Server-Side | String de conexão PostgreSQL direta (backend Fase 3+) | Backend |
 | `AUTH_SECRET` | Server-Side | Segredo criptográfico server-side (min. 32 bytes) | Backend |
 | `APP_BASE_URL` | Server-Side | URL canônica da aplicação | Sim |
@@ -213,13 +214,14 @@ A mesma base TypeScript/React do Codit alimenta três canais de distribuição a
 - **`npm run dev` (`PHASE_DEVELOPMENT_SERVER`):** executa sem `output: "export"`, mantendo `headers()` de segurança (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` de desenvolvimento, `/sw.js`, `/manifest.webmanifest`) e Route Handlers dinâmicos em desenvolvimento local.
 - **`npm run build` (padrão):** ativa `output: "export"` e `images: { unoptimized: true }`, omitindo `headers()` (não suportado em export estático) para gerar `out/` limpo e sem avisos. O endpoint `GET /api/v1/health` usa `export const dynamic = "force-static"` para permanecer compatível com a exportação estática. Ao hospedar `out/` em CDN ou servidor estático, **configure cabeçalhos equivalentes** (`Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) diretamente na borda do provedor.
 - **`CODIT_BUILD_TARGET=server`:** reservado para builds SSR/backend Web com Route Handlers dinâmicos (`/api/v1/*`) quando autenticação, PostgreSQL e proxy do Octopy entrarem na Fase 2+, aplicando `Content-Security-Policy` e `Strict-Transport-Security` de produção via `next.config.ts`.
-- **Hardening Desktop (Tauri v2):** [tauri.conf.json](../src-tauri/tauri.conf.json) define `app.security.csp` restritiva em produção e `app.security.devCsp` em desenvolvimento, permitindo somente o IPC interno do Tauri (`ipc:` / `http://ipc.localhost` / `https://ipc.localhost`) e assets empacotados.
-- **Hardening Android (Capacitor 8):** [AndroidManifest.xml](../android/app/src/main/AndroidManifest.xml) define `android:allowBackup="false"`, `android:usesCleartextTraffic="false"` e `network_security_config.xml` bloqueando HTTP em texto claro; [build.gradle](../android/app/build.gradle) ativa R8 (`minifyEnabled true`, `shrinkResources true`) em `release` e [file_paths.xml](../android/app/src/main/res/xml/file_paths.xml) limita o `FileProvider` a `cache-path` (`shared/`).
+- **Hardening Desktop (Tauri v2) e OAuth Nativo (RFC 8252):** [tauri.conf.json](../src-tauri/tauri.conf.json) define `app.security.csp` restritiva em produção e `app.security.devCsp` em desenvolvimento, permitindo somente o IPC interno do Tauri (`ipc:` / `http://ipc.localhost` / `https://ipc.localhost`) e assets empacotados. Para login com Google no `.exe`, [oauth.rs](../src-tauri/src/oauth.rs) inicia um listener loopback efêmero (`127.0.0.1:43823/auth/callback` com fallback dinâmico), valida a URL `https://*.supabase.co/auth/v1/authorize`, abre o navegador padrão via `tauri-plugin-opener`, devolve o callback via evento `codit://oauth-callback` e traz a janela principal ao foco.
+- **Hardening Android (Capacitor 8) e Deep Link OAuth:** [AndroidManifest.xml](../android/app/src/main/AndroidManifest.xml) define `android:allowBackup="false"`, `android:usesCleartextTraffic="false"`, `network_security_config.xml` bloqueando HTTP em texto claro e `<intent-filter>` para `com.codit.app://auth/callback`; o fluxo Google OAuth usa Chrome Custom Tabs (`@capacitor/browser`) e retorno direto ao app (`@capacitor/app` via `appUrlOpen`/`getLaunchUrl`). [build.gradle](../android/app/build.gradle) ativa R8 (`minifyEnabled true`, `shrinkResources true`) em `release` e [file_paths.xml](../android/app/src/main/res/xml/file_paths.xml) limita o `FileProvider` a `cache-path` (`shared/`).
+- **Redirect URLs obrigatórias no Supabase Auth:** `http://127.0.0.1:*/auth/callback` (Tauri `.exe`), `com.codit.app://auth/callback` (Capacitor `.apk`) e URLs Web `/auth/callback`.
 - **Service Worker em WebViews nativas:** [service-worker-register.tsx](../src/components/pwa/service-worker-register.tsx) detecta `__TAURI_INTERNALS__` e `Capacitor.isNativePlatform()` para não registrar `sw.js` dentro dos apps `.exe` e `.apk`, evitando cache obsoleto sobre assets locais empacotados.
 - **Segurança de segredos em clientes empacotados:** assim como no navegador Web, variáveis sensíveis (`.env`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) **nunca** entram no bundle `out/`, no binário Tauri ou no APK Android; todas as chamadas autenticadas e de IA apontarão para o backend remoto via HTTPS.
 
 ### Atualização Automática Multiplataforma (Desktop Tauri + Android Capacitor)
-- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.1"`).
+- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.2"`).
 - **Backend Rust (`src-tauri/`):** `Cargo.toml` inclui `tauri-plugin-updater = "2"` (somente alvos desktop) e `tauri-plugin-process = "2"`; `src-tauri/capabilities/default.json` concede `"updater:default"` e `"process:default"` à janela `main`; `src-tauri/src/lib.rs` ativa o plugin quando `plugins.updater.pubkey` estiver preenchida em `tauri.conf.json`.
 - **Camada Cliente Unificada:**
   - [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` via imports dinâmicos para desktop Windows.
@@ -268,10 +270,10 @@ TCC-Codit/
 │   ├── app/                   # App Router (/, /auth, /auth/callback, /conta, /offline, /api/v1/health)
 │   ├── components/            # Brand (OctopyBadge), Auth, Account, PWA e Native (AppUpdateModal)
 │   ├── modules/               # Domínios auth, profiles e sandbox (serviços tipados + AuthProvider)
-│   └── lib/                   # supabase/*, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
+│   └── lib/                   # supabase/*, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/
-    └── unit/                  # Testes unitários Vitest (env, auth-schemas, supabase-config, services, updater)
+    └── unit/                  # Testes unitários Vitest (env, logger, auth-schemas, native-oauth, supabase-config, services, updater)
 ```
 
 ### Planejada (Expansão Fases 2–4)

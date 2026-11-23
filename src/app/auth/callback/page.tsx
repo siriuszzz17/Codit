@@ -4,28 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import {
+  completeOAuthCallbackUrl,
+  parseOAuthCallbackUrl,
+} from "@/lib/native-oauth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { mapSupabaseAuthError } from "@/lib/supabase/errors";
 import { ensureProfile } from "@/modules/profiles/profile-service";
-
-function extractCallbackError(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const hashParams = new URLSearchParams(
-    window.location.hash.replace(/^#/, ""),
-  );
-
-  const rawError =
-    searchParams.get("error_description") ||
-    hashParams.get("error_description") ||
-    searchParams.get("error") ||
-    hashParams.get("error");
-
-  return rawError ? rawError.trim() : null;
-}
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -37,10 +22,12 @@ export default function AuthCallbackPage() {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     async function completeCallback() {
-      const providerError = extractCallbackError();
-      if (providerError) {
+      const currentHref =
+        typeof window !== "undefined" ? window.location.href : "";
+      const parsedCallback = parseOAuthCallbackUrl(currentHref);
+      if (parsedCallback.kind === "error") {
         if (!cancelled) {
-          setErrorMessage(mapSupabaseAuthError({ message: providerError }));
+          setErrorMessage(parsedCallback.message);
         }
         return;
       }
@@ -75,6 +62,38 @@ export default function AuthCallbackPage() {
           router.replace("/conta");
         }
         return;
+      }
+
+      if (
+        parsedCallback.kind === "code" ||
+        parsedCallback.kind === "tokens"
+      ) {
+        try {
+          const completed = await completeOAuthCallbackUrl(currentHref, client);
+          if (cancelled) {
+            return;
+          }
+          if (completed.user) {
+            try {
+              await ensureProfile(completed.user, client);
+            } catch {
+              // Ignora erro não-fatal aqui; AuthProvider reportará se necessário.
+            }
+            if (!cancelled) {
+              router.replace("/conta");
+            }
+            return;
+          }
+        } catch (callbackError) {
+          if (!cancelled) {
+            setErrorMessage(
+              callbackError instanceof Error
+                ? callbackError.message
+                : "Não foi possível confirmar a sessão de retorno.",
+            );
+          }
+          return;
+        }
       }
 
       const authListener = client.auth.onAuthStateChange(

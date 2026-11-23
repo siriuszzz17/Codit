@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type FormEvent,
 } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import {
+  cancelDesktopOAuth,
+  subscribeCapacitorBrowserFinished,
+} from "@/lib/native-oauth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useIsOnline } from "@/lib/use-is-online";
 import { useAuth } from "@/modules/auth/auth-provider";
@@ -110,9 +116,71 @@ export function AuthScreen() {
   const [submittingAction, setSubmittingAction] = useState<
     "email" | "google" | "signout" | null
   >(null);
+  const [externalAuthPlatform, setExternalAuthPlatform] = useState<
+    "desktop" | "mobile" | null
+  >(null);
+  const [dismissedAuthError, setDismissedAuthError] = useState<string | null>(
+    null,
+  );
 
-  const isBusy = submittingAction !== null;
+  const mobileFinishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const hasActiveAuthError =
+    Boolean(authError) && authError !== dismissedAuthError;
+  const isWaitingExternalOAuth =
+    externalAuthPlatform !== null && !user && !hasActiveAuthError;
+  const effectiveAction =
+    submittingAction === "google" && hasActiveAuthError
+      ? null
+      : submittingAction;
+  const isBusy = effectiveAction !== null || isWaitingExternalOAuth;
   const actionsDisabled = isBusy || !isConfigured || !isOnline;
+
+  useEffect(() => {
+    if (externalAuthPlatform !== "mobile") {
+      return;
+    }
+
+    let cancelled = false;
+    let cleanup: () => void = () => {};
+
+    void subscribeCapacitorBrowserFinished(() => {
+      if (cancelled) {
+        return;
+      }
+
+      if (mobileFinishTimerRef.current !== null) {
+        clearTimeout(mobileFinishTimerRef.current);
+      }
+
+      // Aguarda janela curta para que `appUrlOpen` entregue o deep link antes de destravar.
+      mobileFinishTimerRef.current = setTimeout(() => {
+        if (!cancelled) {
+          setExternalAuthPlatform(null);
+          setSubmittingAction((current) =>
+            current === "google" ? null : current,
+          );
+        }
+      }, 1500);
+    }).then((unlisten) => {
+      if (cancelled) {
+        unlisten();
+      } else {
+        cleanup = unlisten;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (mobileFinishTimerRef.current !== null) {
+        clearTimeout(mobileFinishTimerRef.current);
+        mobileFinishTimerRef.current = null;
+      }
+      cleanup();
+    };
+  }, [externalAuthPlatform]);
 
   function switchMode(nextMode: AuthMode) {
     setSelectedMode(nextMode);
@@ -121,11 +189,26 @@ export function AuthScreen() {
     setSuccessMessage(null);
   }
 
+  async function handleCancelExternalWait() {
+    if (mobileFinishTimerRef.current !== null) {
+      clearTimeout(mobileFinishTimerRef.current);
+      mobileFinishTimerRef.current = null;
+    }
+
+    if (externalAuthPlatform === "desktop") {
+      await cancelDesktopOAuth();
+    }
+
+    setExternalAuthPlatform(null);
+    setSubmittingAction(null);
+  }
+
   async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFieldErrors({});
     setFormError(null);
     setSuccessMessage(null);
+    setDismissedAuthError(authError);
 
     if (!isOnline) {
       setFormError(
@@ -203,6 +286,7 @@ export function AuthScreen() {
     setFieldErrors({});
     setFormError(null);
     setSuccessMessage(null);
+    setDismissedAuthError(authError);
 
     if (!isOnline) {
       setFormError(
@@ -221,13 +305,21 @@ export function AuthScreen() {
 
     setSubmittingAction("google");
     try {
-      await signInWithGoogle(client);
+      const result = await signInWithGoogle(client);
+      if (result.mode === "external_desktop") {
+        setExternalAuthPlatform("desktop");
+        setSubmittingAction(null);
+      } else if (result.mode === "external_mobile") {
+        setExternalAuthPlatform("mobile");
+        setSubmittingAction(null);
+      }
     } catch (error) {
       setFormError(
         error instanceof Error
           ? error.message
           : "Não foi possível iniciar o login com o Google.",
       );
+      setExternalAuthPlatform(null);
       setSubmittingAction(null);
     }
   }
@@ -449,10 +541,10 @@ export function AuthScreen() {
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
-                  disabled={isBusy}
+                  disabled={effectiveAction === "signout"}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {submittingAction === "signout"
+                  {effectiveAction === "signout"
                     ? "Saindo..."
                     : "Sair da conta"}
                 </button>
@@ -507,6 +599,29 @@ export function AuthScreen() {
                 </p>
               </div>
 
+              {isWaitingExternalOAuth ? (
+                <div
+                  role="status"
+                  className="space-y-3 rounded-xl border border-accent/40 bg-accent-soft/50 px-4 py-3 text-xs leading-relaxed text-foreground"
+                >
+                  <p className="font-semibold text-accent-strong">
+                    Aguardando conclusão no navegador...
+                  </p>
+                  <p className="text-muted">
+                    Finalize o login com Google na janela do navegador aberta.
+                    Assim que concluir, você voltará automaticamente para o
+                    aplicativo Codit.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleCancelExternalWait()}
+                    className="inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                  >
+                    Cancelar espera
+                  </button>
+                </div>
+              ) : null}
+
               {/* Botão Google OAuth */}
               <button
                 type="button"
@@ -516,9 +631,11 @@ export function AuthScreen() {
               >
                 <GoogleIcon />
                 <span>
-                  {submittingAction === "google"
-                    ? "Redirecionando para o Google..."
-                    : "Continuar com Google"}
+                  {effectiveAction === "google"
+                    ? "Abrindo login do Google..."
+                    : isWaitingExternalOAuth
+                      ? "Aguardando retorno do Google..."
+                      : "Continuar com Google"}
                 </span>
               </button>
 
@@ -720,7 +837,7 @@ export function AuthScreen() {
                   disabled={actionsDisabled}
                   className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {submittingAction === "email"
+                  {effectiveAction === "email"
                     ? mode === "login"
                       ? "Entrando..."
                       : "Criando conta..."

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  NATIVE_MOBILE_AUTH_CALLBACK_URL,
+  type AuthPlatform,
+} from "@/lib/native-oauth";
 
 const emailFieldSchema = z
   .string({ error: "Informe seu e-mail." })
@@ -60,6 +64,43 @@ export function resolveOAuthRedirectUrl(options?: {
   }
 
   return `${runtimeOrigin.replace(/\/+$/, "")}/auth/callback`;
+}
+
+export function resolveNativeMobileRedirectUrl(
+  configuredNativeRedirectUrl?: string | undefined,
+): string {
+  const configured = configuredNativeRedirectUrl?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+  return NATIVE_MOBILE_AUTH_CALLBACK_URL;
+}
+
+export function resolveEmailConfirmationRedirectUrl(options: {
+  platform: AuthPlatform;
+  origin?: string | undefined;
+  configuredRedirectUrl?: string | undefined;
+  nativeRedirectUrl?: string | undefined;
+}): string | undefined {
+  if (options.platform === "capacitor") {
+    return resolveNativeMobileRedirectUrl(options.nativeRedirectUrl);
+  }
+
+  if (options.platform === "tauri") {
+    const configured = options.configuredRedirectUrl?.trim();
+    if (
+      configured &&
+      (configured.startsWith("https://") || configured.startsWith("http://"))
+    ) {
+      return configured.replace(/\/+$/, "");
+    }
+    return undefined;
+  }
+
+  return resolveOAuthRedirectUrl({
+    origin: options.origin,
+    configuredRedirectUrl: options.configuredRedirectUrl,
+  });
 }
 
 export function getFieldErrors<T extends Record<string, unknown>>(

@@ -1,7 +1,21 @@
+#[cfg(desktop)]
+mod oauth;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_process::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_process::init());
+
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_opener::init())
+        .manage(oauth::DesktopOAuthState::default())
+        .invoke_handler(tauri::generate_handler![
+            oauth::prepare_desktop_oauth,
+            oauth::open_desktop_oauth_url,
+            oauth::cancel_desktop_oauth
+        ]);
+
+    builder
         .setup(|app| {
             #[cfg(desktop)]
             {
