@@ -25,6 +25,10 @@ import {
   type SignUpInput,
 } from "@/modules/auth/auth-schemas";
 import {
+  AuthServiceError,
+  EMAIL_RESEND_MAX_ATTEMPTS,
+  getEmailResendStatus,
+  resendSignUpConfirmationEmail,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
@@ -114,6 +118,17 @@ export function AuthScreen() {
   >({});
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<
+    string | null
+  >(null);
+  const [alreadyRegisteredNotice, setAlreadyRegisteredNotice] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const [resendRemainingAttempts, setResendRemainingAttempts] = useState<number>(
+    EMAIL_RESEND_MAX_ATTEMPTS,
+  );
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendSuccess, setResendSuccess] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<
     "email" | "google" | "signout" | null
   >(null);
@@ -138,6 +153,18 @@ export function AuthScreen() {
       : submittingAction;
   const isBusy = effectiveAction !== null || isWaitingExternalOAuth;
   const actionsDisabled = isBusy || !isConfigured || !isOnline;
+
+  useEffect(() => {
+    if (resendCountdown <= 0) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setResendCountdown((current) => (current <= 1 ? 0 : current - 1));
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [resendCountdown]);
 
   useEffect(() => {
     if (externalAuthPlatform !== "mobile") {
@@ -183,11 +210,21 @@ export function AuthScreen() {
     };
   }, [externalAuthPlatform]);
 
+  function syncResendUiState(targetEmail: string) {
+    const status = getEmailResendStatus(targetEmail);
+    setPendingConfirmationEmail(targetEmail);
+    setResendRemainingAttempts(status.remainingAttempts);
+    setResendCountdown(status.retryAfterSeconds);
+  }
+
   function switchMode(nextMode: AuthMode) {
     setSelectedMode(nextMode);
     setFieldErrors({});
     setFormError(null);
     setSuccessMessage(null);
+    setAlreadyRegisteredNotice(false);
+    setResendError(null);
+    setResendSuccess(null);
   }
 
   async function handleCancelExternalWait() {
@@ -204,11 +241,61 @@ export function AuthScreen() {
     setSubmittingAction(null);
   }
 
+  async function handleResendConfirmation() {
+    if (!pendingConfirmationEmail) {
+      return;
+    }
+    setResendError(null);
+    setResendSuccess(null);
+
+    if (!isOnline) {
+      setResendError(
+        "Você está offline. Reconecte-se à internet para reenviar o e-mail.",
+      );
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      setResendError(
+        "O Supabase ainda não foi configurado neste ambiente (.env.local).",
+      );
+      return;
+    }
+
+    setResendingEmail(true);
+    try {
+      const result = await resendSignUpConfirmationEmail(
+        pendingConfirmationEmail,
+        client,
+      );
+      setResendCountdown(result.cooldownSeconds);
+      setResendRemainingAttempts(result.remainingAttempts);
+      setResendSuccess(
+        `Novo link de confirmação enviado para ${pendingConfirmationEmail}. Verifique caixa de entrada, spam e aba Promoções.`,
+      );
+    } catch (error) {
+      const latest = getEmailResendStatus(pendingConfirmationEmail);
+      setResendCountdown(latest.retryAfterSeconds);
+      setResendRemainingAttempts(latest.remainingAttempts);
+      setResendError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível reenviar o e-mail de confirmação agora.",
+      );
+    } finally {
+      setResendingEmail(false);
+    }
+  }
+
   async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFieldErrors({});
     setFormError(null);
     setSuccessMessage(null);
+    setAlreadyRegisteredNotice(false);
+    setResendError(null);
+    setResendSuccess(null);
     setDismissedAuthError(authError);
 
     if (!isOnline) {
@@ -243,6 +330,12 @@ export function AuthScreen() {
             ? error.message
             : "Não foi possível entrar na sua conta.",
         );
+        if (
+          error instanceof AuthServiceError &&
+          error.code?.toLowerCase() === "email_not_confirmed"
+        ) {
+          syncResendUiState(parsed.data.email);
+        }
       } finally {
         setSubmittingAction(null);
       }
@@ -264,9 +357,15 @@ export function AuthScreen() {
     setSubmittingAction("email");
     try {
       const result = await signUpWithEmail(parsed.data, client);
-      if (result.needsEmailConfirmation) {
+      if (result.alreadyRegistered) {
+        setAlreadyRegisteredNotice(true);
+        syncResendUiState(parsed.data.email);
+        setPassword("");
+        setConfirmPassword("");
+      } else if (result.needsEmailConfirmation) {
+        syncResendUiState(parsed.data.email);
         setSuccessMessage(
-          "Conta criada com sucesso! Enviamos um link de confirmação para o seu e-mail. Confirme o endereço para acessar o Codit.",
+          `Conta criada para ${parsed.data.email}! Enviamos um link de confirmação. Confirme o endereço para acessar o Codit.`,
         );
         setPassword("");
         setConfirmPassword("");
@@ -883,6 +982,121 @@ export function AuthScreen() {
                     className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 text-xs font-medium text-foreground"
                   >
                     {successMessage}
+                  </p>
+                ) : null}
+
+                {alreadyRegisteredNotice && pendingConfirmationEmail ? (
+                  <div
+                    role="status"
+                    className="space-y-2.5 rounded-xl border border-amber-500/45 bg-amber-500/10 px-3.5 py-3 text-xs leading-relaxed text-foreground"
+                  >
+                    <p className="font-semibold">
+                      Este e-mail já possui uma conta vinculada no Codit
+                    </p>
+                    <p className="text-muted">
+                      O endereço{" "}
+                      <strong className="text-foreground">
+                        {pendingConfirmationEmail}
+                      </strong>{" "}
+                      já está registrado (por senha ou pelo Google). Entre com
+                      sua senha ou clique em{" "}
+                      <strong className="text-foreground">
+                        Continuar com Google
+                      </strong>{" "}
+                      acima. Caso a conta nunca tenha sido confirmada, você pode
+                      reenviar o link abaixo.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => switchMode("login")}
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
+                      >
+                        Ir para login com senha
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleResendConfirmation()}
+                        disabled={
+                          resendingEmail ||
+                          resendCountdown > 0 ||
+                          resendRemainingAttempts <= 0 ||
+                          !isOnline ||
+                          !isConfigured
+                        }
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {resendingEmail
+                          ? "Reenviando..."
+                          : resendCountdown > 0
+                            ? `Reenviar em ${resendCountdown}s`
+                            : "Reenviar confirmação"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {pendingConfirmationEmail && !alreadyRegisteredNotice ? (
+                  <div
+                    role="status"
+                    className="space-y-2.5 rounded-xl border border-accent/35 bg-accent-soft/35 px-3.5 py-3 text-xs leading-relaxed text-foreground"
+                  >
+                    <p className="font-semibold text-accent-strong">
+                      Confirmação de e-mail para {pendingConfirmationEmail}
+                    </p>
+                    <ul className="list-disc space-y-1 pl-4 text-muted">
+                      <li>
+                        Verifique a caixa de entrada, Spam / Lixo Eletrônico e a
+                        aba Promoções.
+                      </li>
+                      <li>
+                        O link pode demorar até alguns instantes para chegar.
+                      </li>
+                    </ul>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => void handleResendConfirmation()}
+                        disabled={
+                          resendingEmail ||
+                          resendCountdown > 0 ||
+                          resendRemainingAttempts <= 0 ||
+                          !isOnline ||
+                          !isConfigured
+                        }
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {resendingEmail
+                          ? "Reenviando..."
+                          : resendCountdown > 0
+                            ? `Reenviar em ${resendCountdown}s`
+                            : resendRemainingAttempts <= 0
+                              ? "Limite de reenvios atingido"
+                              : "Reenviar e-mail de confirmação"}
+                      </button>
+                      <span className="text-[11px] text-muted">
+                        Tentativas restantes: {resendRemainingAttempts} de{" "}
+                        {EMAIL_RESEND_MAX_ATTEMPTS}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {resendError ? (
+                  <p
+                    role="alert"
+                    className="rounded-xl border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-xs font-medium text-foreground"
+                  >
+                    {resendError}
+                  </p>
+                ) : null}
+
+                {resendSuccess ? (
+                  <p
+                    role="status"
+                    className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5 text-xs font-medium text-foreground"
+                  >
+                    {resendSuccess}
                   </p>
                 ) : null}
 

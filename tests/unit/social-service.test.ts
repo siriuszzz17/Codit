@@ -10,10 +10,12 @@ import {
   acceptFriendRequest,
   cloneProjectToMySandbox,
   createProjectComment,
+  listVisibleProjectsByAuthor,
   removeFriendship,
   resolveRelationStatus,
   searchCommunityUsers,
   sendFriendRequest,
+  SocialServiceError,
   SocialValidationError,
   toggleProjectLike,
 } from "@/modules/social/social-service";
@@ -56,6 +58,31 @@ function createFriendship(
   };
 }
 
+function createProject(
+  overrides: Partial<SandboxProjectRow> = {},
+): SandboxProjectRow {
+  return {
+    id: PROJECT_ID,
+    user_id: USER_B,
+    title: "Jogo da Velha",
+    description: "Projeto HTML/JS",
+    primary_language: "html_css_js",
+    runtime_target: "client_iframe",
+    source_code: "<h1>Jogo</h1>",
+    visibility: "public_portfolio",
+    share_slug: null,
+    is_pinned: false,
+    tags: [],
+    repository_url: null,
+    live_url: null,
+    version: 3,
+    created_at: "2026-11-23T10:00:00.000Z",
+    updated_at: "2026-11-23T11:00:00.000Z",
+    deleted_at: null,
+    ...overrides,
+  };
+}
+
 describe("social-service", () => {
   it("resolves all 5 friendship relation states accurately", () => {
     expect(resolveRelationStatus(USER_A, USER_A, [])).toEqual({
@@ -92,7 +119,7 @@ describe("social-service", () => {
     });
   });
 
-  it("searches public_profiles with @handle priority and never reads private profiles table", async () => {
+  it("searches public_profiles with @handle priority and flags 42501 table grant errors", async () => {
     const candidates: PublicProfileRow[] = [
       createPublicProfile({
         id: USER_C,
@@ -106,7 +133,9 @@ describe("social-service", () => {
       }),
     ];
 
-    const limit = vi.fn().mockResolvedValue({ data: candidates, error: null });
+    const limit = vi
+      .fn()
+      .mockResolvedValue({ data: candidates, error: null, status: 200 });
     const order = vi.fn().mockReturnValue({ limit });
     const ilike = vi.fn().mockReturnValue({ order });
     const or = vi.fn().mockReturnValue({ order });
@@ -129,6 +158,92 @@ describe("social-service", () => {
     expect(or).toHaveBeenCalledWith(
       "username.ilike.%Maria%,full_name.ilike.%Maria%",
     );
+
+    const limitDenied = vi.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: "42501",
+        message: "permission denied for table public_profiles",
+      },
+      status: 401,
+    });
+    const deniedClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({ limit: limitDenied }),
+        }),
+      }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      searchCommunityUsers("", { limit: 10 }, deniedClient),
+    ).rejects.toMatchObject({
+      name: "SocialServiceError",
+      isPermissionGrantMissing: true,
+      isMigrationMissing: false,
+      status: 401,
+    } satisfies Partial<SocialServiceError>);
+  });
+
+  it("filters public profile projects to public_portfolio and friends only (RN-204)", async () => {
+    const limit = vi
+      .fn()
+      .mockResolvedValue({ data: [], error: null, status: 200 });
+    const order = vi.fn().mockReturnValue({ limit });
+    const is = vi.fn().mockReturnValue({ order });
+    const inVisibility = vi.fn().mockReturnValue({ is });
+    const eqUser = vi.fn().mockReturnValue({ in: inVisibility });
+    const select = vi.fn().mockReturnValue({ eq: eqUser });
+
+    const client = {
+      from: vi.fn().mockReturnValue({ select }),
+    } as unknown as CoditSupabaseClient;
+
+    await listVisibleProjectsByAuthor(USER_A, USER_A, client);
+    expect(eqUser).toHaveBeenCalledWith("user_id", USER_A);
+    expect(inVisibility).toHaveBeenCalledWith("visibility", [
+      "public_portfolio",
+      "friends",
+    ]);
+  });
+
+  it("blocks cross-user social mutations when session user mismatches", async () => {
+    const dbMock = vi.fn();
+    const client = {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: { user: { id: USER_C } } },
+          error: null,
+        }),
+      },
+      from: vi.fn().mockReturnValue({
+        select: dbMock,
+        insert: dbMock,
+        update: dbMock,
+        delete: dbMock,
+      }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(sendFriendRequest(USER_A, USER_B, client)).rejects.toMatchObject({
+      code: "AUTH_USER_MISMATCH",
+    });
+    await expect(
+      acceptFriendRequest(USER_B, FRIENDSHIP_ID, client),
+    ).rejects.toMatchObject({ code: "AUTH_USER_MISMATCH" });
+    await expect(
+      removeFriendship(USER_A, FRIENDSHIP_ID, client),
+    ).rejects.toMatchObject({ code: "AUTH_USER_MISMATCH" });
+    await expect(
+      toggleProjectLike(USER_A, PROJECT_ID, false, client),
+    ).rejects.toMatchObject({ code: "AUTH_USER_MISMATCH" });
+    await expect(
+      createProjectComment(USER_A, PROJECT_ID, "Oi!", client),
+    ).rejects.toMatchObject({ code: "AUTH_USER_MISMATCH" });
+    await expect(
+      cloneProjectToMySandbox(USER_A, createProject(), client),
+    ).rejects.toMatchObject({ code: "AUTH_USER_MISMATCH" });
+
+    expect(dbMock).not.toHaveBeenCalled();
   });
 
   it("blocks self-friendship and duplicate pairs, and inserts pending requests", async () => {
@@ -150,6 +265,7 @@ describe("social-service", () => {
         }),
       ],
       error: null,
+      status: 200,
     });
     const orExisting = vi.fn().mockReturnValue({ limit: limitExisting });
     const selectExisting = vi.fn().mockReturnValue({ or: orExisting });
@@ -162,11 +278,15 @@ describe("social-service", () => {
 
     // Inserção válida
     const createdRow = createFriendship();
-    const limitNone = vi.fn().mockResolvedValue({ data: [], error: null });
+    const limitNone = vi
+      .fn()
+      .mockResolvedValue({ data: [], error: null, status: 200 });
     const orNone = vi.fn().mockReturnValue({ limit: limitNone });
     const selectNone = vi.fn().mockReturnValue({ or: orNone });
 
-    const single = vi.fn().mockResolvedValue({ data: createdRow, error: null });
+    const single = vi
+      .fn()
+      .mockResolvedValue({ data: createdRow, error: null, status: 201 });
     const insertSelect = vi.fn().mockReturnValue({ single });
     const insert = vi.fn().mockReturnValue({ select: insertSelect });
 
@@ -186,7 +306,7 @@ describe("social-service", () => {
     const acceptedRow = createFriendship({ status: "accepted" });
     const maybeSingleAccept = vi
       .fn()
-      .mockResolvedValue({ data: acceptedRow, error: null });
+      .mockResolvedValue({ data: acceptedRow, error: null, status: 200 });
     const selectAccept = vi
       .fn()
       .mockReturnValue({ maybeSingle: maybeSingleAccept });
@@ -205,7 +325,7 @@ describe("social-service", () => {
 
     const maybeSingleDelete = vi
       .fn()
-      .mockResolvedValue({ data: { id: FRIENDSHIP_ID }, error: null });
+      .mockResolvedValue({ data: { id: FRIENDSHIP_ID }, error: null, status: 200 });
     const selectDelete = vi
       .fn()
       .mockReturnValue({ maybeSingle: maybeSingleDelete });
@@ -224,8 +344,10 @@ describe("social-service", () => {
   });
 
   it("toggles project likes idempotently and creates comments with author metadata", async () => {
-    const insertLike = vi.fn().mockResolvedValue({ error: { code: "23505" } });
-    const eqUserDelete = vi.fn().mockResolvedValue({ error: null });
+    const insertLike = vi
+      .fn()
+      .mockResolvedValue({ error: { code: "23505" }, status: 409 });
+    const eqUserDelete = vi.fn().mockResolvedValue({ error: null, status: 200 });
     const eqProjDelete = vi.fn().mockReturnValue({ eq: eqUserDelete });
     const delLike = vi.fn().mockReturnValue({ eq: eqProjDelete });
 
@@ -253,13 +375,13 @@ describe("social-service", () => {
 
     const singleComment = vi
       .fn()
-      .mockResolvedValue({ data: commentRow, error: null });
+      .mockResolvedValue({ data: commentRow, error: null, status: 201 });
     const selectComment = vi.fn().mockReturnValue({ single: singleComment });
     const insertComment = vi.fn().mockReturnValue({ select: selectComment });
 
     const maybeAuthor = vi
       .fn()
-      .mockResolvedValue({ data: authorRow, error: null });
+      .mockResolvedValue({ data: authorRow, error: null, status: 200 });
     const eqAuthor = vi.fn().mockReturnValue({ maybeSingle: maybeAuthor });
     const selectAuthor = vi.fn().mockReturnValue({ eq: eqAuthor });
 
@@ -283,26 +405,7 @@ describe("social-service", () => {
   });
 
   it("clones another user's project privately bound to the current user (RN-204)", async () => {
-    const sourceProject: SandboxProjectRow = {
-      id: PROJECT_ID,
-      user_id: USER_B,
-      title: "Jogo da Velha",
-      description: "Projeto HTML/JS",
-      primary_language: "html_css_js",
-      runtime_target: "client_iframe",
-      source_code: "<h1>Jogo</h1>",
-      visibility: "public_portfolio",
-      share_slug: null,
-      is_pinned: false,
-      tags: [],
-      repository_url: null,
-      live_url: null,
-      version: 3,
-      created_at: "2026-11-23T10:00:00.000Z",
-      updated_at: "2026-11-23T11:00:00.000Z",
-      deleted_at: null,
-    };
-
+    const sourceProject = createProject();
     const clonedRow: SandboxProjectRow = {
       ...sourceProject,
       id: "77777777-7777-4777-8777-777777777777",
@@ -312,7 +415,9 @@ describe("social-service", () => {
       version: 1,
     };
 
-    const single = vi.fn().mockResolvedValue({ data: clonedRow, error: null });
+    const single = vi
+      .fn()
+      .mockResolvedValue({ data: clonedRow, error: null, status: 201 });
     const select = vi.fn().mockReturnValue({ single });
     const insert = vi.fn().mockReturnValue({ select });
 

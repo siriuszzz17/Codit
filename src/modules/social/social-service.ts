@@ -7,9 +7,15 @@ import type {
   SandboxProjectRow,
 } from "@/lib/supabase/database.types";
 import {
+  extractSupabaseErrorMeta,
   isMissingDatabaseSchemaError,
+  isTablePrivilegeError,
   mapSupabaseDatabaseError,
 } from "@/lib/supabase/errors";
+import {
+  assertAuthenticatedUserMatches,
+  assertHasAuthenticatedSession,
+} from "@/lib/supabase/session-guard";
 import {
   createSandboxProject,
   normalizeSandboxProjectRow,
@@ -65,6 +71,13 @@ export interface PublicProfileBundle {
   projects: CommunityProjectCard[];
 }
 
+export interface SocialServiceErrorDetails {
+  isMigrationMissing?: boolean | undefined;
+  isPermissionGrantMissing?: boolean | undefined;
+  code?: string | undefined;
+  status?: number | null | undefined;
+}
+
 export class SocialValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -74,18 +87,50 @@ export class SocialValidationError extends Error {
 
 export class SocialServiceError extends Error {
   readonly isMigrationMissing: boolean;
+  readonly isPermissionGrantMissing: boolean;
+  readonly code?: string | undefined;
+  readonly status?: number | null | undefined;
 
-  constructor(message: string, isMigrationMissing = false) {
+  constructor(
+    message: string,
+    isMigrationMissingOrDetails: boolean | SocialServiceErrorDetails = false,
+  ) {
     super(message);
     this.name = "SocialServiceError";
-    this.isMigrationMissing = isMigrationMissing;
+    if (typeof isMigrationMissingOrDetails === "boolean") {
+      this.isMigrationMissing = isMigrationMissingOrDetails;
+      this.isPermissionGrantMissing = false;
+      this.status = null;
+    } else {
+      this.isMigrationMissing = Boolean(
+        isMigrationMissingOrDetails.isMigrationMissing,
+      );
+      this.isPermissionGrantMissing = Boolean(
+        isMigrationMissingOrDetails.isPermissionGrantMissing,
+      );
+      this.code = isMigrationMissingOrDetails.code;
+      this.status = isMigrationMissingOrDetails.status ?? null;
+    }
   }
 }
 
-function toSocialServiceError(error: unknown): SocialServiceError {
+function toSocialServiceError(
+  error: unknown,
+  context?: { status?: number | null; table?: string; operation?: string },
+): SocialServiceError {
+  const meta = extractSupabaseErrorMeta(error, context);
   return new SocialServiceError(
-    mapSupabaseDatabaseError(error),
-    isMissingDatabaseSchemaError(error),
+    mapSupabaseDatabaseError(error, {
+      status: meta.status,
+      table: context?.table,
+      operation: context?.operation,
+    }),
+    {
+      isMigrationMissing: isMissingDatabaseSchemaError(error),
+      isPermissionGrantMissing: isTablePrivilegeError(error),
+      code: meta.code || undefined,
+      status: meta.status,
+    },
   );
 }
 
@@ -177,9 +222,13 @@ export async function searchCommunityUsers(
       .limit(limit);
   }
 
-  const { data, error } = await builder;
+  const { data, error, status } = await builder;
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "public_profiles",
+      operation: "searchCommunityUsers",
+    });
   }
 
   const rows = data ?? [];
@@ -210,14 +259,18 @@ export async function getPublicProfileByUsername(
     );
   }
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("public_profiles")
     .select("*")
     .eq("username", parsed.data)
     .maybeSingle();
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "public_profiles",
+      operation: "getPublicProfileByUsername",
+    });
   }
 
   return data;
@@ -229,14 +282,18 @@ export async function getPublicProfileById(
 ): Promise<PublicProfileRow | null> {
   const validId = assertValidUuid(userId, "Identificador de perfil");
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("public_profiles")
     .select("*")
     .eq("id", validId)
     .maybeSingle();
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "public_profiles",
+      operation: "getPublicProfileById",
+    });
   }
 
   return data;
@@ -272,14 +329,22 @@ export async function listUserFriendships(
 ): Promise<UserFriendshipsBundle> {
   const validUserId = assertValidUuid(userId, "Identificador do usuário");
 
-  const { data: friendshipRows, error: friendshipError } = await client
+  const {
+    data: friendshipRows,
+    error: friendshipError,
+    status: friendshipStatus,
+  } = await client
     .from("friendships")
     .select("*")
     .or(`requester_id.eq.${validUserId},addressee_id.eq.${validUserId}`)
     .order("updated_at", { ascending: false });
 
   if (friendshipError) {
-    throw toSocialServiceError(friendshipError);
+    throw toSocialServiceError(friendshipError, {
+      status: friendshipStatus,
+      table: "friendships",
+      operation: "listUserFriendships",
+    });
   }
 
   const raw = friendshipRows ?? [];
@@ -300,13 +365,21 @@ export async function listUserFriendships(
     ),
   );
 
-  const { data: profilesData, error: profilesError } = await client
+  const {
+    data: profilesData,
+    error: profilesError,
+    status: profilesStatus,
+  } = await client
     .from("public_profiles")
     .select("*")
     .in("id", otherUserIds);
 
   if (profilesError) {
-    throw toSocialServiceError(profilesError);
+    throw toSocialServiceError(profilesError, {
+      status: profilesStatus,
+      table: "public_profiles",
+      operation: "listUserFriendships.profiles",
+    });
   }
 
   const profileMap = new Map<string, PublicProfileRow>(
@@ -364,7 +437,21 @@ export async function sendFriendRequest(
     );
   }
 
-  const { data: existingRows, error: checkError } = await client
+  await assertAuthenticatedUserMatches(
+    validRequester,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const {
+    data: existingRows,
+    error: checkError,
+    status: checkStatus,
+  } = await client
     .from("friendships")
     .select("*")
     .or(
@@ -373,7 +460,11 @@ export async function sendFriendRequest(
     .limit(1);
 
   if (checkError) {
-    throw toSocialServiceError(checkError);
+    throw toSocialServiceError(checkError, {
+      status: checkStatus,
+      table: "friendships",
+      operation: "sendFriendRequest.check",
+    });
   }
 
   const existing = existingRows?.[0];
@@ -391,7 +482,7 @@ export async function sendFriendRequest(
     );
   }
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("friendships")
     .insert({
       requester_id: validRequester,
@@ -402,7 +493,11 @@ export async function sendFriendRequest(
     .single();
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "friendships",
+      operation: "sendFriendRequest.insert",
+    });
   }
 
   return data;
@@ -419,7 +514,17 @@ export async function acceptFriendRequest(
     "Identificador da solicitação",
   );
 
-  const { data, error } = await client
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const { data, error, status } = await client
     .from("friendships")
     .update({ status: "accepted" })
     .eq("id", validFriendshipId)
@@ -429,7 +534,11 @@ export async function acceptFriendRequest(
     .maybeSingle();
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "friendships",
+      operation: "acceptFriendRequest",
+    });
   }
 
   if (!data) {
@@ -452,7 +561,17 @@ export async function removeFriendship(
     "Identificador da amizade",
   );
 
-  const { data, error } = await client
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const { data, error, status } = await client
     .from("friendships")
     .delete()
     .eq("id", validFriendshipId)
@@ -461,7 +580,11 @@ export async function removeFriendship(
     .maybeSingle();
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "friendships",
+      operation: "removeFriendship",
+    });
   }
 
   return data !== null;
@@ -492,13 +615,25 @@ async function enrichProjectsWithSocialMeta(
   ]);
 
   if (authorsResult.error) {
-    throw toSocialServiceError(authorsResult.error);
+    throw toSocialServiceError(authorsResult.error, {
+      status: authorsResult.status,
+      table: "public_profiles",
+      operation: "enrichProjects.authors",
+    });
   }
   if (likesResult.error) {
-    throw toSocialServiceError(likesResult.error);
+    throw toSocialServiceError(likesResult.error, {
+      status: likesResult.status,
+      table: "project_likes",
+      operation: "enrichProjects.likes",
+    });
   }
   if (commentsResult.error) {
-    throw toSocialServiceError(commentsResult.error);
+    throw toSocialServiceError(commentsResult.error, {
+      status: commentsResult.status,
+      table: "project_comments",
+      operation: "enrichProjects.comments",
+    });
   }
 
   const authorMap = new Map<string, PublicProfileRow>(
@@ -554,14 +689,22 @@ export async function listCommunityProjects(
       options.viewerId,
       "Identificador do usuário",
     );
-    const { data: acceptedRows, error: friendError } = await client
+    const {
+      data: acceptedRows,
+      error: friendError,
+      status: friendStatus,
+    } = await client
       .from("friendships")
       .select("requester_id, addressee_id")
       .or(`requester_id.eq.${validViewerId},addressee_id.eq.${validViewerId}`)
       .eq("status", "accepted");
 
     if (friendError) {
-      throw toSocialServiceError(friendError);
+      throw toSocialServiceError(friendError, {
+        status: friendStatus,
+        table: "friendships",
+        operation: "listCommunityProjects.friends",
+      });
     }
 
     const friendIds = Array.from(
@@ -589,12 +732,20 @@ export async function listCommunityProjects(
       friendsQuery = friendsQuery.eq("primary_language", options.language);
     }
 
-    const { data: projectsData, error: projectsError } = await friendsQuery
+    const {
+      data: projectsData,
+      error: projectsError,
+      status: projectsStatus,
+    } = await friendsQuery
       .order("updated_at", { ascending: false })
       .limit(limit);
 
     if (projectsError) {
-      throw toSocialServiceError(projectsError);
+      throw toSocialServiceError(projectsError, {
+        status: projectsStatus,
+        table: "sandbox_projects",
+        operation: "listCommunityProjects.friendsProjects",
+      });
     }
 
     return enrichProjectsWithSocialMeta(
@@ -614,12 +765,20 @@ export async function listCommunityProjects(
     feedQuery = feedQuery.eq("primary_language", options.language);
   }
 
-  const { data: projectsData, error: projectsError } = await feedQuery
+  const {
+    data: projectsData,
+    error: projectsError,
+    status: projectsStatus,
+  } = await feedQuery
     .order("updated_at", { ascending: false })
     .limit(limit);
 
   if (projectsError) {
-    throw toSocialServiceError(projectsError);
+    throw toSocialServiceError(projectsError, {
+      status: projectsStatus,
+      table: "sandbox_projects",
+      operation: "listCommunityProjects.all",
+    });
   }
 
   return enrichProjectsWithSocialMeta(
@@ -636,16 +795,21 @@ export async function listVisibleProjectsByAuthor(
 ): Promise<CommunityProjectCard[]> {
   const validAuthorId = assertValidUuid(authorId, "Identificador do autor");
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("sandbox_projects")
     .select("*")
     .eq("user_id", validAuthorId)
+    .in("visibility", ["public_portfolio", "friends"])
     .is("deleted_at", null)
     .order("updated_at", { ascending: false })
     .limit(40);
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "sandbox_projects",
+      operation: "listVisibleProjectsByAuthor",
+    });
   }
 
   return enrichProjectsWithSocialMeta(data ?? [], viewerId, client);
@@ -680,7 +844,11 @@ export async function getPublicProfileBundle(
           .from("friendships")
           .select("*")
           .or(`requester_id.eq.${viewerId},addressee_id.eq.${viewerId}`)
-      : Promise.resolve({ data: [] as FriendshipRow[], error: null });
+      : Promise.resolve({
+          data: [] as FriendshipRow[],
+          error: null,
+          status: 200,
+        });
 
   const [friendshipsResult, friendCount, projects] = await Promise.all([
     friendshipsPromise,
@@ -689,7 +857,11 @@ export async function getPublicProfileBundle(
   ]);
 
   if (friendshipsResult.error) {
-    throw toSocialServiceError(friendshipsResult.error);
+    throw toSocialServiceError(friendshipsResult.error, {
+      status: friendshipsResult.status,
+      table: "friendships",
+      operation: "getPublicProfileBundle.friendships",
+    });
   }
 
   const relation = resolveRelationStatus(
@@ -715,21 +887,35 @@ export async function toggleProjectLike(
   const validUserId = assertValidUuid(userId, "Identificador do usuário");
   const validProjectId = assertValidUuid(projectId, "Identificador do projeto");
 
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
   if (currentlyLiked) {
-    const { error } = await client
+    const { error, status } = await client
       .from("project_likes")
       .delete()
       .eq("project_id", validProjectId)
       .eq("user_id", validUserId);
 
     if (error) {
-      throw toSocialServiceError(error);
+      throw toSocialServiceError(error, {
+        status,
+        table: "project_likes",
+        operation: "toggleProjectLike.delete",
+      });
     }
 
     return { liked: false };
   }
 
-  const { error } = await client.from("project_likes").insert({
+  const { error, status } = await client.from("project_likes").insert({
     project_id: validProjectId,
     user_id: validUserId,
   });
@@ -738,7 +924,11 @@ export async function toggleProjectLike(
     if (error.code === "23505") {
       return { liked: true };
     }
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "project_likes",
+      operation: "toggleProjectLike.insert",
+    });
   }
 
   return { liked: true };
@@ -750,7 +940,11 @@ export async function listProjectComments(
 ): Promise<ProjectCommentWithAuthor[]> {
   const validProjectId = assertValidUuid(projectId, "Identificador do projeto");
 
-  const { data: commentsData, error: commentsError } = await client
+  const {
+    data: commentsData,
+    error: commentsError,
+    status: commentsStatus,
+  } = await client
     .from("project_comments")
     .select("*")
     .eq("project_id", validProjectId)
@@ -758,7 +952,11 @@ export async function listProjectComments(
     .limit(100);
 
   if (commentsError) {
-    throw toSocialServiceError(commentsError);
+    throw toSocialServiceError(commentsError, {
+      status: commentsStatus,
+      table: "project_comments",
+      operation: "listProjectComments",
+    });
   }
 
   const comments = commentsData ?? [];
@@ -767,13 +965,21 @@ export async function listProjectComments(
   }
 
   const authorIds = Array.from(new Set(comments.map((item) => item.user_id)));
-  const { data: authorsData, error: authorsError } = await client
+  const {
+    data: authorsData,
+    error: authorsError,
+    status: authorsStatus,
+  } = await client
     .from("public_profiles")
     .select("*")
     .in("id", authorIds);
 
   if (authorsError) {
-    throw toSocialServiceError(authorsError);
+    throw toSocialServiceError(authorsError, {
+      status: authorsStatus,
+      table: "public_profiles",
+      operation: "listProjectComments.authors",
+    });
   }
 
   const authorMap = new Map<string, PublicProfileRow>(
@@ -803,7 +1009,17 @@ export async function createProjectComment(
     );
   }
 
-  const { data: comment, error } = await client
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const { data: comment, error, status } = await client
     .from("project_comments")
     .insert({
       project_id: validProjectId,
@@ -814,7 +1030,11 @@ export async function createProjectComment(
     .single();
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "project_comments",
+      operation: "createProjectComment",
+    });
   }
 
   const { data: authorData } = await client
@@ -838,7 +1058,16 @@ export async function deleteProjectComment(
     "Identificador do comentário",
   );
 
-  const { data, error } = await client
+  await assertHasAuthenticatedSession(
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_REQUIRED",
+        status: 401,
+      }),
+  );
+
+  const { data, error, status } = await client
     .from("project_comments")
     .delete()
     .eq("id", validCommentId)
@@ -846,7 +1075,11 @@ export async function deleteProjectComment(
     .maybeSingle();
 
   if (error) {
-    throw toSocialServiceError(error);
+    throw toSocialServiceError(error, {
+      status,
+      table: "project_comments",
+      operation: "deleteProjectComment",
+    });
   }
 
   return data !== null;
@@ -858,6 +1091,17 @@ export async function cloneProjectToMySandbox(
   client: CoditSupabaseClient = requireSupabaseClient(),
 ): Promise<SandboxProjectRow> {
   const validUserId = assertValidUuid(userId, "Identificador do usuário");
+
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
   const clonedTitle = `Cópia de ${sourceProject.title}`.slice(0, 120);
 
   return createSandboxProject(

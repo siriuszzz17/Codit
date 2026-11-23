@@ -65,6 +65,7 @@ export type ProfileRow = {
   email: string;
   full_name: string;
   username: string;
+  username_changed_at: string | null;
   avatar_url: string | null;
   role: ProfileRole;
   bio: string | null;
@@ -88,6 +89,7 @@ export type ProfileInsert = {
   email: string;
   full_name?: string;
   username?: string;
+  username_changed_at?: string | null;
   avatar_url?: string | null;
   role?: ProfileRole;
   bio?: string | null;

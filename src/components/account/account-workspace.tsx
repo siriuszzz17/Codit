@@ -156,6 +156,7 @@ export function AccountWorkspace() {
       email: user.email ?? "",
       full_name: baseProfileDraft.fullName || "Estudante Codit",
       username: baseProfileDraft.username,
+      username_changed_at: null,
       avatar_url: baseProfileDraft.avatarUrl || null,
       role: "student",
       bio: null,
@@ -300,9 +301,7 @@ export function AccountWorkspace() {
 
     setSavingProfile(true);
     try {
-      if (!profile) {
-        await refreshProfile();
-      }
+      const resolvedCurrentProfile = profile ?? (await refreshProfile());
 
       await updateProfile(
         user.id,
@@ -324,6 +323,9 @@ export function AccountWorkspace() {
           showEmail: activeDraft.showEmail,
         },
         client,
+        {
+          currentProfile: resolvedCurrentProfile,
+        },
       );
       await refreshProfile();
       setProfileDraftOverride(null);
@@ -720,9 +722,17 @@ export function AccountWorkspace() {
         {authError ? (
           <div
             role="alert"
-            className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-foreground sm:text-sm"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-foreground sm:text-sm"
           >
-            {authError}
+            <p className="min-w-0 flex-1">{authError}</p>
+            <button
+              type="button"
+              onClick={() => void refreshProfile()}
+              disabled={!isOnline}
+              className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : null}
 
@@ -757,6 +767,8 @@ export function AccountWorkspace() {
         ) : (
           <ProfileCustomizerPanel
             draft={activeDraft}
+            currentUsername={profile?.username ?? ""}
+            usernameChangedAt={profile?.username_changed_at ?? null}
             user={user}
             isSaving={savingProfile}
             isOnline={isOnline}

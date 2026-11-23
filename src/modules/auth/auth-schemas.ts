@@ -12,7 +12,7 @@ function emptyStringToUndefined(value: unknown): unknown {
   return value;
 }
 
-const emailFieldSchema = z
+export const emailFieldSchema = z
   .string({ error: "Informe seu e-mail." })
   .trim()
   .toLowerCase()

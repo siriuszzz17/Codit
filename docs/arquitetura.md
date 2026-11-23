@@ -142,10 +142,12 @@ O **Octopy** é o mascote e tutor interativo do Codit, operando exclusivamente a
 
 ## 6. Autenticação, Google OAuth 2.0 e Segurança de Segredos
 
-### Fluxo Duplo de Autenticação
+### Fluxo Duplo de Autenticação e Configuração de Produção (Supabase Auth)
 - **Tradicional (E-mail e Senha):**
   - Hash de senha com `Argon2id` (preferencial) ou `bcrypt` com custo adequado; comparação em tempo constante.
-  - Política mínima de senha forte, proteção contra força bruta (rate limit por IP + conta) e verificação de e-mail antes de vinculações sensíveis.
+  - Política mínima de senha forte, proteção contra força bruta (rate limit por IP + conta) e verificação obrigatória de e-mail antes de autenticar.
+  - **Produção Supabase (Custom SMTP & Templates):** o remetente padrão do Supabase (`noreply@mail.app.supabase.io`) possui cota restrita (2 e-mails/hora) e bloqueio para destinatários externos; em produção é obrigatório configurar **Custom SMTP** (ex.: Resend/Brevo/AWS SES com SPF/DKIM), definir **Site URL** canônica, cadastrar todas as **Redirect URLs** (`https://<dominio>/auth/callback`, `http://localhost:3000/auth/callback`, `http://127.0.0.1:*/auth/callback` e `com.codit.app://auth/callback`) e configurar o template **Confirm signup** usando `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=signup` (permitindo confirmação cross-browser/Tauri/Android via `verifyOtp`).
+  - **Diagnóstico de Erros sem Exposição de Segredos:** `src/lib/supabase/errors.ts` preserva `HTTP status`, código (`code`/`error_code`) e diferencia ausência de privilégios SQL `GRANT` (`42501`), migrações ausentes (`PGRST204`/`42703`), sessão expirada (`PGRST301`), cooldown de `@username` (`P0001`) e falhas de SMTP/rate-limit de e-mail, registrando logs estruturados sem credenciais ou tokens via `src/lib/logger.ts`.
 - **Google OAuth 2.0 / OpenID Connect:**
   - Discovery oficial: `https://accounts.google.com/.well-known/openid-configuration`
   - Autorização: `https://accounts.google.com/o/oauth2/v2/auth` (escopos mínimos `openid email profile`, com `state` anti-CSRF e **PKCE `S256`**).

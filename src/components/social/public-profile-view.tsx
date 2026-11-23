@@ -35,6 +35,7 @@ export function PublicProfileView() {
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
+  const [permissionGrantMissing, setPermissionGrantMissing] = useState(false);
   const [copiedHandle, setCopiedHandle] = useState(false);
   const [selectedProject, setSelectedProject] =
     useState<CommunityProjectCard | null>(null);
@@ -51,20 +52,25 @@ export function PublicProfileView() {
       return;
     }
 
-    const client = getSupabaseClient();
-    if (!client) {
-      return;
-    }
-
     let cancelled = false;
     const viewerId = user?.id ?? null;
 
     async function fetchBundle() {
+      const client = getSupabaseClient();
+      if (!client) {
+        await Promise.resolve();
+        if (!cancelled) {
+          setProfileError("Cliente Supabase não configurado.");
+          setLoadedKey(targetKey);
+        }
+        return;
+      }
+
       try {
         const result = await getPublicProfileBundle(
           { username: usernameParam, userId: userIdParam },
           viewerId,
-          client ?? undefined,
+          client,
         );
 
         if (cancelled) {
@@ -74,13 +80,17 @@ export function PublicProfileView() {
         setBundle(result);
         setProfileError(null);
         setMigrationMissing(false);
+        setPermissionGrantMissing(false);
         setLoadedKey(targetKey);
       } catch (error) {
         if (cancelled) {
           return;
         }
-        if (error instanceof SocialServiceError && error.isMigrationMissing) {
-          setMigrationMissing(true);
+        if (error instanceof SocialServiceError) {
+          setPermissionGrantMissing(error.isPermissionGrantMissing);
+          setMigrationMissing(
+            error.isMigrationMissing && !error.isPermissionGrantMissing,
+          );
         }
         setBundle(null);
         setProfileError(
@@ -125,9 +135,13 @@ export function PublicProfileView() {
       setBundle(result);
       setProfileError(null);
       setMigrationMissing(false);
+      setPermissionGrantMissing(false);
     } catch (error) {
-      if (error instanceof SocialServiceError && error.isMigrationMissing) {
-        setMigrationMissing(true);
+      if (error instanceof SocialServiceError) {
+        setPermissionGrantMissing(error.isPermissionGrantMissing);
+        setMigrationMissing(
+          error.isMigrationMissing && !error.isPermissionGrantMissing,
+        );
       }
       setProfileError(
         error instanceof Error
@@ -242,6 +256,37 @@ export function PublicProfileView() {
             <div className="h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent" />
             <p className="text-sm text-muted">Carregando perfil...</p>
           </div>
+        ) : permissionGrantMissing ? (
+          <div
+            role="alert"
+            className="space-y-3 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-5 text-xs leading-relaxed text-foreground sm:text-sm"
+          >
+            <p className="font-bold">
+              Permissão de acesso às tabelas pendente no Supabase (código 42501)
+            </p>
+            <p className="text-muted">
+              As políticas RLS estão habilitadas, mas faltam os privilégios SQL
+              (<code className="font-mono text-foreground">GRANT</code>) nas
+              tabelas públicas para os papéis{" "}
+              <code className="font-mono text-foreground">anon</code> e{" "}
+              <code className="font-mono text-foreground">authenticated</code>.
+            </p>
+            <p className="text-muted">
+              Execute o arquivo{" "}
+              <code className="font-mono text-foreground">
+                supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql
+              </code>{" "}
+              no <strong>SQL Editor</strong> do Supabase e tente novamente.
+            </p>
+            <button
+              type="button"
+              onClick={() => void reloadBundle()}
+              disabled={!isOnline}
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+            >
+              Tentar novamente
+            </button>
+          </div>
         ) : migrationMissing ? (
           <div
             role="alert"
@@ -264,12 +309,22 @@ export function PublicProfileView() {
             <p className="text-sm font-semibold text-foreground">
               {profileError}
             </p>
-            <Link
-              href="/comunidade"
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground hover:border-accent"
-            >
-              Voltar para a busca
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => void reloadBundle()}
+                disabled={!isOnline}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90 disabled:opacity-60"
+              >
+                Tentar novamente
+              </button>
+              <Link
+                href="/comunidade"
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground hover:border-accent"
+              >
+                Voltar para a busca
+              </Link>
+            </div>
           </div>
         ) : !bundle ? (
           <div className="space-y-3 rounded-2xl border border-border bg-surface p-8 text-center">

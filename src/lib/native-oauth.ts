@@ -1,7 +1,10 @@
-import type { Session, User } from "@supabase/supabase-js";
+import type { EmailOtpType, Session, User } from "@supabase/supabase-js";
 import { isTauriDesktop } from "@/lib/desktop-updater";
 import type { CoditSupabaseClient } from "@/lib/supabase/client";
-import { mapSupabaseAuthError } from "@/lib/supabase/errors";
+import {
+  extractSupabaseErrorMeta,
+  mapSupabaseAuthError,
+} from "@/lib/supabase/errors";
 
 export const NATIVE_MOBILE_AUTH_CALLBACK_URL = "com.codit.app://auth/callback";
 export const DESKTOP_OAUTH_CALLBACK_EVENT = "codit://oauth-callback";
@@ -14,8 +17,9 @@ export interface DesktopOAuthPrepared {
 }
 
 export type ParsedOAuthCallback =
-  | { kind: "error"; message: string }
+  | { kind: "error"; code?: string | undefined; message: string }
   | { kind: "code"; code: string }
+  | { kind: "token_hash"; tokenHash: string; type: EmailOtpType }
   | { kind: "tokens"; accessToken: string; refreshToken: string }
   | { kind: "empty" };
 
@@ -26,7 +30,17 @@ interface CapacitorWindow extends Window {
   };
 }
 
+const SUPPORTED_EMAIL_OTP_TYPES = new Set<EmailOtpType>([
+  "signup",
+  "email",
+  "invite",
+  "magiclink",
+  "recovery",
+  "email_change",
+]);
+
 const processedAuthCodes = new Set<string>();
+const processedTokenHashes = new Set<string>();
 
 export function isCapacitorNative(): boolean {
   if (typeof window === "undefined") {
@@ -73,27 +87,67 @@ export function isSupportedNativeCallbackUrl(rawUrl: string): boolean {
   }
 }
 
+export function isPkceVerifierMissingError(error: unknown): boolean {
+  const candidate = error as { isPkceVerifierMissing?: unknown } | null;
+  if (candidate && candidate.isPkceVerifierMissing === true) {
+    return true;
+  }
+
+  const { code, message } = extractSupabaseErrorMeta(error);
+  const combinedLower = `${code} ${message}`.toLowerCase();
+  return (
+    combinedLower.includes("code verifier") ||
+    combinedLower.includes("pkce") ||
+    combinedLower.includes("outro navegador")
+  );
+}
+
 export function parseOAuthCallbackUrl(rawUrl: string): ParsedOAuthCallback {
   try {
     const parsed = new URL(rawUrl);
     const searchParams = parsed.searchParams;
     const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
 
+    const errorCode =
+      searchParams.get("error_code")?.trim() ||
+      hashParams.get("error_code")?.trim() ||
+      "";
     const rawError =
       searchParams.get("error_description") ||
       hashParams.get("error_description") ||
       searchParams.get("error") ||
       hashParams.get("error");
-    if (rawError && rawError.trim()) {
+    if ((rawError && rawError.trim()) || errorCode) {
       return {
         kind: "error",
-        message: mapSupabaseAuthError({ message: rawError.trim() }),
+        ...(errorCode ? { code: errorCode } : {}),
+        message: mapSupabaseAuthError(
+          {
+            code: errorCode || undefined,
+            message: rawError?.trim() ?? "",
+          },
+          { operation: "parseOAuthCallbackUrl" },
+        ),
       };
     }
 
     const code = searchParams.get("code")?.trim();
     if (code) {
       return { kind: "code", code };
+    }
+
+    const tokenHash = searchParams.get("token_hash")?.trim();
+    const otpType = searchParams.get("type")?.trim();
+    if (
+      tokenHash &&
+      otpType &&
+      SUPPORTED_EMAIL_OTP_TYPES.has(otpType as EmailOtpType)
+    ) {
+      return {
+        kind: "token_hash",
+        tokenHash,
+        type: otpType as EmailOtpType,
+      };
     }
 
     const accessToken = hashParams.get("access_token")?.trim();
@@ -133,7 +187,42 @@ export async function completeOAuthCallbackUrl(
     );
     if (error) {
       processedAuthCodes.delete(parsed.code);
-      throw new Error(mapSupabaseAuthError(error));
+      const mapped = new Error(
+        mapSupabaseAuthError(error, { operation: "exchangeCodeForSession" }),
+      ) as Error & { code?: string; isPkceVerifierMissing?: boolean };
+      mapped.code = error.code;
+      mapped.isPkceVerifierMissing = isPkceVerifierMissingError(error);
+      throw mapped;
+    }
+
+    return {
+      session: data.session,
+      user: data.user ?? data.session?.user ?? null,
+    };
+  }
+
+  if (parsed.kind === "token_hash") {
+    const cacheKey = `${parsed.type}:${parsed.tokenHash}`;
+    if (processedTokenHashes.has(cacheKey)) {
+      const { data } = await client.auth.getSession();
+      return {
+        session: data.session,
+        user: data.session?.user ?? null,
+      };
+    }
+
+    processedTokenHashes.add(cacheKey);
+    const { data, error } = await client.auth.verifyOtp({
+      token_hash: parsed.tokenHash,
+      type: parsed.type,
+    });
+    if (error) {
+      processedTokenHashes.delete(cacheKey);
+      const mapped = new Error(
+        mapSupabaseAuthError(error, { operation: "verifyOtp" }),
+      ) as Error & { code?: string };
+      mapped.code = error.code;
+      throw mapped;
     }
 
     return {
@@ -148,7 +237,7 @@ export async function completeOAuthCallbackUrl(
       refresh_token: parsed.refreshToken,
     });
     if (error) {
-      throw new Error(mapSupabaseAuthError(error));
+      throw new Error(mapSupabaseAuthError(error, { operation: "setSession" }));
     }
 
     return {
@@ -281,4 +370,5 @@ export async function subscribeCapacitorBrowserFinished(
 
 export function resetProcessedOAuthCodesForTests(): void {
   processedAuthCodes.clear();
+  processedTokenHashes.clear();
 }

@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql) e [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql)) |
+| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql), [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql) e [20261123000003_fix_grants_rls_and_username_cooldown.sql](../supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql)) |
 | **Última atualização** | `2026-11-23` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
@@ -142,14 +142,16 @@ erDiagram
 
 > **Autenticação delegada ao Supabase Auth (`auth.users`):** credenciais de e-mail/senha, verificação de e-mail, fluxos Google OAuth 2.0 (PKCE) e tokens de sessão são gerenciados pelo esquema interno `auth` do Supabase. O esquema público (`public`) mantém a tabela `public.profiles` sincronizada 1:1 com `auth.users`.
 
-#### `public.profiles` *(Implementada na migração `20261122000001` e expandida nas `20261123000001` e `20261123000002`)*
+#### `public.profiles` *(Implementada na migração `20261122000001` e expandida nas `20261123000001`, `20261123000002` e `20261123000003`)*
 - **Propósito:** Perfil do estudante/administrador espelhado 1:1 com `auth.users(id)`, com personalização visual e dados de portfólio.
-- **Regras associadas:** `RN-001`, `RN-002`, `RN-003`
+- **Regras associadas:** `RN-001`, `RN-002`, `RN-003`, `RN-401`
 - **Triggers:**
-  - `on_auth_user_created` (`AFTER INSERT ON auth.users` via `public.handle_new_user()` `SECURITY DEFINER`): cria automaticamente o perfil com `role = 'student'`, extraindo `full_name` e `avatar_url` dos metadados OAuth/cadastro (`ON CONFLICT (id) DO NOTHING`).
+  - `on_auth_user_created` (`AFTER INSERT ON auth.users` via `public.handle_new_user()` `SECURITY DEFINER`): cria automaticamente o perfil com `role = 'student'`, extraindo `full_name`, `avatar_url` e `username` opcional dos metadados (`username_changed_at` inicia `NULL` quando gerado automaticamente para permitir 1ª definição imediata).
+  - `trg_profiles_normalize_username` (`BEFORE INSERT OR UPDATE` via `public.normalize_profile_username()`): normaliza `@username`, bloqueia termos reservados/impersonação (`is_reserved_or_impersonation_username`), protege `username_changed_at` contra manipulação pelo cliente e aplica cooldown de **30 dias** entre alterações de `@` (`ERRCODE P0001` com timestamp UTC).
   - `trg_profiles_prevent_role_escalation` (`BEFORE UPDATE` via `public.prevent_profile_role_escalation()`): bloqueia alteração do campo `role` por clientes comuns (`auth.role() <> 'service_role'`).
   - `trg_profiles_set_updated_at` (`BEFORE UPDATE`): atualiza `updated_at = NOW()`.
-- **Políticas RLS:** `profiles_select_own` (`auth.uid() = id`), `profiles_insert_own` (`auth.uid() = id AND role = 'student'`) e `profiles_update_own` (`auth.uid() = id`).
+- **Privilégios & RLS (migração `20261123000003`):** `GRANT SELECT, INSERT, UPDATE` apenas para `authenticated` (sem `anon`, sem `DELETE` direto); policies `profiles_select_own`, `profiles_insert_own` e `profiles_update_own`.
+  - Demais tabelas com `GRANT` de menor privilégio + RLS: `public_profiles` (`SELECT` para `anon, authenticated`), `sandbox_projects` (`SELECT` para `anon`; `SELECT, INSERT, UPDATE, DELETE` para `authenticated`), `friendships` (`SELECT, INSERT, UPDATE, DELETE` apenas `authenticated`), `project_likes` e `project_comments` (`SELECT` para `anon`; `SELECT, INSERT, DELETE` para `authenticated`).
 
 | Coluna | Tipo | Nulo | Default / Restrição | Descrição |
 | :--- | :--- | :--- | :--- | :--- |
@@ -157,6 +159,7 @@ erDiagram
 | `email` | `VARCHAR(255)` | Não | `uq_profiles_email_lower` (case-insensitive) | E-mail normalizado em minúsculas |
 | `full_name` | `VARCHAR(120)` | Não | `''` | Nome de exibição do usuário |
 | `username` | `VARCHAR(30)` | Não | `uq_profiles_username_lower`, `chk_profiles_username_format` | Handle público único (`@username`, gerado automaticamente se omitido no cadastro) |
+| `username_changed_at` | `TIMESTAMPTZ` | Sim | `NULL` na criação automática | Data UTC da última definição manual de `@username` (controlada pelo banco para cooldown de 30 dias; não exposta em `public_profiles`) |
 | `avatar_url` | `TEXT` | Sim | `-` | URL sanitizada (`http`/`https`) ou avatar oficial `/icons/octopy-*.png` |
 | `role` | `VARCHAR(20)` | Não | `'student'` (`chk_profiles_role`: `'student'`, `'admin'`) | Papel RBAC do aluno ou equipe |
 | `bio` | `TEXT` | Sim | `chk_profiles_bio_length` (máx. 500 chars) | Resumo/objetivo de carreira do aluno |

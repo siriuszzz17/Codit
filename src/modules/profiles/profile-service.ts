@@ -6,9 +6,13 @@ import {
 } from "@/lib/supabase/client";
 import type { ProfileRow } from "@/lib/supabase/database.types";
 import {
+  extractSupabaseErrorMeta,
+  isMissingDatabaseSchemaError,
   isSchemaMismatchError,
+  isTablePrivilegeError,
   mapSupabaseDatabaseError,
 } from "@/lib/supabase/errors";
+import { assertAuthenticatedUserMatches } from "@/lib/supabase/session-guard";
 import {
   DEFAULT_PROFILE_CUSTOMIZATION,
   isAllowedAvatarPath,
@@ -18,7 +22,12 @@ import {
   PROFILE_BANNER_IDS,
   type ProfileCustomizationFields,
 } from "@/modules/profiles/profile-themes";
-import { coditUsernameSchema } from "@/modules/social/social-schemas";
+import {
+  coditUsernameSchema,
+  formatDateTimePtBr,
+  getUsernameChangeEligibility,
+  normalizeUsernameInput,
+} from "@/modules/social/social-schemas";
 
 const GITHUB_USERNAME_REGEX = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const PROFILE_PREFS_STORAGE_PREFIX = "codit:profile-prefs:";
@@ -173,6 +182,17 @@ export const updateProfileSchema = z.object({
 
 export type UpdateProfileInput = z.input<typeof updateProfileSchema>;
 
+export interface UpdateProfileOptions {
+  currentProfile?: Pick<ProfileRow, "username" | "username_changed_at"> | null;
+}
+
+export interface ProfileServiceErrorDetails {
+  code?: string | undefined;
+  status?: number | null | undefined;
+  isPermissionGrantMissing?: boolean | undefined;
+  isMigrationMissing?: boolean | undefined;
+}
+
 export class ProfileValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -181,10 +201,40 @@ export class ProfileValidationError extends Error {
 }
 
 export class ProfileServiceError extends Error {
-  constructor(message: string) {
+  readonly code?: string | undefined;
+  readonly status?: number | null | undefined;
+  readonly isPermissionGrantMissing: boolean;
+  readonly isMigrationMissing: boolean;
+
+  constructor(message: string, details?: ProfileServiceErrorDetails) {
     super(message);
     this.name = "ProfileServiceError";
+    this.code = details?.code;
+    this.status = details?.status ?? null;
+    this.isPermissionGrantMissing = Boolean(details?.isPermissionGrantMissing);
+    this.isMigrationMissing = Boolean(details?.isMigrationMissing);
   }
+}
+
+function toProfileServiceError(
+  error: unknown,
+  status: number | null,
+  operation: string,
+): ProfileServiceError {
+  const meta = extractSupabaseErrorMeta(error, { status });
+  return new ProfileServiceError(
+    mapSupabaseDatabaseError(error, {
+      status: meta.status,
+      table: "profiles",
+      operation,
+    }),
+    {
+      code: meta.code || undefined,
+      status: meta.status,
+      isPermissionGrantMissing: isTablePrivilegeError(error),
+      isMigrationMissing: isMissingDatabaseSchemaError(error),
+    },
+  );
 }
 
 type RawProfileDbRow = Pick<
@@ -199,7 +249,7 @@ type RawProfileDbRow = Pick<
   | "created_at"
   | "updated_at"
 > &
-  Partial<Pick<ProfileRow, "username">> &
+  Partial<Pick<ProfileRow, "username" | "username_changed_at">> &
   Partial<ProfileCustomizationFields>;
 
 function readLocalProfilePrefs(
@@ -269,6 +319,10 @@ export function normalizeProfileRow(
     email: raw.email,
     full_name: raw.full_name,
     username: typeof raw.username === "string" ? raw.username : "",
+    username_changed_at:
+      typeof raw.username_changed_at === "string"
+        ? raw.username_changed_at
+        : null,
     avatar_url: raw.avatar_url,
     role: raw.role,
     bio: raw.bio,
@@ -370,14 +424,14 @@ export async function getProfileByUserId(
   client: CoditSupabaseClient = requireSupabaseClient(),
   extraFallbackPrefs?: Partial<ProfileCustomizationFields> | null,
 ): Promise<ProfileRow | null> {
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("profiles")
     .select("*")
     .eq("id", userId)
     .maybeSingle();
 
   if (error) {
-    throw new ProfileServiceError(mapSupabaseDatabaseError(error));
+    throw toProfileServiceError(error, status, "getProfileByUserId");
   }
 
   if (!data) {
@@ -429,7 +483,7 @@ export async function ensureProfile(
     role: "student" as const,
   };
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("profiles")
     .upsert(
       {
@@ -459,18 +513,21 @@ export async function ensureProfile(
       );
     }
 
-    throw new ProfileServiceError(
-      mapSupabaseDatabaseError(fallbackInsert.error),
+    throw toProfileServiceError(
+      fallbackInsert.error,
+      fallbackInsert.status,
+      "ensureProfile.fallback",
     );
   }
 
-  throw new ProfileServiceError(mapSupabaseDatabaseError(error));
+  throw toProfileServiceError(error, status, "ensureProfile");
 }
 
 export async function updateProfile(
   userId: string,
   input: UpdateProfileInput,
   client: CoditSupabaseClient = requireSupabaseClient(),
+  options?: UpdateProfileOptions,
 ): Promise<ProfileRow> {
   const parsed = updateProfileSchema.safeParse(input);
   if (!parsed.success) {
@@ -480,9 +537,45 @@ export async function updateProfile(
     );
   }
 
+  let shouldIncludeUsername =
+    parsed.data.username !== undefined && parsed.data.username !== null;
+
+  if (shouldIncludeUsername && options?.currentProfile) {
+    const currentNormalized = normalizeUsernameInput(
+      options.currentProfile.username,
+    );
+    const nextNormalized = parsed.data.username
+      ? normalizeUsernameInput(parsed.data.username)
+      : "";
+
+    if (!nextNormalized || nextNormalized === currentNormalized) {
+      // Salvar outros campos (bio, tema, nome) sem alterar o @ não reenvia username
+      shouldIncludeUsername = false;
+    } else {
+      const eligibility = getUsernameChangeEligibility(
+        options.currentProfile.username_changed_at,
+      );
+      if (!eligibility.canChange && eligibility.nextAllowedAt) {
+        throw new ProfileValidationError(
+          `Você já alterou seu @usuário recentemente. Próxima alteração liberada em ${formatDateTimePtBr(eligibility.nextAllowedAt)}.`,
+        );
+      }
+    }
+  }
+
+  await assertAuthenticatedUserMatches(
+    userId,
+    client,
+    (message) =>
+      new ProfileServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
   const corePayload = {
     full_name: parsed.data.fullName,
-    ...(parsed.data.username !== undefined && parsed.data.username !== null
+    ...(shouldIncludeUsername && parsed.data.username
       ? { username: parsed.data.username }
       : {}),
     ...(parsed.data.bio !== undefined ? { bio: parsed.data.bio } : {}),
@@ -530,7 +623,7 @@ export async function updateProfile(
     ...extendedPayload,
   };
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("profiles")
     .update(fullPayload)
     .eq("id", userId)
@@ -542,7 +635,7 @@ export async function updateProfile(
   }
 
   if (!isSchemaMismatchError(error)) {
-    throw new ProfileServiceError(mapSupabaseDatabaseError(error));
+    throw toProfileServiceError(error, status, "updateProfile");
   }
 
   // Fallback resiliente para banco Fase 2 ainda sem as colunas da Fase 3 / Fase 4
@@ -569,8 +662,10 @@ export async function updateProfile(
   }
 
   if (fallbackResult.error) {
-    throw new ProfileServiceError(
-      mapSupabaseDatabaseError(fallbackResult.error),
+    throw toProfileServiceError(
+      fallbackResult.error,
+      fallbackResult.status,
+      "updateProfile.fallback",
     );
   }
 

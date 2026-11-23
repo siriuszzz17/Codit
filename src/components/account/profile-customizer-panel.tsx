@@ -23,6 +23,10 @@ import {
   PROFILE_BANNERS,
   SUGGESTED_PROFILE_SKILLS,
 } from "@/modules/profiles/profile-themes";
+import {
+  formatDateTimePtBr,
+  getUsernameChangeEligibility,
+} from "@/modules/social/social-schemas";
 
 export interface ProfileDraftState {
   fullName: string;
@@ -44,6 +48,8 @@ export interface ProfileDraftState {
 
 interface ProfileCustomizerPanelProps {
   draft: ProfileDraftState;
+  currentUsername: string;
+  usernameChangedAt: string | null;
   user: User;
   isSaving: boolean;
   isOnline: boolean;
@@ -79,6 +85,8 @@ function getGoogleAvatarFromUser(user: User): string | null {
 
 export function ProfileCustomizerPanel({
   draft,
+  currentUsername,
+  usernameChangedAt,
   user,
   isSaving,
   isOnline,
@@ -92,6 +100,11 @@ export function ProfileCustomizerPanel({
   const [skillInput, setSkillInput] = useState("");
   const googleAvatarUrl = getGoogleAvatarFromUser(user);
   const trimmedGithub = draft.githubUsername.trim().replace(/^@+/, "");
+  const usernameEligibility = getUsernameChangeEligibility(usernameChangedAt);
+  const isUsernameLocked =
+    Boolean(currentUsername) &&
+    !usernameEligibility.canChange &&
+    usernameEligibility.nextAllowedAt !== null;
 
   function addSkill(rawLabel: string) {
     const cleaned = rawLabel.trim();
@@ -488,7 +501,13 @@ export function ProfileCustomizerPanel({
             >
               @usuário na Comunidade Codit
             </label>
-            <div className="flex min-h-11 items-center rounded-xl border border-border bg-background px-3.5 focus-within:border-accent">
+            <div
+              className={`flex min-h-11 items-center rounded-xl border border-border px-3.5 ${
+                isUsernameLocked
+                  ? "cursor-not-allowed bg-surface-muted/60 opacity-80"
+                  : "bg-background focus-within:border-accent"
+              }`}
+            >
               <span
                 aria-hidden="true"
                 className="pr-1 font-mono text-sm text-muted"
@@ -499,7 +518,8 @@ export function ProfileCustomizerPanel({
                 id="codit-profile-username"
                 type="text"
                 maxLength={30}
-                value={draft.username}
+                disabled={isUsernameLocked}
+                value={isUsernameLocked ? currentUsername : draft.username}
                 onChange={(event) =>
                   onChangeDraft((current) => ({
                     ...current,
@@ -507,13 +527,38 @@ export function ProfileCustomizerPanel({
                   }))
                 }
                 placeholder="ex.: maria.dev"
-                className="w-full bg-transparent py-2.5 font-mono text-sm text-foreground focus:outline-none"
+                className="w-full bg-transparent py-2.5 font-mono text-sm text-foreground focus:outline-none disabled:cursor-not-allowed"
               />
             </div>
-            <p className="text-[11px] text-muted">
-              3–30 caracteres (letras minúsculas, números, ponto ou sublinhado)
-              para encontrarem você por @ na Comunidade.
-            </p>
+            {isUsernameLocked &&
+            usernameEligibility.nextAllowedAt &&
+            usernameEligibility.lastChangedAt ? (
+              <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-foreground">
+                Última alteração em{" "}
+                <strong>
+                  {formatDateTimePtBr(usernameEligibility.lastChangedAt)}
+                </strong>
+                . Você poderá alterar seu{" "}
+                <code className="font-mono">@usuário</code> novamente em{" "}
+                <strong>
+                  {formatDateTimePtBr(usernameEligibility.nextAllowedAt)}
+                </strong>{" "}
+                (faltam {usernameEligibility.remainingDays}{" "}
+                {usernameEligibility.remainingDays === 1 ? "dia" : "dias"}).
+              </p>
+            ) : usernameEligibility.isFirstDefinition ? (
+              <p className="text-[11px] text-muted">
+                Primeira definição liberada agora (3–30 caracteres: letras
+                minúsculas, números, ponto ou sublinhado). Após escolher seu
+                @usuário, novas alterações terão intervalo mínimo de 30 dias.
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted">
+                Alteração de @usuário liberada (3–30 caracteres: letras
+                minúsculas, números, ponto ou sublinhado). Após salvar um novo
+                @, a próxima mudança será liberada em 30 dias.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

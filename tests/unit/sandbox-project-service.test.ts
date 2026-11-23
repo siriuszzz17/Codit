@@ -6,6 +6,7 @@ import {
   listUserSandboxProjects,
   resolveDefaultRuntimeTarget,
   SandboxProjectConflictError,
+  SandboxProjectServiceError,
   softDeleteSandboxProject,
   updateSandboxProject,
 } from "@/modules/sandbox/sandbox-project-service";
@@ -56,7 +57,7 @@ describe("sandbox-project-service", () => {
       source_code: "print('Codit')",
     });
 
-    const single = vi.fn().mockResolvedValue({ data: row, error: null });
+    const single = vi.fn().mockResolvedValue({ data: row, error: null, status: 201 });
     const select = vi.fn().mockReturnValue({ single });
     const insert = vi.fn().mockReturnValue({ select });
 
@@ -100,7 +101,7 @@ describe("sandbox-project-service", () => {
       live_url: "https://react-app.codit.dev",
     });
 
-    const single = vi.fn().mockResolvedValue({ data: row, error: null });
+    const single = vi.fn().mockResolvedValue({ data: row, error: null, status: 201 });
     const select = vi.fn().mockReturnValue({ single });
     const insert = vi.fn().mockReturnValue({ select });
 
@@ -143,7 +144,7 @@ describe("sandbox-project-service", () => {
   it("enforces optimistic locking with version increment and throws SandboxProjectConflictError on stale version (RN-203)", async () => {
     const maybeSingleStale = vi
       .fn()
-      .mockResolvedValue({ data: null, error: null });
+      .mockResolvedValue({ data: null, error: null, status: 200 });
     const selectStale = vi
       .fn()
       .mockReturnValue({ maybeSingle: maybeSingleStale });
@@ -173,6 +174,99 @@ describe("sandbox-project-service", () => {
     expect(eqIdStale).toHaveBeenCalledWith("id", "proj-1");
     expect(eqUserStale).toHaveBeenCalledWith("user_id", "user-123");
     expect(eqVersionStale).toHaveBeenCalledWith("version", 2);
+  });
+
+  it("blocks cross-user mutations when session user does not match userId and preserves DB error metadata (RN-003)", async () => {
+    const mutateFn = vi.fn();
+    const crossUserClient = {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: { user: { id: "user-B" } } },
+          error: null,
+        }),
+      },
+      from: vi.fn().mockReturnValue({ insert: mutateFn, update: mutateFn }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      createSandboxProject("user-A", { title: "Projeto" }, crossUserClient),
+    ).rejects.toMatchObject({
+      name: "SandboxProjectServiceError",
+      code: "AUTH_USER_MISMATCH",
+    });
+
+    await expect(
+      updateSandboxProject(
+        "user-A",
+        "proj-1",
+        { title: "Invasão", expectedVersion: 1 },
+        crossUserClient,
+      ),
+    ).rejects.toMatchObject({
+      name: "SandboxProjectServiceError",
+      code: "AUTH_USER_MISMATCH",
+    });
+
+    await expect(
+      softDeleteSandboxProject("user-A", "proj-1", crossUserClient),
+    ).rejects.toMatchObject({
+      name: "SandboxProjectServiceError",
+      code: "AUTH_USER_MISMATCH",
+    });
+
+    expect(mutateFn).not.toHaveBeenCalled();
+
+    const expiredOrder = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "PGRST301", message: "JWT expired" },
+      status: 401,
+    });
+    const expiredClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            is: vi.fn().mockReturnValue({ order: expiredOrder }),
+          }),
+        }),
+      }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      listUserSandboxProjects("user-123", expiredClient),
+    ).rejects.toThrow("sessão expirou");
+
+    const grantMaybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "permission denied for table sandbox_projects" },
+      status: 401,
+    });
+    const grantClient = {
+      from: vi.fn().mockReturnValue({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                is: vi.fn().mockReturnValue({
+                  select: vi.fn().mockReturnValue({ maybeSingle: grantMaybeSingle }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      updateSandboxProject(
+        "user-123",
+        "proj-1",
+        { title: "Novo título", expectedVersion: 1 },
+        grantClient,
+      ),
+    ).rejects.toMatchObject({
+      name: "SandboxProjectServiceError",
+      isPermissionGrantMissing: true,
+    } satisfies Partial<SandboxProjectServiceError>);
   });
 
   it("gracefully falls back to Phase 2 columns when DB rejects extended language/columns and rehydrates pinned order", async () => {
@@ -227,15 +321,16 @@ describe("sandbox-project-service", () => {
           message:
             'new row for relation "sandbox_projects" violates check constraint "chk_sandbox_projects_language"',
         },
+        status: 400,
       })
-      .mockResolvedValueOnce({ data: legacyInsertedRow, error: null });
+      .mockResolvedValueOnce({ data: legacyInsertedRow, error: null, status: 201 });
 
     const selectAfterInsert = vi.fn().mockReturnValue({ single });
     const insert = vi.fn().mockReturnValue({ select: selectAfterInsert });
 
     const order = vi
       .fn()
-      .mockResolvedValue({ data: [legacyNormalRow, legacyInsertedRow], error: null });
+      .mockResolvedValue({ data: [legacyNormalRow, legacyInsertedRow], error: null, status: 200 });
     const isNotDeleted = vi.fn().mockReturnValue({ order });
     const eqUser = vi.fn().mockReturnValue({ is: isNotDeleted });
     const selectList = vi.fn().mockReturnValue({ eq: eqUser });
@@ -275,7 +370,7 @@ describe("sandbox-project-service", () => {
   it("performs soft delete scoped by user_id and non-deleted records", async () => {
     const maybeSingle = vi
       .fn()
-      .mockResolvedValue({ data: { id: "proj-1" }, error: null });
+      .mockResolvedValue({ data: { id: "proj-1" }, error: null, status: 200 });
     const select = vi.fn().mockReturnValue({ maybeSingle });
     const isNotDeleted = vi.fn().mockReturnValue({ select });
     const eqUser = vi.fn().mockReturnValue({ is: isNotDeleted });
@@ -304,11 +399,11 @@ describe("sandbox-project-service", () => {
       version: 2,
     });
 
-    const single = vi.fn().mockResolvedValue({ data: row, error: null });
+    const single = vi.fn().mockResolvedValue({ data: row, error: null, status: 201 });
     const insertSelect = vi.fn().mockReturnValue({ single });
     const insert = vi.fn().mockReturnValue({ select: insertSelect });
 
-    const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
+    const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null, status: 200 });
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle });
     const isNotDeleted = vi.fn().mockReturnValue({ select: updateSelect });
     const eqVersion = vi.fn().mockReturnValue({ is: isNotDeleted });

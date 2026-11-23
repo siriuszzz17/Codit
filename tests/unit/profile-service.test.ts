@@ -3,6 +3,7 @@ import type { CoditSupabaseClient } from "@/lib/supabase/client";
 import type { ProfileRow } from "@/lib/supabase/database.types";
 import {
   ensureProfile,
+  ProfileServiceError,
   ProfileValidationError,
   updateProfile,
 } from "@/modules/profiles/profile-service";
@@ -13,6 +14,7 @@ function createProfileRow(overrides: Partial<ProfileRow> = {}): ProfileRow {
     email: "aluno@codit.dev",
     full_name: "Aluno Codit",
     username: "aluno_codit",
+    username_changed_at: null,
     avatar_url: null,
     role: "student",
     bio: null,
@@ -40,7 +42,9 @@ describe("profile-service", () => {
 
   it("returns existing profile filtered by user id without issuing an extra upsert (RN-003)", async () => {
     const existing = createProfileRow();
-    const maybeSingle = vi.fn().mockResolvedValue({ data: existing, error: null });
+    const maybeSingle = vi
+      .fn()
+      .mockResolvedValue({ data: existing, error: null, status: 200 });
     const eq = vi.fn().mockReturnValue({ maybeSingle });
     const select = vi.fn().mockReturnValue({ eq });
     const upsert = vi.fn();
@@ -66,11 +70,15 @@ describe("profile-service", () => {
       avatar_url: "https://example.com/avatar.png",
     });
 
-    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const maybeSingle = vi
+      .fn()
+      .mockResolvedValue({ data: null, error: null, status: 200 });
     const selectEq = vi.fn().mockReturnValue({ maybeSingle });
     const select = vi.fn().mockReturnValue({ eq: selectEq });
 
-    const single = vi.fn().mockResolvedValue({ data: created, error: null });
+    const single = vi
+      .fn()
+      .mockResolvedValue({ data: created, error: null, status: 201 });
     const upsertSelect = vi.fn().mockReturnValue({ single });
     const upsert = vi.fn().mockReturnValue({ select: upsertSelect });
 
@@ -110,7 +118,9 @@ describe("profile-service", () => {
       bio: "Estudando Python e IA",
     });
 
-    const single = vi.fn().mockResolvedValue({ data: updated, error: null });
+    const single = vi
+      .fn()
+      .mockResolvedValue({ data: updated, error: null, status: 200 });
     const select = vi.fn().mockReturnValue({ single });
     const eq = vi.fn().mockReturnValue({ select });
     const update = vi.fn().mockReturnValue({ eq });
@@ -144,6 +154,7 @@ describe("profile-service", () => {
     const updateArg = update.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(updateArg).not.toHaveProperty("role");
     expect(updateArg).not.toHaveProperty("id");
+    expect(updateArg).not.toHaveProperty("username_changed_at");
     expect(saved.github_username).toBe("maria-dev");
   });
 
@@ -159,7 +170,9 @@ describe("profile-service", () => {
       show_email: true,
     });
 
-    const single = vi.fn().mockResolvedValue({ data: updated, error: null });
+    const single = vi
+      .fn()
+      .mockResolvedValue({ data: updated, error: null, status: 200 });
     const select = vi.fn().mockReturnValue({ single });
     const eq = vi.fn().mockReturnValue({ select });
     const update = vi.fn().mockReturnValue({ eq });
@@ -224,13 +237,16 @@ describe("profile-service", () => {
     expect(saved.accent_theme).toBe("cyan");
   });
 
-  it("normalizes and updates @username on profiles and rejects reserved or malformed handles", async () => {
+  it("normalizes and updates @username on profiles and enforces 30-day cooldown + anti-impersonation", async () => {
     const updated = createProfileRow({
       full_name: "Maria Oliveira",
       username: "maria.dev",
+      username_changed_at: new Date().toISOString(),
     });
 
-    const single = vi.fn().mockResolvedValue({ data: updated, error: null });
+    const single = vi
+      .fn()
+      .mockResolvedValue({ data: updated, error: null, status: 200 });
     const select = vi.fn().mockReturnValue({ single });
     const eq = vi.fn().mockReturnValue({ select });
     const update = vi.fn().mockReturnValue({ eq });
@@ -250,6 +266,18 @@ describe("profile-service", () => {
       ),
     ).rejects.toBeInstanceOf(ProfileValidationError);
 
+    await expect(
+      updateProfile(
+        "user-123",
+        {
+          fullName: "Maria Oliveira",
+          username: "codit_oficial",
+        },
+        mockClient,
+      ),
+    ).rejects.toBeInstanceOf(ProfileValidationError);
+
+    // 1ª definição imediata quando username_changed_at === null
     const saved = await updateProfile(
       "user-123",
       {
@@ -257,6 +285,12 @@ describe("profile-service", () => {
         username: "  @Maria.Dev ",
       },
       mockClient,
+      {
+        currentProfile: {
+          username: "aluno_codit",
+          username_changed_at: null,
+        },
+      },
     );
 
     expect(update).toHaveBeenCalledWith({
@@ -264,6 +298,148 @@ describe("profile-service", () => {
       username: "maria.dev",
     });
     expect(saved.username).toBe("maria.dev");
+
+    // Bloqueia nova mudança dentro de 30 dias
+    const recentIso = new Date(
+      Date.now() - 5 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    await expect(
+      updateProfile(
+        "user-123",
+        {
+          fullName: "Maria Oliveira",
+          username: "maria.novo",
+        },
+        mockClient,
+        {
+          currentProfile: {
+            username: "maria.dev",
+            username_changed_at: recentIso,
+          },
+        },
+      ),
+    ).rejects.toThrow("Próxima alteração liberada em");
+
+    // Permite editar bio/nome durante o cooldown omitindo username do payload
+    update.mockClear();
+    await updateProfile(
+      "user-123",
+      {
+        fullName: "Maria Oliveira",
+        username: "@Maria.Dev",
+        bio: "Nova bio",
+      },
+      mockClient,
+      {
+        currentProfile: {
+          username: "maria.dev",
+          username_changed_at: recentIso,
+        },
+      },
+    );
+    expect(update).toHaveBeenCalledWith({
+      full_name: "Maria Oliveira",
+      bio: "Nova bio",
+    });
+
+    // Libera nova mudança após 30 dias
+    update.mockClear();
+    const expiredCooldownIso = new Date(
+      Date.now() - 31 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await updateProfile(
+      "user-123",
+      {
+        fullName: "Maria Oliveira",
+        username: "maria.v2",
+      },
+      mockClient,
+      {
+        currentProfile: {
+          username: "maria.dev",
+          username_changed_at: expiredCooldownIso,
+        },
+      },
+    );
+    expect(update).toHaveBeenCalledWith({
+      full_name: "Maria Oliveira",
+      username: "maria.v2",
+    });
+  });
+
+  it("maps server-side DB cooldown (P0001), blocks cross-user updates, and exposes 42501 grant diagnostic", async () => {
+    const updateCrossUser = vi.fn();
+    const mismatchedClient = {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: { user: { id: "user-B" } } },
+          error: null,
+        }),
+      },
+      from: vi.fn().mockReturnValue({ update: updateCrossUser }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      updateProfile(
+        "user-A",
+        { fullName: "Atacante" },
+        mismatchedClient,
+      ),
+    ).rejects.toMatchObject({
+      name: "ProfileServiceError",
+      code: "AUTH_USER_MISMATCH",
+    });
+    expect(updateCrossUser).not.toHaveBeenCalled();
+
+    const singleCooldown = vi.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: "P0001",
+        message: "USERNAME_COOLDOWN_ACTIVE:2026-12-23T12:00:00Z",
+      },
+      status: 400,
+    });
+    const eqCooldown = vi
+      .fn()
+      .mockReturnValue({ select: vi.fn().mockReturnValue({ single: singleCooldown }) });
+    const serverCooldownClient = {
+      from: vi.fn().mockReturnValue({
+        update: vi.fn().mockReturnValue({ eq: eqCooldown }),
+      }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      updateProfile(
+        "user-123",
+        { fullName: "Aluno Codit", username: "outro.handle" },
+        serverCooldownClient,
+      ),
+    ).rejects.toThrow("Próxima alteração liberada em");
+
+    const singleGrantErr = vi.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: "42501",
+        message: "permission denied for table profiles",
+      },
+      status: 401,
+    });
+    const eqGrantErr = vi
+      .fn()
+      .mockReturnValue({ select: vi.fn().mockReturnValue({ single: singleGrantErr }) });
+    const grantErrClient = {
+      from: vi.fn().mockReturnValue({
+        update: vi.fn().mockReturnValue({ eq: eqGrantErr }),
+      }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      updateProfile("user-123", { fullName: "Aluno Codit" }, grantErrClient),
+    ).rejects.toMatchObject({
+      name: "ProfileServiceError",
+      isPermissionGrantMissing: true,
+    } satisfies Partial<ProfileServiceError>);
   });
 
   it("falls back to core profile update and local preferences when DB still uses Phase 2 schema", async () => {
@@ -297,8 +473,9 @@ describe("profile-service", () => {
           code: "PGRST204",
           message: "Could not find the 'banner_preset' column of 'profiles' in the schema cache",
         },
+        status: 400,
       })
-      .mockResolvedValueOnce({ data: coreRow, error: null });
+      .mockResolvedValueOnce({ data: coreRow, error: null, status: 200 });
 
     const select = vi.fn().mockReturnValue({ single });
     const eq = vi.fn().mockReturnValue({ select });

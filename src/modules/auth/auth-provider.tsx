@@ -151,10 +151,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         setSession(data.session);
-        setUser(data.session?.user ?? null);
 
-        if (data.session?.user) {
-          await syncUserProfile(data.session.user);
+        let activeSession = data.session;
+        const expiresAtMs = activeSession?.expires_at
+          ? activeSession.expires_at * 1000
+          : null;
+        const isExpiringOrExpired =
+          expiresAtMs !== null && expiresAtMs <= Date.now() + 30_000;
+        const browserOnline =
+          typeof navigator === "undefined" ? true : navigator.onLine;
+
+        if (activeSession && isExpiringOrExpired && browserOnline) {
+          const refreshed = await client.auth.refreshSession();
+          if (cancelled) {
+            return;
+          }
+          if (refreshed.error || !refreshed.data.session) {
+            await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+            setAuthError("Sua sessão expirou. Entre novamente para continuar.");
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setIsLoading(false);
+            return;
+          }
+          activeSession = refreshed.data.session;
+          setSession(activeSession);
+        }
+
+        setUser(activeSession?.user ?? null);
+
+        if (activeSession?.user) {
+          await syncUserProfile(activeSession.user);
         } else {
           setProfile(null);
         }

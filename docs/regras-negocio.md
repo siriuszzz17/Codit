@@ -51,6 +51,7 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
 
 - **`RN-001` — Autenticação Dupla (Tradicional + Google OAuth 2.0):**
   - O usuário pode cadastrar-se e autenticar com e-mail/senha ou via Google OAuth 2.0 (OIDC com `state` e PKCE).
+  - Contas locais criadas por e-mail/senha exigem confirmação do endereço de e-mail (suportando retorno via `?token_hash=...&type=signup` via `verifyOtp` para compatibilidade entre navegadores/dispositivos ou callback PKCE), com opção segura de reenvio protegida por intervalo mínimo (`60s`) e limite de tentativas (`3` em `15` minutos), além de detecção de e-mail já vinculado para evitar falso positivo no cadastro.
   - Contas Google-only iniciam com `password_hash = NULL` e podem definir senha local posteriormente mediante confirmação autenticada.
 - **`RN-002` — Vinculação Segura de Contas por E-mail:**
   - Uma conta Google só pode ser vinculada automaticamente a uma conta local existente com o mesmo e-mail quando **ambas** possuírem e-mail verificado (`email_verified === true`). Caso contrário, exige autenticação prévia na conta existente antes de vincular, evitando sequestro de conta (*account takeover*).
@@ -100,9 +101,10 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
 
 ### Módulo E — Comunidade Codit, Perfis `@`, Amizades e Projetos Compartilhados (`RN-401` a `RN-405`)
 
-- **`RN-401` — Identificador Público `@username` Sem Exposição de PII:**
-  - Todo perfil possui um `username` único normalizado em minúsculas (`[a-z0-9._]`, 3–30 caracteres, sem termos reservados).
-  - Buscas por `@usuário` ou nome consultam exclusivamente `public.public_profiles`, sem jamais expor `email` ou `role` de `public.profiles`.
+- **`RN-401` — Identificador Público `@username` Sem Exposição de PII e Intervalo de Alteração:**
+  - Todo perfil possui um `username` único normalizado em minúsculas (`[a-z0-9._]`, 3–30 caracteres, sem termos reservados nem combinações de impersonação como `codit_oficial` ou `octopy_admin`).
+  - A primeira definição personalizada de `@username` (`username_changed_at IS NULL`) é liberada imediatamente; alterações subsequentes exigem intervalo mínimo de **30 dias**, validado no frontend e no servidor/banco via trigger `normalize_profile_username()` (protegido contra adulteração de `username_changed_at`), exibindo ao usuário a próxima data liberada. Salvar outros dados do perfil sem mudar o `@` não aciona o cooldown.
+  - Buscas por `@usuário` ou nome consultam exclusivamente `public.public_profiles`, sem jamais expor `email`, `role` ou `username_changed_at` de `public.profiles`.
 - **`RN-402` — Amizade Bilateral com Integridade de Par Único:**
   - Solicitações de amizade exigem `requester_id = auth.uid()`, impedem auto-amizade e garantem unicidade simétrica por par `(LEAST, GREATEST)`.
   - Apenas o destinatário (`addressee_id`) pode aceitar um pedido `pending`, e apenas os participantes podem cancelar ou desfazer a amizade.

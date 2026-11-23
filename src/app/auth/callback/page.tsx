@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import {
   completeOAuthCallbackUrl,
+  isPkceVerifierMissingError,
   parseOAuthCallbackUrl,
 } from "@/lib/native-oauth";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -15,6 +16,9 @@ import { ensureProfile } from "@/modules/profiles/profile-service";
 export default function AuthCallbackPage() {
   const router = useRouter();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusTitle, setStatusTitle] = useState<string>(
+    "Finalizando seu login com segurança...",
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -25,6 +29,22 @@ export default function AuthCallbackPage() {
       const currentHref =
         typeof window !== "undefined" ? window.location.href : "";
       const parsedCallback = parseOAuthCallbackUrl(currentHref);
+
+      if (
+        typeof window !== "undefined" &&
+        (window.location.search || window.location.hash)
+      ) {
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname,
+        );
+      }
+
+      if (parsedCallback.kind === "token_hash") {
+        setStatusTitle("Confirmando seu e-mail com segurança...");
+      }
+
       if (parsedCallback.kind === "error") {
         if (!cancelled) {
           setErrorMessage(parsedCallback.message);
@@ -42,13 +62,46 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      // Token hash de e-mail sempre deve ser validado via verifyOtp, mesmo se
+      // houver estado prévio no navegador.
+      if (parsedCallback.kind === "token_hash") {
+        try {
+          const completed = await completeOAuthCallbackUrl(currentHref, client);
+          if (cancelled) {
+            return;
+          }
+          if (completed.user) {
+            try {
+              await ensureProfile(completed.user, client);
+            } catch {
+              // AuthProvider sincroniza em seguida se falhar aqui.
+            }
+            if (!cancelled) {
+              router.replace("/conta");
+            }
+            return;
+          }
+        } catch (callbackError) {
+          if (!cancelled) {
+            setErrorMessage(
+              callbackError instanceof Error
+                ? callbackError.message
+                : "Não foi possível confirmar seu e-mail. Solicite um novo link na tela de acesso.",
+            );
+          }
+          return;
+        }
+      }
+
       const { data, error } = await client.auth.getSession();
       if (cancelled) {
         return;
       }
 
       if (error) {
-        setErrorMessage(mapSupabaseAuthError(error));
+        setErrorMessage(
+          mapSupabaseAuthError(error, { operation: "callback.getSession" }),
+        );
         return;
       }
 
@@ -85,7 +138,27 @@ export default function AuthCallbackPage() {
             return;
           }
         } catch (callbackError) {
-          if (!cancelled) {
+          const fallbackSession = await client.auth.getSession();
+          if (cancelled) {
+            return;
+          }
+          if (fallbackSession.data.session?.user) {
+            try {
+              await ensureProfile(fallbackSession.data.session.user, client);
+            } catch {
+              // Não bloqueia redirecionamento.
+            }
+            if (!cancelled) {
+              router.replace("/conta");
+            }
+            return;
+          }
+
+          if (isPkceVerifierMissingError(callbackError)) {
+            setErrorMessage(
+              "Se você clicou no link de confirmação em outro navegador ou fora do app Codit, seu e-mail pode já estar confirmado. Volte para a tela de login e entre com seu e-mail e senha.",
+            );
+          } else {
             setErrorMessage(
               callbackError instanceof Error
                 ? callbackError.message
@@ -123,7 +196,7 @@ export default function AuthCallbackPage() {
       timeoutId = setTimeout(() => {
         if (!cancelled) {
           setErrorMessage(
-            "Não foi possível confirmar a sessão de retorno. Tente entrar novamente.",
+            "Não foi possível confirmar a sessão de retorno. Tente entrar novamente na tela de acesso.",
           );
         }
       }, 6000);
@@ -171,9 +244,7 @@ export default function AuthCallbackPage() {
         ) : (
           <div className="space-y-3">
             <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent" />
-            <h1 className="text-lg font-bold text-foreground">
-              Finalizando seu login com segurança...
-            </h1>
+            <h1 className="text-lg font-bold text-foreground">{statusTitle}</h1>
             <p className="text-sm text-muted">
               O Octopy está preparando seu perfil e seus mini-projetos no Codit.
             </p>

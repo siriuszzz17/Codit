@@ -80,6 +80,7 @@ export function CommunityHub() {
   const [socialError, setSocialError] = useState<string | null>(null);
   const [socialMessage, setSocialMessage] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
+  const [permissionGrantMissing, setPermissionGrantMissing] = useState(false);
   const [copiedOwnHandle, setCopiedOwnHandle] = useState(false);
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
 
@@ -113,15 +114,19 @@ export function CommunityHub() {
       return;
     }
 
-    const client = getSupabaseClient();
-    if (!client) {
-      return;
-    }
-
     let cancelled = false;
     const currentViewerId = user?.id ?? null;
 
     async function syncWorkspace() {
+      const client = getSupabaseClient();
+      if (!client) {
+        await Promise.resolve();
+        if (!cancelled) {
+          setInitialLoading(false);
+        }
+        return;
+      }
+
       try {
         const [projectsData, usersData, friendshipsData] = await Promise.all([
           listCommunityProjects(
@@ -130,15 +135,15 @@ export function CommunityHub() {
               scope: feedScopeRef.current,
               language: feedLanguageRef.current,
             },
-            client ?? undefined,
+            client,
           ),
           searchCommunityUsers(
             searchInputRef.current,
             { limit: 24 },
-            client ?? undefined,
+            client,
           ),
           currentViewerId
-            ? listUserFriendships(currentViewerId, client ?? undefined)
+            ? listUserFriendships(currentViewerId, client)
             : Promise.resolve(EMPTY_FRIENDSHIPS),
         ]);
 
@@ -151,12 +156,16 @@ export function CommunityHub() {
         setFriendshipsBundle(friendshipsData);
         setSocialError(null);
         setMigrationMissing(false);
+        setPermissionGrantMissing(false);
       } catch (error) {
         if (cancelled) {
           return;
         }
-        if (error instanceof SocialServiceError && error.isMigrationMissing) {
-          setMigrationMissing(true);
+        if (error instanceof SocialServiceError) {
+          setPermissionGrantMissing(error.isPermissionGrantMissing);
+          setMigrationMissing(
+            error.isMigrationMissing && !error.isPermissionGrantMissing,
+          );
         }
         setSocialError(
           error instanceof Error
@@ -199,9 +208,13 @@ export function CommunityHub() {
       );
       setFeedProjects(projectsData);
       setMigrationMissing(false);
+      setPermissionGrantMissing(false);
     } catch (error) {
-      if (error instanceof SocialServiceError && error.isMigrationMissing) {
-        setMigrationMissing(true);
+      if (error instanceof SocialServiceError) {
+        setPermissionGrantMissing(error.isPermissionGrantMissing);
+        setMigrationMissing(
+          error.isMigrationMissing && !error.isPermissionGrantMissing,
+        );
       }
       setSocialError(
         error instanceof Error
@@ -229,9 +242,13 @@ export function CommunityHub() {
       );
       setPeopleResults(usersData);
       setMigrationMissing(false);
+      setPermissionGrantMissing(false);
     } catch (error) {
-      if (error instanceof SocialServiceError && error.isMigrationMissing) {
-        setMigrationMissing(true);
+      if (error instanceof SocialServiceError) {
+        setPermissionGrantMissing(error.isPermissionGrantMissing);
+        setMigrationMissing(
+          error.isMigrationMissing && !error.isPermissionGrantMissing,
+        );
       }
       setSocialError(
         error instanceof Error
@@ -268,9 +285,13 @@ export function CommunityHub() {
       setFriendshipsBundle(friendshipsData);
       setFeedProjects(projectsData);
       setMigrationMissing(false);
+      setPermissionGrantMissing(false);
     } catch (error) {
-      if (error instanceof SocialServiceError && error.isMigrationMissing) {
-        setMigrationMissing(true);
+      if (error instanceof SocialServiceError) {
+        setPermissionGrantMissing(error.isPermissionGrantMissing);
+        setMigrationMissing(
+          error.isMigrationMissing && !error.isPermissionGrantMissing,
+        );
       }
       setSocialError(
         error instanceof Error
@@ -593,6 +614,44 @@ export function CommunityHub() {
           </div>
         ) : null}
 
+        {permissionGrantMissing ? (
+          <div
+            role="alert"
+            className="space-y-2.5 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-5 text-xs leading-relaxed text-foreground sm:text-sm"
+          >
+            <p className="font-bold">
+              Permissão de acesso às tabelas pendente no Supabase (código 42501)
+            </p>
+            <p className="text-muted">
+              As políticas RLS estão ativas, mas faltam os privilégios{" "}
+              <code className="font-mono text-foreground">
+                GRANT SELECT / INSERT / UPDATE / DELETE
+              </code>{" "}
+              nas tabelas sociais para os papéis{" "}
+              <code className="font-mono text-foreground">anon</code> e{" "}
+              <code className="font-mono text-foreground">authenticated</code>.
+            </p>
+            <p className="text-muted">
+              Execute o arquivo{" "}
+              <code className="font-mono text-foreground">
+                supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql
+              </code>{" "}
+              no <strong>SQL Editor</strong> do painel Supabase e recarregue.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void reloadFriendshipsAndFeed();
+                void runPeopleSearch(searchInput);
+              }}
+              disabled={!isConfigured || !isOnline}
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        ) : null}
+
         {migrationMissing ? (
           <div
             role="alert"
@@ -621,12 +680,23 @@ export function CommunityHub() {
           </div>
         ) : null}
 
-        {socialError && !migrationMissing ? (
+        {socialError && !migrationMissing && !permissionGrantMissing ? (
           <div
             role="alert"
-            className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs font-medium text-foreground sm:text-sm"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs font-medium text-foreground sm:text-sm"
           >
-            {socialError}
+            <p className="min-w-0 flex-1">{socialError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                void reloadFriendshipsAndFeed();
+                void runPeopleSearch(searchInput);
+              }}
+              disabled={!isConfigured || !isOnline}
+              className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : null}
 

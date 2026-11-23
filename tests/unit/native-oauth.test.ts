@@ -42,6 +42,74 @@ describe("native-oauth helpers", () => {
     if (errorParsed.kind === "error") {
       expect(errorParsed.message).toContain("expirou");
     }
+
+    const otpExpiredParsed = parseOAuthCallbackUrl(
+      "https://codit.app/auth/callback?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired",
+    );
+    expect(otpExpiredParsed.kind).toBe("error");
+    if (otpExpiredParsed.kind === "error") {
+      expect(otpExpiredParsed.code).toBe("otp_expired");
+      expect(otpExpiredParsed.message).toContain("link de confirmação expirou");
+    }
+
+    expect(
+      parseOAuthCallbackUrl(
+        "https://codit.app/auth/callback?token_hash=th_abc123&type=signup",
+      ),
+    ).toEqual({
+      kind: "token_hash",
+      tokenHash: "th_abc123",
+      type: "signup",
+    });
+
+    expect(
+      parseOAuthCallbackUrl(
+        "https://codit.app/auth/callback?token_hash=th_abc456&type=email",
+      ),
+    ).toEqual({
+      kind: "token_hash",
+      tokenHash: "th_abc456",
+      type: "email",
+    });
+  });
+
+  it("verifies token_hash confirmation links once via verifyOtp with deduplication", async () => {
+    resetProcessedOAuthCodesForTests();
+
+    const fakeSession = {
+      access_token: "token-otp",
+      user: { id: "user-otp", email: "confirmado@codit.dev" },
+    };
+
+    const verifyOtp = vi.fn().mockResolvedValue({
+      data: { session: fakeSession, user: fakeSession.user },
+      error: null,
+    });
+    const getSession = vi.fn().mockResolvedValue({
+      data: { session: fakeSession },
+      error: null,
+    });
+
+    const mockClient = {
+      auth: { verifyOtp, getSession },
+    } as unknown as CoditSupabaseClient;
+
+    const first = await completeOAuthCallbackUrl(
+      "https://codit.app/auth/callback?token_hash=th_once&type=signup",
+      mockClient,
+    );
+    const second = await completeOAuthCallbackUrl(
+      "https://codit.app/auth/callback?token_hash=th_once&type=signup",
+      mockClient,
+    );
+
+    expect(verifyOtp).toHaveBeenCalledTimes(1);
+    expect(verifyOtp).toHaveBeenCalledWith({
+      token_hash: "th_once",
+      type: "signup",
+    });
+    expect(first.user?.id).toBe("user-otp");
+    expect(second.user?.id).toBe("user-otp");
   });
 
   it("exchanges PKCE code once and deduplicates repeated callback deliveries", async () => {

@@ -10,9 +10,13 @@ import type {
   SandboxVisibility,
 } from "@/lib/supabase/database.types";
 import {
+  extractSupabaseErrorMeta,
+  isMissingDatabaseSchemaError,
   isSchemaMismatchError,
+  isTablePrivilegeError,
   mapSupabaseDatabaseError,
 } from "@/lib/supabase/errors";
+import { assertAuthenticatedUserMatches } from "@/lib/supabase/session-guard";
 import {
   getLanguageMeta,
   ORDERED_SANDBOX_LANGUAGES,
@@ -225,6 +229,13 @@ export type UpdateSandboxProjectInput = z.input<
   typeof updateSandboxProjectSchema
 >;
 
+export interface SandboxProjectServiceErrorDetails {
+  code?: string | undefined;
+  status?: number | null | undefined;
+  isPermissionGrantMissing?: boolean | undefined;
+  isMigrationMissing?: boolean | undefined;
+}
+
 export class SandboxProjectValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -242,10 +253,40 @@ export class SandboxProjectConflictError extends Error {
 }
 
 export class SandboxProjectServiceError extends Error {
-  constructor(message: string) {
+  readonly code?: string | undefined;
+  readonly status?: number | null | undefined;
+  readonly isPermissionGrantMissing: boolean;
+  readonly isMigrationMissing: boolean;
+
+  constructor(message: string, details?: SandboxProjectServiceErrorDetails) {
     super(message);
     this.name = "SandboxProjectServiceError";
+    this.code = details?.code;
+    this.status = details?.status ?? null;
+    this.isPermissionGrantMissing = Boolean(details?.isPermissionGrantMissing);
+    this.isMigrationMissing = Boolean(details?.isMigrationMissing);
   }
+}
+
+function toSandboxServiceError(
+  error: unknown,
+  status: number | null,
+  operation: string,
+): SandboxProjectServiceError {
+  const meta = extractSupabaseErrorMeta(error, { status });
+  return new SandboxProjectServiceError(
+    mapSupabaseDatabaseError(error, {
+      status: meta.status,
+      table: "sandbox_projects",
+      operation,
+    }),
+    {
+      code: meta.code || undefined,
+      status: meta.status,
+      isPermissionGrantMissing: isTablePrivilegeError(error),
+      isMigrationMissing: isMissingDatabaseSchemaError(error),
+    },
+  );
 }
 
 interface ProjectFallbackMeta {
@@ -414,7 +455,7 @@ export async function listUserSandboxProjects(
   userId: string,
   client: CoditSupabaseClient = requireSupabaseClient(),
 ): Promise<SandboxProjectRow[]> {
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("sandbox_projects")
     .select("*")
     .eq("user_id", userId)
@@ -422,7 +463,7 @@ export async function listUserSandboxProjects(
     .order("updated_at", { ascending: false });
 
   if (error) {
-    throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
+    throw toSandboxServiceError(error, status, "listUserSandboxProjects");
   }
 
   let fallbackMap = readProjectFallbackMap(userId);
@@ -461,7 +502,7 @@ export async function getUserSandboxProjectById(
   projectId: string,
   client: CoditSupabaseClient = requireSupabaseClient(),
 ): Promise<SandboxProjectRow | null> {
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("sandbox_projects")
     .select("*")
     .eq("id", projectId)
@@ -470,7 +511,7 @@ export async function getUserSandboxProjectById(
     .maybeSingle();
 
   if (error) {
-    throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
+    throw toSandboxServiceError(error, status, "getUserSandboxProjectById");
   }
 
   if (!data) {
@@ -496,6 +537,16 @@ export async function createSandboxProject(
       firstIssue?.message ?? "Dados inválidos para criar o mini-projeto.",
     );
   }
+
+  await assertAuthenticatedUserMatches(
+    userId,
+    client,
+    (message) =>
+      new SandboxProjectServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
 
   const runtimeTarget = resolveDefaultRuntimeTarget(
     parsed.data.primaryLanguage,
@@ -525,7 +576,7 @@ export async function createSandboxProject(
       : {}),
   };
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("sandbox_projects")
     .insert({
       ...corePayload,
@@ -539,7 +590,7 @@ export async function createSandboxProject(
   }
 
   if (!isSchemaMismatchError(error)) {
-    throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
+    throw toSandboxServiceError(error, status, "createSandboxProject");
   }
 
   // Fallback resiliente quando o banco remoto ainda está na migração Fase 2
@@ -557,8 +608,10 @@ export async function createSandboxProject(
     .single();
 
   if (fallbackInsert.error) {
-    throw new SandboxProjectServiceError(
-      mapSupabaseDatabaseError(fallbackInsert.error),
+    throw toSandboxServiceError(
+      fallbackInsert.error,
+      fallbackInsert.status,
+      "createSandboxProject.fallback",
     );
   }
 
@@ -594,6 +647,16 @@ export async function updateSandboxProject(
     );
   }
 
+  await assertAuthenticatedUserMatches(
+    userId,
+    client,
+    (message) =>
+      new SandboxProjectServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
   const nextLanguage = parsed.data.primaryLanguage;
   const coreUpdatePayload = {
     ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
@@ -628,7 +691,7 @@ export async function updateSandboxProject(
       : {}),
   };
 
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from("sandbox_projects")
     .update({
       ...coreUpdatePayload,
@@ -649,7 +712,7 @@ export async function updateSandboxProject(
   }
 
   if (!isSchemaMismatchError(error)) {
-    throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
+    throw toSandboxServiceError(error, status, "updateSandboxProject");
   }
 
   const legacyUpdatePayload = {
@@ -675,8 +738,10 @@ export async function updateSandboxProject(
     .maybeSingle();
 
   if (fallbackUpdate.error) {
-    throw new SandboxProjectServiceError(
-      mapSupabaseDatabaseError(fallbackUpdate.error),
+    throw toSandboxServiceError(
+      fallbackUpdate.error,
+      fallbackUpdate.status,
+      "updateSandboxProject.fallback",
     );
   }
 
@@ -735,7 +800,17 @@ export async function softDeleteSandboxProject(
   projectId: string,
   client: CoditSupabaseClient = requireSupabaseClient(),
 ): Promise<boolean> {
-  const { data, error } = await client
+  await assertAuthenticatedUserMatches(
+    userId,
+    client,
+    (message) =>
+      new SandboxProjectServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const { data, error, status } = await client
     .from("sandbox_projects")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", projectId)
@@ -745,7 +820,7 @@ export async function softDeleteSandboxProject(
     .maybeSingle();
 
   if (error) {
-    throw new SandboxProjectServiceError(mapSupabaseDatabaseError(error));
+    throw toSandboxServiceError(error, status, "softDeleteSandboxProject");
   }
 
   if (data !== null) {
