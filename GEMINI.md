@@ -22,7 +22,7 @@
 ## 4. Comandos Básicos
 - **Git / Worktrees (Orca):**
   - `git status -sb` · `git log -n 5 --oneline`
-  - Worktree principal (`master`): `C:/Users/gusta/orca/projects/TCC-Codit` — **nunca** execute `git checkout master` em worktrees secundários.
+  - Worktree principal (`master`): `<repo-root>` — **nunca** execute `git checkout master` em worktrees secundários.
   - Limpeza após merge: `orca worktree rm --worktree branch:<branch> --delete-branch`
   - Commits no padrão **Conventional Commits** (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`).
 - **Aplicação:** `npm run dev` · `npm run lint` · `npm run typecheck` · `npm run test` · `npm run build` · `npm run tauri:dev` · `npm run tauri:build` · `npm run android:sync` · `npm run android:open` · `migrate` `[Pendente — após fechamento de DEC-001]` (ver [docs/arquitetura.md](./docs/arquitetura.md)).

@@ -1,4 +1,5 @@
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
+import { logWarn } from "@/lib/logger";
 
 export interface DesktopUpdateInfo {
   version: string;
@@ -43,7 +44,8 @@ export async function checkForDesktopUpdate(): Promise<DesktopUpdateInfo | null>
     const { check } = await import("@tauri-apps/plugin-updater");
     const update = await check();
     return update ? mapUpdate(update) : null;
-  } catch {
+  } catch (error) {
+    logWarn("desktop_updater.check_failed", { error });
     return null;
   }
 }

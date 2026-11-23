@@ -29,15 +29,13 @@ Thumbs.db
 
 # Certificates / Deploy
 *.pem
+*.p12
+*.pfx
 .vercel
 
 # Environment variables (never commit real secrets)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.*.local
+.env.*
 !.env.example
 
 # Tauri (Desktop)
@@ -60,3 +58,7 @@ android/capacitor-cordova-android-plugins/
 *.aab
 *.keystore
 *.jks
+keystore.properties
+signing.properties
+google-services.json
+GoogleService-Info.plist

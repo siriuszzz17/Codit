@@ -48,22 +48,58 @@ const optionalNonEmptyString = z.preprocess(
   z.string().trim().min(1).optional(),
 );
 
-const baseEnvSchema = z.object({
-  NODE_ENV: z.preprocess(
-    emptyStringToUndefined,
-    z.enum(["development", "test", "production"]).default("development"),
-  ),
-  APP_BASE_URL: z.preprocess(
-    emptyStringToUndefined,
-    urlWithProtocols(["http:", "https:"], "APP_BASE_URL").default(
-      "http://localhost:3000",
+const baseEnvSchema = z
+  .object({
+    NODE_ENV: z.preprocess(
+      emptyStringToUndefined,
+      z.enum(["development", "test", "production"]).default("development"),
     ),
-  ),
-});
+    APP_BASE_URL: z.preprocess(
+      emptyStringToUndefined,
+      urlWithProtocols(["http:", "https:"], "APP_BASE_URL").default(
+        "http://localhost:3000",
+      ),
+    ),
+  })
+  .superRefine((data, ctx) => {
+    if (data.NODE_ENV === "production") {
+      const parsed = new URL(data.APP_BASE_URL);
+      if (parsed.protocol !== "https:") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["APP_BASE_URL"],
+          message: "APP_BASE_URL must use https: when NODE_ENV is production",
+        });
+      }
+    }
+  });
+
+const ALLOWED_PRODUCTION_SSL_MODES = new Set([
+  "require",
+  "verify-ca",
+  "verify-full",
+]);
 
 const databaseEnvSchema = z.object({
   DATABASE_URL: urlWithProtocols(["postgres:", "postgresql:"], "DATABASE_URL"),
 });
+
+function createDatabaseEnvSchema(isProduction: boolean) {
+  return databaseEnvSchema.superRefine((data, ctx) => {
+    if (!isProduction) {
+      return;
+    }
+    const sslMode = new URL(data.DATABASE_URL).searchParams.get("sslmode");
+    if (!sslMode || !ALLOWED_PRODUCTION_SSL_MODES.has(sslMode)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["DATABASE_URL"],
+        message:
+          "DATABASE_URL must specify sslmode=require, verify-ca, or verify-full in production",
+      });
+    }
+  });
+}
 
 const authEnvSchema = z
   .object({
@@ -95,31 +131,59 @@ const authEnvSchema = z
     }
   });
 
-const octopyEnvSchema = z.object({
-  AI_PROVIDER: z.enum(["gemini", "openai"], {
-    error: "AI_PROVIDER must be 'gemini' or 'openai'",
-  }),
-  AI_PROVIDER_API_KEY: z
-    .string({ error: "AI_PROVIDER_API_KEY is required" })
-    .trim()
-    .min(1, "AI_PROVIDER_API_KEY is required"),
-  AI_FALLBACK_PROVIDER: z.preprocess(
-    emptyStringToUndefined,
-    z.enum(["gemini", "openai"]).optional(),
-  ),
-  AI_FALLBACK_API_KEY: optionalNonEmptyString,
-});
+const octopyEnvSchema = z
+  .object({
+    AI_PROVIDER: z.enum(["gemini", "openai"], {
+      error: "AI_PROVIDER must be 'gemini' or 'openai'",
+    }),
+    AI_PROVIDER_API_KEY: z
+      .string({ error: "AI_PROVIDER_API_KEY is required" })
+      .trim()
+      .min(1, "AI_PROVIDER_API_KEY is required"),
+    AI_FALLBACK_PROVIDER: z.preprocess(
+      emptyStringToUndefined,
+      z.enum(["gemini", "openai"]).optional(),
+    ),
+    AI_FALLBACK_API_KEY: optionalNonEmptyString,
+  })
+  .superRefine((data, ctx) => {
+    const hasFallbackProvider = Boolean(data.AI_FALLBACK_PROVIDER);
+    const hasFallbackApiKey = Boolean(data.AI_FALLBACK_API_KEY);
 
-const remoteSandboxEnvSchema = z.object({
-  SANDBOX_API_URL: urlWithProtocols(["http:", "https:"], "SANDBOX_API_URL"),
-  SANDBOX_API_KEY: optionalNonEmptyString,
-});
+    if (hasFallbackProvider && !hasFallbackApiKey) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["AI_FALLBACK_API_KEY"],
+        message:
+          "AI_FALLBACK_API_KEY is required when AI_FALLBACK_PROVIDER is set",
+      });
+    }
+
+    if (!hasFallbackProvider && hasFallbackApiKey) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["AI_FALLBACK_PROVIDER"],
+        message:
+          "AI_FALLBACK_PROVIDER is required when AI_FALLBACK_API_KEY is set",
+      });
+    }
+  });
+
+function createRemoteSandboxEnvSchema(isProduction: boolean) {
+  const allowedProtocols = isProduction ? ["https:"] : ["http:", "https:"];
+  return z.object({
+    SANDBOX_API_URL: urlWithProtocols(allowedProtocols, "SANDBOX_API_URL"),
+    SANDBOX_API_KEY: optionalNonEmptyString,
+  });
+}
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
 export type DatabaseEnv = z.infer<typeof databaseEnvSchema>;
 export type AuthEnv = z.infer<typeof authEnvSchema>;
 export type OctopyEnv = z.infer<typeof octopyEnvSchema>;
-export type RemoteSandboxEnv = z.infer<typeof remoteSandboxEnvSchema>;
+export type RemoteSandboxEnv = z.infer<
+  ReturnType<typeof createRemoteSandboxEnvSchema>
+>;
 
 function parseEnv<Schema extends z.ZodType>(
   schema: Schema,
@@ -144,7 +208,8 @@ export function getBaseEnv(source: EnvSource = process.env): BaseEnv {
 export function requireDatabaseEnv(
   source: EnvSource = process.env,
 ): DatabaseEnv {
-  return parseEnv(databaseEnvSchema, source, "database");
+  const isProduction = (source.NODE_ENV ?? "").trim() === "production";
+  return parseEnv(createDatabaseEnvSchema(isProduction), source, "database");
 }
 
 export function requireAuthEnv(source: EnvSource = process.env): AuthEnv {
@@ -158,5 +223,10 @@ export function requireOctopyEnv(source: EnvSource = process.env): OctopyEnv {
 export function requireRemoteSandboxEnv(
   source: EnvSource = process.env,
 ): RemoteSandboxEnv {
-  return parseEnv(remoteSandboxEnvSchema, source, "remote-sandbox");
+  const isProduction = (source.NODE_ENV ?? "").trim() === "production";
+  return parseEnv(
+    createRemoteSandboxEnvSchema(isProduction),
+    source,
+    "remote-sandbox",
+  );
 }

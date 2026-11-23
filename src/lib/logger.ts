@@ -4,10 +4,22 @@ export type LogContext = Record<string, unknown>;
 
 const REDACTED_VALUE = "[REDACTED]";
 const SENSITIVE_KEY_PATTERN =
-  /password|secret|token|authorization|cookie|apikey|api_key/i;
+  /password|passwd|secret|token|authorization|cookie|set-cookie|apikey|api_key|x-api-key|session|jwt|bearer|credential|private_key|database_url|email/i;
+
+function sanitizeString(value: string): string {
+  return value
+    .replace(
+      /(postgres(?:ql)?|https?|redis|amqps?):\/\/[^/\s:@]+:[^/\s@]+@/gi,
+      "$1://[REDACTED]:[REDACTED]@",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
+}
 
 function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
   if (value === null || typeof value !== "object") {
+    if (typeof value === "string") {
+      return sanitizeString(value);
+    }
     if (typeof value === "bigint") {
       return value.toString();
     }
@@ -21,7 +33,7 @@ function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
   if (value instanceof Error) {
     return {
       name: value.name,
-      message: value.message,
+      message: sanitizeString(value.message),
     };
   }
 
