@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isNativeHandoffRoute } from "@/lib/native-oauth";
 import {
   getRuntimeSupabaseConfig,
   SupabaseConfigError,
@@ -22,13 +23,14 @@ export function getSupabaseClient(): CoditSupabaseClient | null {
   }
 
   const isBrowser = typeof window !== "undefined";
+  const detectSession = isBrowser && !isNativeHandoffRoute();
 
   cachedClient = createClient<Database>(config.url, config.anonKey, {
     auth: {
       flowType: "pkce",
       persistSession: isBrowser,
       autoRefreshToken: isBrowser,
-      detectSessionInUrl: isBrowser,
+      detectSessionInUrl: detectSession,
       storageKey: "codit-supabase-auth",
     },
   });

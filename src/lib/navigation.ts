@@ -75,5 +75,8 @@ export function shouldShowTopNavbar(
   pathname: string | null | undefined,
 ): boolean {
   const normalizedPath = normalizePathname(pathname);
-  return normalizedPath !== "/auth/callback";
+  return (
+    normalizedPath !== "/auth/callback" &&
+    normalizedPath !== "/auth/native-callback"
+  );
 }

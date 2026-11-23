@@ -16,6 +16,7 @@ import {
   closeCapacitorOAuthBrowser,
   completeOAuthCallbackUrl,
   isCapacitorNative,
+  isNativeHandoffPath,
   isSupportedNativeCallbackUrl,
   subscribeCapacitorOAuthCallback,
   subscribeDesktopOAuthCallback,
@@ -49,11 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     pathnameRef.current = pathname;
   }, [pathname]);
 
+  const skipAuthInit = isNativeHandoffPath(pathname);
   const configured = isSupabaseConfigured();
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(configured);
+  const [isLoading, setIsLoading] = useState<boolean>(
+    configured && !skipAuthInit,
+  );
   const [authError, setAuthError] = useState<string | null>(null);
 
   const syncUserProfile = useCallback(async (targetUser: User | null) => {
@@ -85,6 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (skipAuthInit) {
+      return;
+    }
+
     const client = getSupabaseClient();
     if (!client) {
       return;
@@ -102,6 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isCapacitorNative()) {
         await closeCapacitorOAuthBrowser();
       }
+
+      setIsLoading(true);
+      setAuthError(null);
 
       try {
         const result = await completeOAuthCallbackUrl(rawUrl, client);
@@ -126,6 +137,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ? error.message
               : "Não foi possível concluir o login externo.",
           );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
         }
       }
     }
@@ -244,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       unsubCapacitor();
       subscription.unsubscribe();
     };
-  }, [router, syncUserProfile]);
+  }, [router, skipAuthInit, syncUserProfile]);
 
   const refreshProfile = useCallback(async () => {
     return syncUserProfile(user);

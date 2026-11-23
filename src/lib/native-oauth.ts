@@ -7,6 +7,10 @@ import {
 } from "@/lib/supabase/errors";
 
 export const NATIVE_MOBILE_AUTH_CALLBACK_URL = "com.codit.app://auth/callback";
+export const NATIVE_HANDOFF_PATH = "/auth/native-callback";
+export const NATIVE_MOBILE_AUTH_BRIDGE_URL =
+  "https://codit-omega.vercel.app/auth/native-callback";
+export const ANDROID_APP_PACKAGE = "com.codit.app";
 export const DESKTOP_OAUTH_CALLBACK_EVENT = "codit://oauth-callback";
 
 export type AuthPlatform = "tauri" | "capacitor" | "web";
@@ -15,6 +19,30 @@ export interface DesktopOAuthPrepared {
   port: number;
   redirectUrl: string;
 }
+
+export interface NativeAppHandoffUrls {
+  customSchemeUrl: string;
+  androidIntentUrl: string;
+  hasAuthPayload: boolean;
+  errorMessage: string | null;
+}
+
+const ALLOWED_HANDOFF_QUERY_KEYS = [
+  "code",
+  "error",
+  "error_code",
+  "error_description",
+  "type",
+  "token_hash",
+] as const;
+
+const ALLOWED_HANDOFF_HASH_KEYS = [
+  "access_token",
+  "refresh_token",
+  "error",
+  "error_code",
+  "error_description",
+] as const;
 
 export type ParsedOAuthCallback =
   | { kind: "error"; code?: string | undefined; message: string }
@@ -49,6 +77,98 @@ export function isCapacitorNative(): boolean {
 
   const capacitor = (window as CapacitorWindow).Capacitor;
   return capacitor?.isNativePlatform?.() === true;
+}
+
+export function isNativeHandoffPath(pathname: string | null | undefined): boolean {
+  const normalized = (pathname ?? "").trim().replace(/\/+$/, "");
+  return normalized === NATIVE_HANDOFF_PATH;
+}
+
+export function isNativeHandoffRoute(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return isNativeHandoffPath(window.location.pathname);
+}
+
+export function isAndroidUserAgent(userAgent: string): boolean {
+  return /android/i.test(userAgent);
+}
+
+export function buildNativeAppCallbackUrls(rawUrl: string): NativeAppHandoffUrls {
+  const emptyResult: NativeAppHandoffUrls = {
+    customSchemeUrl: NATIVE_MOBILE_AUTH_CALLBACK_URL,
+    androidIntentUrl: `intent://auth/callback#Intent;scheme=com.codit.app;package=${ANDROID_APP_PACKAGE};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`,
+    hasAuthPayload: false,
+    errorMessage: null,
+  };
+
+  if (!rawUrl.trim()) {
+    return emptyResult;
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    const filteredQuery = new URLSearchParams();
+    for (const key of ALLOWED_HANDOFF_QUERY_KEYS) {
+      const value = parsed.searchParams.get(key)?.trim();
+      if (value) {
+        filteredQuery.set(key, value);
+      }
+    }
+
+    const incomingHash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+    const filteredHash = new URLSearchParams();
+    for (const key of ALLOWED_HANDOFF_HASH_KEYS) {
+      const value = incomingHash.get(key)?.trim();
+      if (value) {
+        filteredHash.set(key, value);
+      }
+    }
+
+    const queryString = filteredQuery.toString();
+    const hashString = filteredHash.toString();
+
+    const customSchemeUrl = `${NATIVE_MOBILE_AUTH_CALLBACK_URL}${queryString ? `?${queryString}` : ""}${hashString ? `#${hashString}` : ""}`;
+
+    const hasHashTokens =
+      filteredHash.has("access_token") && filteredHash.has("refresh_token");
+    const hasCode = filteredQuery.has("code");
+    const hasTokenHash = filteredQuery.has("token_hash");
+    const errorCode =
+      filteredQuery.get("error_code") || filteredHash.get("error_code") || "";
+    const rawError =
+      filteredQuery.get("error_description") ||
+      filteredHash.get("error_description") ||
+      filteredQuery.get("error") ||
+      filteredHash.get("error");
+
+    const errorMessage =
+      rawError || errorCode
+        ? mapSupabaseAuthError(
+            {
+              code: errorCode || undefined,
+              message: rawError ?? "",
+            },
+            { operation: "buildNativeAppCallbackUrls" },
+          )
+        : null;
+
+    const androidIntentUrl =
+      hasHashTokens && !hasCode && !hasTokenHash
+        ? customSchemeUrl
+        : `intent://auth/callback${queryString ? `?${queryString}` : ""}#Intent;scheme=com.codit.app;package=${ANDROID_APP_PACKAGE};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+
+    return {
+      customSchemeUrl,
+      androidIntentUrl,
+      hasAuthPayload:
+        hasCode || hasTokenHash || hasHashTokens || errorMessage !== null,
+      errorMessage,
+    };
+  } catch {
+    return emptyResult;
+  }
 }
 
 export function getAuthPlatform(): AuthPlatform {

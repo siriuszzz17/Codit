@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  NATIVE_MOBILE_AUTH_CALLBACK_URL,
+  NATIVE_MOBILE_AUTH_BRIDGE_URL,
   type AuthPlatform,
 } from "@/lib/native-oauth";
 import { coditUsernameSchema } from "@/modules/social/social-schemas";
@@ -85,7 +85,7 @@ export function resolveNativeMobileRedirectUrl(
   if (configured) {
     return configured.replace(/\/+$/, "");
   }
-  return NATIVE_MOBILE_AUTH_CALLBACK_URL;
+  return NATIVE_MOBILE_AUTH_BRIDGE_URL;
 }
 
 export function resolveEmailConfirmationRedirectUrl(options: {
