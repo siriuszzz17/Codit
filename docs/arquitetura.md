@@ -214,9 +214,13 @@ A mesma base TypeScript/React do Codit alimenta três canais de distribuição a
 - **Service Worker em WebViews nativas:** [service-worker-register.tsx](../src/components/pwa/service-worker-register.tsx) detecta `__TAURI_INTERNALS__` e `Capacitor.isNativePlatform()` para não registrar `sw.js` dentro dos apps `.exe` e `.apk`, evitando cache obsoleto sobre assets locais empacotados.
 - **Segurança de segredos em clientes empacotados:** assim como no navegador Web, variáveis sensíveis (`.env`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) **nunca** entram no bundle `out/`, no binário Tauri ou no APK Android; todas as chamadas autenticadas e de IA apontarão para o backend remoto via HTTPS.
 
-### Atualização Automática no Desktop (`tauri-plugin-updater`)
+### Atualização Automática Multiplataforma (Desktop Tauri + Android Capacitor)
+- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.1"`).
 - **Backend Rust (`src-tauri/`):** `Cargo.toml` inclui `tauri-plugin-updater = "2"` (somente alvos desktop) e `tauri-plugin-process = "2"`; `src-tauri/capabilities/default.json` concede `"updater:default"` e `"process:default"` à janela `main`; `src-tauri/src/lib.rs` ativa o plugin quando `plugins.updater.pubkey` estiver preenchida em `tauri.conf.json`.
-- **Cliente TypeScript:** [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` usando imports dinâmicos para futura UI de pop-up de atualização sem impactar o bundle Web/Android.
+- **Camada Cliente Unificada:**
+  - [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` via imports dinâmicos para desktop Windows.
+  - [app-updater.ts](../src/lib/app-updater.ts) unifica a detecção de versão (`parseSemver`, `isNewerVersion`, validação `zod` de `latest.json` e restrição de domínio oficial `https://github.com/siriuszzz17/Codit/releases/...`): no Windows usa o updater nativo do Tauri com barra de progresso; no Android usa `CapacitorHttp.get` nativo em `RELEASE_MANIFEST_URL` (evitando bloqueio de CORS no WebView sobre o `302` do GitHub) com fallback para a GitHub REST API (`https://api.github.com/repos/siriuszzz17/Codit/releases/latest`).
+  - [app-update-modal.tsx](../src/components/native/app-update-modal.tsx) (montado no [layout.tsx](../src/app/layout.tsx)) exibe pop-up acessível em `pt-BR` ao detectar versão superior (com download/instalação direta no Windows e link oficial para `.apk` no Android).
 - **Ativação de assinatura para release:**
   1. Gerar par de chaves Ed25519/minisign com `npx tauri signer generate -w ~/.tauri/codit.key`.
   2. Preencher `plugins.updater.pubkey` e ajustar `bundle.createUpdaterArtifacts: true` em [tauri.conf.json](../src-tauri/tauri.conf.json).
@@ -256,11 +260,11 @@ TCC-Codit/
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
 │   ├── app/                   # App Router (UI pt-BR, /offline, /api/v1/health)
-│   ├── components/            # Brand (OctopyBadge) e PWA (SW, Banner, Reload)
-│   └── lib/                   # env.ts, problem-details.ts, logger.ts, desktop-updater.ts
+│   ├── components/            # Brand (OctopyBadge), PWA (SW, Banner, Reload) e Native (AppUpdateModal)
+│   └── lib/                   # env.ts, problem-details.ts, logger.ts, desktop-updater.ts, app-updater.ts
 └── tests/
     ├── mocks/
-    └── unit/                  # Testes unitários Vitest (env, problem-details, health)
+    └── unit/                  # Testes unitários Vitest (env, problem-details, health, app-updater)
 ```
 
 ### Planejada (Expansão Fases 2–4)
