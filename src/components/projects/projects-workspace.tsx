@@ -539,7 +539,7 @@ export function ProjectsWorkspace() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
             <button
               type="button"
               onClick={() => void loadProjects(userId)}
@@ -615,7 +615,7 @@ export function ProjectsWorkspace() {
           <p className="text-xs font-semibold text-foreground">
             Criar rapidamente em:
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="codit-no-scrollbar flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
             {FEATURED_STUDIO_LANGUAGES.map((lang) => {
               const meta = getLanguageMeta(lang);
               return (
@@ -623,7 +623,7 @@ export function ProjectsWorkspace() {
                   key={lang}
                   type="button"
                   onClick={() => openNewProjectStudio(lang)}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-muted/50 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent hover:bg-accent-soft/40"
+                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-surface-muted/50 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent hover:bg-accent-soft/40"
                 >
                   <LanguageIcon language={lang} size={15} />
                   <span>{meta.label}</span>

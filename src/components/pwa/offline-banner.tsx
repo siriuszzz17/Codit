@@ -42,7 +42,7 @@ export function OfflineBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="border-b border-amber-500/40 bg-amber-500/15 px-4 py-2.5 text-center text-xs font-medium text-foreground sm:text-sm"
+      className="codit-safe-x border-b border-amber-500/40 bg-amber-500/15 px-4 py-2.5 text-center text-xs font-medium text-foreground sm:text-sm"
     >
       Você está sem conexão com a internet. Recursos que dependem do servidor
       aguardam reconexão automática.

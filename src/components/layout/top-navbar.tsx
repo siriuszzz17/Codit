@@ -33,13 +33,19 @@ const EMPTY_FRIENDSHIPS: UserFriendshipsBundle = {
   outgoingRequests: [],
 };
 
-function NavItemIcon({ icon }: { icon: NavIconKey }) {
+function NavItemIcon({
+  icon,
+  size = 16,
+}: {
+  icon: NavIconKey;
+  size?: number;
+}) {
   switch (icon) {
     case "home":
       return (
         <svg
-          width="16"
-          height="16"
+          width={size}
+          height={size}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -54,8 +60,8 @@ function NavItemIcon({ icon }: { icon: NavIconKey }) {
     case "projects":
       return (
         <svg
-          width="16"
-          height="16"
+          width={size}
+          height={size}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -71,8 +77,8 @@ function NavItemIcon({ icon }: { icon: NavIconKey }) {
     case "community":
       return (
         <svg
-          width="16"
-          height="16"
+          width={size}
+          height={size}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -89,8 +95,8 @@ function NavItemIcon({ icon }: { icon: NavIconKey }) {
     case "profile":
       return (
         <svg
-          width="16"
-          height="16"
+          width={size}
+          height={size}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -260,8 +266,8 @@ export function TopNavbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-border/80 bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6">
+      <header className="codit-safe-top codit-safe-x sticky top-0 z-40 border-b border-border/80 bg-surface/85 backdrop-blur-md">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6 md:h-16">
           {/* Identidade Codit */}
           <Link
             href="/"
@@ -316,7 +322,7 @@ export function TopNavbar() {
                   : "Gerenciar amizades"
               }
               title="Amizades"
-              className="relative inline-flex min-h-9 min-w-9 items-center justify-center rounded-xl border border-border bg-surface-muted/80 px-2.5 text-foreground transition-colors hover:border-accent hover:text-accent-strong"
+              className="relative inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border bg-surface-muted/80 px-2.5 text-foreground transition-colors hover:border-accent hover:text-accent-strong"
             >
               <svg
                 width="18"
@@ -347,12 +353,14 @@ export function TopNavbar() {
             <AuthHeaderControls />
           </div>
         </div>
+      </header>
 
-        {/* Navegação principal mobile */}
-        <nav
-          aria-label="Navegação móvel"
-          className="grid grid-cols-4 gap-1 border-t border-border/70 bg-surface/95 px-2 py-1.5 md:hidden"
-        >
+      {/* Navegação principal fixa inferior no mobile */}
+      <nav
+        aria-label="Navegação móvel"
+        className="codit-safe-bottom codit-safe-x fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-surface/95 backdrop-blur-md md:hidden"
+      >
+        <div className="grid grid-cols-4 gap-1 px-2 py-1.5">
           {PRIMARY_NAV_ITEMS.map((item) => {
             const active = isNavItemActive(pathname, item.href);
             return (
@@ -360,19 +368,25 @@ export function TopNavbar() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-10 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[11px] font-semibold transition-colors ${
+                className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[11px] font-semibold transition-colors ${
                   active
                     ? "bg-accent-soft text-accent-strong"
                     : "text-muted hover:text-foreground"
                 }`}
               >
-                <NavItemIcon icon={item.icon} />
+                {active ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 h-0.5 w-6 rounded-full bg-accent"
+                  />
+                ) : null}
+                <NavItemIcon icon={item.icon} size={18} />
                 <span className="truncate">{item.shortLabel}</span>
               </Link>
             );
           })}
-        </nav>
-      </header>
+        </div>
+      </nav>
 
       <FriendshipsDrawer
         isOpen={drawerOpen}

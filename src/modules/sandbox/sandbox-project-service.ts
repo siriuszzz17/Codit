@@ -593,17 +593,25 @@ export async function createSandboxProject(
     throw toSandboxServiceError(error, status, "createSandboxProject");
   }
 
-  // Fallback resiliente quando o banco remoto ainda está na migração Fase 2
+  // Fallback resiliente quando o banco remoto ainda está na migração Fase 2.
+  // Inclui os campos legados `language` e `code` (NOT NULL em instâncias não
+  // migradas) para evitar o erro 23502 de violação de NOT NULL.
   const legacyLanguage = toLegacySandboxLanguage(parsed.data.primaryLanguage);
   const legacyRuntime = resolveDefaultRuntimeTarget(legacyLanguage);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const legacyPayload: any = {
+    ...corePayload,
+    primary_language: legacyLanguage,
+    runtime_target: legacyRuntime,
+    // Colunas legadas NOT NULL sem default em schemas pré-Fase3
+    language: legacyLanguage,
+    code: corePayload.source_code ?? "",
+  };
+
   const fallbackInsert = await client
     .from("sandbox_projects")
-    .insert({
-      ...corePayload,
-      primary_language: legacyLanguage,
-      runtime_target: legacyRuntime,
-    })
+    .insert(legacyPayload)
     .select("*")
     .single();
 

@@ -448,7 +448,7 @@ export function AuthScreen() {
         {/* Painel de identidade Codit + Mascote Octopy */}
         <section
           aria-labelledby="octopy-welcome-title"
-          className="flex flex-col justify-between gap-6 rounded-2xl border border-border bg-surface p-5 shadow-xs sm:p-7"
+          className="order-2 flex flex-col justify-between gap-6 rounded-2xl border border-border bg-surface p-5 shadow-xs sm:p-7 lg:order-1"
         >
           <div className="space-y-5">
             <div className="flex items-center gap-4">
@@ -538,8 +538,26 @@ export function AuthScreen() {
         {/* Painel do formulário */}
         <section
           aria-label="Autenticação do aluno"
-          className="rounded-2xl border border-border bg-surface p-5 shadow-xs sm:p-7"
+          className="order-1 rounded-2xl border border-border bg-surface p-5 shadow-xs sm:p-7 lg:order-2"
         >
+          <div className="mb-4 flex items-center gap-3 border-b border-border pb-4 lg:hidden">
+            <OctopyBadge
+              size={44}
+              variant="happy"
+              decorative={false}
+              className="shrink-0 rounded-xl shadow-xs"
+            />
+            <div className="min-w-0">
+              <span className="inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent-strong">
+                Codit · Tutor Octopy
+              </span>
+              <h2 className="mt-0.5 text-base font-bold tracking-tight text-foreground">
+                {mode === "login"
+                  ? "Entrar no Codit"
+                  : "Criar conta no Codit"}
+              </h2>
+            </div>
+          </div>
           {!isConfigured ? (
             <div
               role="status"
@@ -764,7 +782,7 @@ export function AuthScreen() {
                             ? "codit-auth-fullname-error"
                             : undefined
                         }
-                        className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                        className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
                       />
                       {fieldErrors.fullName ? (
                         <p
@@ -804,7 +822,7 @@ export function AuthScreen() {
                               ? "codit-auth-username-error"
                               : "codit-auth-username-hint"
                           }
-                          className="w-full bg-transparent py-2.5 font-mono text-sm text-foreground placeholder:text-muted focus:outline-none"
+                          className="w-full bg-transparent py-2.5 font-mono text-base text-foreground placeholder:text-muted focus:outline-none sm:text-sm"
                         />
                       </div>
                       {!fieldErrors.username ? (
@@ -847,7 +865,7 @@ export function AuthScreen() {
                     aria-describedby={
                       fieldErrors.email ? "codit-auth-email-error" : undefined
                     }
-                    className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                    className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
                   />
                   {fieldErrors.email ? (
                     <p
@@ -897,7 +915,7 @@ export function AuthScreen() {
                           ? "codit-auth-password-hint"
                           : undefined
                     }
-                    className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                    className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
                   />
                   {mode === "signup" && !fieldErrors.password ? (
                     <p
@@ -941,7 +959,7 @@ export function AuthScreen() {
                           ? "codit-auth-confirm-password-error"
                           : undefined
                       }
-                      className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                      className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
                     />
                     {fieldErrors.confirmPassword ? (
                       <p

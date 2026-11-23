@@ -97,7 +97,7 @@ const NEXT_MILESTONES: ReadonlyArray<{ phase: string; title: string }> = [
 
 export default function HomePage() {
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-6 sm:gap-10 sm:px-6 sm:py-10">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-5 sm:gap-10 sm:px-6 sm:py-10">
       <main className="space-y-8 sm:space-y-10">
         {/* Hero principal */}
         <section
@@ -124,10 +124,10 @@ export default function HomePage() {
                 destravar seu raciocínio sem entregar respostas prontas logo de
                 cara.
               </p>
-              <div className="flex flex-wrap items-center gap-2.5 pt-2">
+              <div className="grid grid-cols-2 gap-2.5 pt-2 sm:flex sm:flex-wrap sm:items-center">
                 <Link
                   href="/auth?mode=signup"
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                  className="col-span-2 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:w-auto"
                 >
                   Começar agora
                 </Link>

@@ -155,9 +155,16 @@ export function isSchemaMismatchError(error: unknown): boolean {
   const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
   const codeUpper = code.toUpperCase();
 
+  // 23502 = NOT NULL violation em colunas legadas (language / code) que ainda
+  // existem sem default em instâncias Supabase não migradas para a Fase 3+.
+  const isLegacyNotNullViolation =
+    codeUpper === "23502" &&
+    (combinedLower.includes("language") || combinedLower.includes('"code"'));
+
   return (
     codeUpper === "42703" ||
     codeUpper === "PGRST204" ||
+    isLegacyNotNullViolation ||
     combinedLower.includes("schema cache") ||
     combinedLower.includes("could not find the") ||
     combinedLower.includes("chk_sandbox_projects_language")

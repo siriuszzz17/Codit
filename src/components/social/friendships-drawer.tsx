@@ -70,6 +70,9 @@ export function FriendshipsDrawer({
       return;
     }
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         onClose();
@@ -78,6 +81,7 @@ export function FriendshipsDrawer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, onClose]);
@@ -290,9 +294,9 @@ export function FriendshipsDrawer({
     >
       <div aria-hidden="true" onClick={onClose} className="fixed inset-0" />
 
-      <aside className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-surface shadow-2xl">
+      <aside className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-surface shadow-2xl">
         {/* Cabeçalho do painel */}
-        <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
+        <div className="codit-safe-top flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span
@@ -331,14 +335,14 @@ export function FriendshipsDrawer({
             type="button"
             onClick={onClose}
             aria-label="Fechar painel de amizades"
-            className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-muted px-3 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+            className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-muted px-3 text-xs font-semibold text-foreground transition-colors hover:border-accent"
           >
             Fechar
           </button>
         </div>
 
         {/* Conteúdo rolável */}
-        <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+        <div className="codit-safe-bottom flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
           {!userId ? (
             <div className="space-y-4 rounded-2xl border border-border bg-surface-muted/45 p-6 text-center">
               <div className="flex justify-center">
@@ -772,7 +776,7 @@ export function FriendshipsDrawer({
                         handlePeopleSearchChange(event.target.value)
                       }
                       placeholder="Buscar por @usuário ou nome..."
-                      className="min-h-10 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
+                      className="min-h-10 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
                     />
                     <button
                       type="submit"

@@ -74,6 +74,9 @@ export function ProjectViewerModal({
   const loadingComments = loadedProjectId !== project.id;
 
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         onClose();
@@ -82,6 +85,7 @@ export function ProjectViewerModal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
@@ -318,7 +322,7 @@ export function ProjectViewerModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="codit-project-modal-title"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-0 backdrop-blur-xs sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 px-0 pb-0 pt-[max(0.75rem,var(--codit-safe-top))] backdrop-blur-xs sm:items-center sm:p-4"
     >
       <div
         aria-hidden="true"
@@ -327,6 +331,10 @@ export function ProjectViewerModal({
       />
 
       <div className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-border bg-surface shadow-xl sm:rounded-2xl">
+        <div
+          aria-hidden="true"
+          className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border sm:hidden"
+        />
         {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-3 border-b border-border p-4 sm:p-5">
           <div className="min-w-0 space-y-2">
@@ -384,7 +392,7 @@ export function ProjectViewerModal({
         </div>
 
         {/* Corpo rolável */}
-        <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
+        <div className="codit-safe-bottom flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
           {project.description ? (
             <p className="text-sm leading-relaxed text-muted">
               {project.description}
@@ -556,7 +564,7 @@ export function ProjectViewerModal({
                   value={commentInput}
                   onChange={(event) => setCommentInput(event.target.value)}
                   placeholder="Deixe um feedback construtivo ou elogio sobre este código..."
-                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-base text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
                 />
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] text-muted">

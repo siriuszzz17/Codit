@@ -133,10 +133,10 @@ export function ProfileHeroCard({
             )}
           </div>
 
-          <div className="hidden items-center justify-end sm:flex">
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-black/40 px-2.5 py-1.5 text-white backdrop-blur-xs">
+          <div className="flex items-center justify-end">
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-black/40 px-2.5 py-1 text-white backdrop-blur-xs sm:py-1.5">
               <OctopyBadge
-                size={26}
+                size={24}
                 variant={profile.octopy_companion}
                 className="rounded-lg"
               />
@@ -144,7 +144,9 @@ export function ProfileHeroCard({
                 <p className="text-[11px] font-semibold">
                   Octopy · {companion.label}
                 </p>
-                <p className="text-[10px] text-white/75">{companion.tagline}</p>
+                <p className="hidden text-[10px] text-white/75 sm:block">
+                  {companion.tagline}
+                </p>
               </div>
             </div>
           </div>
@@ -184,11 +186,11 @@ export function ProfileHeroCard({
               )}
             </div>
 
-            <div className="pb-1 pt-2 sm:pt-12">
+            <div className="min-w-0 pb-1 pt-2 sm:pt-12">
               <div className="flex flex-wrap items-center gap-2">
                 <h1
                   id="profile-section-title"
-                  className="text-xl font-bold tracking-tight text-foreground sm:text-2xl"
+                  className="break-words text-xl font-bold tracking-tight text-foreground sm:text-2xl"
                 >
                   {profile.full_name || "Estudante Codit"}
                 </h1>
@@ -215,7 +217,7 @@ export function ProfileHeroCard({
           </div>
 
           {/* Ações rápidas do perfil */}
-          <div className="flex flex-wrap items-center gap-2 sm:pb-1">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:pb-1">
             <Link
               href="/projetos"
               className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"

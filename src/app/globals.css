@@ -15,6 +15,26 @@
     sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular,
     Menlo, Monaco, Consolas, monospace;
+  --safe-area-inset-top: 0px;
+  --safe-area-inset-right: 0px;
+  --safe-area-inset-bottom: 0px;
+  --safe-area-inset-left: 0px;
+  --codit-safe-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--safe-area-inset-top, 0px)
+  );
+  --codit-safe-right: max(
+    env(safe-area-inset-right, 0px),
+    var(--safe-area-inset-right, 0px)
+  );
+  --codit-safe-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--safe-area-inset-bottom, 0px)
+  );
+  --codit-safe-left: max(
+    env(safe-area-inset-left, 0px),
+    var(--safe-area-inset-left, 0px)
+  );
 }
 
 @media (prefers-color-scheme: dark) {
@@ -55,7 +75,56 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+.codit-safe-top {
+  padding-top: var(--codit-safe-top);
+}
+
+.codit-safe-bottom {
+  padding-bottom: var(--codit-safe-bottom);
+}
+
+.codit-safe-x {
+  padding-left: var(--codit-safe-left);
+  padding-right: var(--codit-safe-right);
+}
+
+.codit-safe-modal {
+  padding-top: calc(0.75rem + var(--codit-safe-top));
+  padding-right: calc(0.75rem + var(--codit-safe-right));
+  padding-bottom: calc(0.75rem + var(--codit-safe-bottom));
+  padding-left: calc(0.75rem + var(--codit-safe-left));
+}
+
+.codit-mobile-nav-clearance {
+  padding-bottom: calc(5.25rem + var(--codit-safe-bottom));
+}
+
+@media (min-width: 768px) {
+  .codit-mobile-nav-clearance {
+    padding-bottom: var(--codit-safe-bottom);
+  }
+}
+
+.codit-no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.codit-no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .codit-app-shell {

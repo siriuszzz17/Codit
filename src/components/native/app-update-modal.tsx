@@ -165,7 +165,7 @@ export function AppUpdateModal() {
       aria-modal="true"
       aria-labelledby="codit-update-title"
       aria-describedby="codit-update-description"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-xs sm:items-center"
+      className="codit-safe-modal fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs sm:items-center"
     >
       <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-xl sm:p-6">
         <div className="flex items-start gap-3">

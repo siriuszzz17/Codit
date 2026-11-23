@@ -4,7 +4,7 @@ import { ReloadButton } from "@/components/pwa/reload-button";
 
 export default function OfflinePage() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col items-center justify-center px-4 py-10 text-center">
+    <main className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-lg flex-col items-center justify-center px-4 py-8 text-center">
       <div className="w-full space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-xs sm:p-8">
         <div className="flex justify-center">
           <OctopyBadge size={64} decorative={false} />
