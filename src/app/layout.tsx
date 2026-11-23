@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { AppUpdateModal } from "@/components/native/app-update-modal";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import "./globals.css";
@@ -52,6 +53,7 @@ export default function RootLayout({
       <body className="min-h-dvh bg-background text-foreground antialiased">
         <ServiceWorkerRegister />
         <OfflineBanner />
+        <AppUpdateModal />
         {children}
       </body>
     </html>
