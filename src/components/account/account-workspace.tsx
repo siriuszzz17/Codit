@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import {
+  formatDatePtBr,
+  SANDBOX_LANGUAGE_LABELS,
+  SANDBOX_VISIBILITY_LABELS,
+} from "@/components/social/social-labels";
+import { UserAvatar } from "@/components/social/user-avatar";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type {
   SandboxLanguage,
@@ -20,40 +26,6 @@ import {
   updateSandboxProject,
 } from "@/modules/sandbox/sandbox-project-service";
 
-const LANGUAGE_LABELS: Record<SandboxLanguage, string> = {
-  html_css_js: "HTML / CSS / JS",
-  python: "Python",
-  javascript: "JavaScript",
-  typescript: "TypeScript",
-};
-
-const VISIBILITY_LABELS: Record<SandboxVisibility, string> = {
-  private: "Privado",
-  unlisted: "Não listado",
-  public_portfolio: "Portfólio público",
-};
-
-function formatDatePtBr(isoDate: string): string {
-  const parsed = Date.parse(isoDate);
-  if (Number.isNaN(parsed)) {
-    return "Agora";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(parsed);
-}
-
-function getInitials(name: string | undefined, email: string | undefined): string {
-  const source = (name || email || "C").trim();
-  const parts = source.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
-  }
-  return source.slice(0, 2).toUpperCase();
-}
-
 export function AccountWorkspace() {
   const isOnline = useIsOnline();
   const { user, profile, isLoading, isConfigured, authError, refreshProfile, signOut } =
@@ -62,6 +34,7 @@ export function AccountWorkspace() {
   // Estado do formulário de perfil (`profiles`)
   const [profileFormOverride, setProfileFormOverride] = useState<{
     fullName: string;
+    username: string;
     githubUsername: string;
     bio: string;
   } | null>(null);
@@ -97,6 +70,8 @@ export function AccountWorkspace() {
     profile?.full_name ??
     (user?.user_metadata?.full_name as string | undefined) ??
     "";
+  const activeUsername =
+    profileFormOverride?.username ?? profile?.username ?? "";
   const activeGithubUsername =
     profileFormOverride?.githubUsername ?? profile?.github_username ?? "";
   const activeBio = profileFormOverride?.bio ?? profile?.bio ?? "";
@@ -193,6 +168,7 @@ export function AccountWorkspace() {
         user.id,
         {
           fullName: activeFullName,
+          username: activeUsername,
           githubUsername: activeGithubUsername,
           bio: activeBio,
         },
@@ -427,7 +403,13 @@ export function AccountWorkspace() {
           </div>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/comunidade"
+            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-accent-soft px-3.5 py-2 text-xs font-semibold text-accent-strong transition-colors hover:border-accent sm:text-sm"
+          >
+            Comunidade
+          </Link>
           <Link
             href="/"
             className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent sm:text-sm"
@@ -461,9 +443,12 @@ export function AccountWorkspace() {
         >
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-sm font-bold text-accent-strong">
-                {getInitials(profile?.full_name, user.email)}
-              </div>
+              <UserAvatar
+                name={profile?.full_name ?? user.email ?? "Estudante Codit"}
+                username={profile?.username}
+                avatarUrl={profile?.avatar_url}
+                size="md"
+              />
               <div>
                 <h1
                   id="profile-section-title"
@@ -471,13 +456,30 @@ export function AccountWorkspace() {
                 >
                   Meu Perfil
                 </h1>
-                <p className="text-xs text-muted">{user.email}</p>
+                <p className="text-xs text-muted">
+                  {user.email}
+                  {profile?.username ? (
+                    <span className="ml-2 font-mono font-semibold text-accent-strong">
+                      @{profile.username}
+                    </span>
+                  ) : null}
+                </p>
               </div>
             </div>
 
-            <span className="inline-flex items-center rounded-full border border-border bg-surface-muted px-3 py-1 text-xs font-semibold text-accent-strong">
-              Papel: {profile?.role === "admin" ? "Admin" : "Estudante"}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {profile?.username ? (
+                <Link
+                  href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
+                  className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
+                >
+                  Ver meu perfil (@{profile.username})
+                </Link>
+              ) : null}
+              <span className="inline-flex items-center rounded-full border border-border bg-surface-muted px-3 py-1 text-xs font-semibold text-accent-strong">
+                Papel: {profile?.role === "admin" ? "Admin" : "Estudante"}
+              </span>
+            </div>
           </div>
 
           <form
@@ -498,6 +500,7 @@ export function AccountWorkspace() {
                 onChange={(event) =>
                   setProfileFormOverride({
                     fullName: event.target.value,
+                    username: activeUsername,
                     githubUsername: activeGithubUsername,
                     bio: activeBio,
                   })
@@ -505,6 +508,39 @@ export function AccountWorkspace() {
                 placeholder="Seu nome"
                 className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="codit-profile-username"
+                className="block text-xs font-semibold text-foreground"
+              >
+                @usuário no Codit
+              </label>
+              <div className="flex min-h-11 items-center rounded-xl border border-border bg-background px-3.5 focus-within:border-accent">
+                <span aria-hidden="true" className="pr-1 font-mono text-sm text-muted">
+                  @
+                </span>
+                <input
+                  id="codit-profile-username"
+                  type="text"
+                  value={activeUsername}
+                  onChange={(event) =>
+                    setProfileFormOverride({
+                      fullName: activeFullName,
+                      username: event.target.value,
+                      githubUsername: activeGithubUsername,
+                      bio: activeBio,
+                    })
+                  }
+                  placeholder="ex.: maria.dev"
+                  className="w-full bg-transparent py-2.5 font-mono text-sm text-foreground focus:outline-none"
+                />
+              </div>
+              <p className="text-[11px] text-muted">
+                Usado para amigos encontrarem você na Comunidade (letras
+                minúsculas, números, ponto ou sublinhado).
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -521,6 +557,7 @@ export function AccountWorkspace() {
                 onChange={(event) =>
                   setProfileFormOverride({
                     fullName: activeFullName,
+                    username: activeUsername,
                     githubUsername: event.target.value,
                     bio: activeBio,
                   })
@@ -544,6 +581,7 @@ export function AccountWorkspace() {
                 onChange={(event) =>
                   setProfileFormOverride({
                     fullName: activeFullName,
+                    username: activeUsername,
                     githubUsername: activeGithubUsername,
                     bio: event.target.value,
                   })
@@ -653,7 +691,7 @@ export function AccountWorkspace() {
                     }
                     className="min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
                   >
-                    {Object.entries(LANGUAGE_LABELS).map(([key, label]) => (
+                    {Object.entries(SANDBOX_LANGUAGE_LABELS).map(([key, label]) => (
                       <option key={key} value={key}>
                         {label}
                       </option>
@@ -678,7 +716,7 @@ export function AccountWorkspace() {
                     }
                     className="min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
                   >
-                    {Object.entries(VISIBILITY_LABELS).map(([key, label]) => (
+                    {Object.entries(SANDBOX_VISIBILITY_LABELS).map(([key, label]) => (
                       <option key={key} value={key}>
                         {label}
                       </option>
@@ -686,6 +724,12 @@ export function AccountWorkspace() {
                   </select>
                 </div>
               </div>
+
+              <p className="text-[11px] text-muted">
+                Projetos em <strong>Portfólio público</strong> aparecem para toda
+                a Comunidade; <strong>Somente amigos</strong> fica visível apenas
+                para seus amigos aceitos.
+              </p>
 
               <div className="space-y-1.5">
                 <label
@@ -803,10 +847,10 @@ export function AccountWorkspace() {
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
                       <span className="rounded-md border border-border bg-surface px-2 py-0.5 font-medium text-foreground">
-                        {LANGUAGE_LABELS[project.primary_language]}
+                        {SANDBOX_LANGUAGE_LABELS[project.primary_language]}
                       </span>
                       <span className="rounded-md border border-border bg-surface px-2 py-0.5">
-                        {VISIBILITY_LABELS[project.visibility]}
+                        {SANDBOX_VISIBILITY_LABELS[project.visibility]}
                       </span>
                       <span>
                         Atualizado em {formatDatePtBr(project.updated_at)}

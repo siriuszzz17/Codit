@@ -32,10 +32,18 @@ export function AuthHeaderControls() {
 
   if (isLoading) {
     return (
-      <div
-        aria-hidden="true"
-        className="h-9 w-28 animate-pulse rounded-full border border-border bg-surface-muted"
-      />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href="/comunidade"
+          className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+        >
+          Comunidade
+        </Link>
+        <div
+          aria-hidden="true"
+          className="h-9 w-28 animate-pulse rounded-full border border-border bg-surface-muted"
+        />
+      </div>
     );
   }
 
@@ -47,6 +55,12 @@ export function AuthHeaderControls() {
 
     return (
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href="/comunidade"
+          className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+        >
+          Comunidade
+        </Link>
         <Link
           href="/conta"
           className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-accent-soft px-3.5 py-1.5 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
@@ -71,6 +85,12 @@ export function AuthHeaderControls() {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      <Link
+        href="/comunidade"
+        className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+      >
+        Comunidade
+      </Link>
       <Link
         href="/auth"
         className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"

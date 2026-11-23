@@ -12,6 +12,7 @@ function createProfileRow(overrides: Partial<ProfileRow> = {}): ProfileRow {
     id: "user-123",
     email: "aluno@codit.dev",
     full_name: "Aluno Codit",
+    username: "aluno_codit",
     avatar_url: null,
     role: "student",
     bio: null,
@@ -130,5 +131,47 @@ describe("profile-service", () => {
     expect(updateArg).not.toHaveProperty("role");
     expect(updateArg).not.toHaveProperty("id");
     expect(saved.github_username).toBe("maria-dev");
+  });
+
+  it("normalizes and updates @username on profiles and rejects reserved or malformed handles", async () => {
+    const updated = createProfileRow({
+      full_name: "Maria Oliveira",
+      username: "maria.dev",
+    });
+
+    const single = vi.fn().mockResolvedValue({ data: updated, error: null });
+    const select = vi.fn().mockReturnValue({ single });
+    const eq = vi.fn().mockReturnValue({ select });
+    const update = vi.fn().mockReturnValue({ eq });
+
+    const mockClient = {
+      from: vi.fn().mockReturnValue({ update }),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      updateProfile(
+        "user-123",
+        {
+          fullName: "Maria Oliveira",
+          username: "admin",
+        },
+        mockClient,
+      ),
+    ).rejects.toBeInstanceOf(ProfileValidationError);
+
+    const saved = await updateProfile(
+      "user-123",
+      {
+        fullName: "Maria Oliveira",
+        username: "  @Maria.Dev ",
+      },
+      mockClient,
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      full_name: "Maria Oliveira",
+      username: "maria.dev",
+    });
+    expect(saved.username).toBe("maria.dev");
   });
 });

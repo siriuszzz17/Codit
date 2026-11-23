@@ -17,6 +17,7 @@ export const SANDBOX_LANGUAGES: readonly SandboxLanguage[] = [
 
 export const SANDBOX_VISIBILITIES: readonly SandboxVisibility[] = [
   "private",
+  "friends",
   "unlisted",
   "public_portfolio",
 ];
@@ -56,7 +57,7 @@ export const createSandboxProjectSchema = z.object({
     )
     .default(""),
   visibility: z
-    .enum(["private", "unlisted", "public_portfolio"])
+    .enum(["private", "friends", "unlisted", "public_portfolio"])
     .default("private"),
 });
 
@@ -87,7 +88,7 @@ export const updateSandboxProjectSchema = z.object({
     )
     .optional(),
   visibility: z
-    .enum(["private", "unlisted", "public_portfolio"])
+    .enum(["private", "friends", "unlisted", "public_portfolio"])
     .optional(),
   expectedVersion: z
     .number({ error: "Versão esperada do projeto é obrigatória." })

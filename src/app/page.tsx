@@ -39,6 +39,7 @@ const ACTIVE_FOUNDATION: ReadonlyArray<string> = [
   "Next.js App Router com TypeScript em modo strict e exportação estática out/",
   "Autenticação client-side via Supabase (e-mail/senha + Google OAuth 2.0 PKCE)",
   "Persistência isolada por usuário nas tabelas profiles e sandbox_projects com RLS",
+  "Comunidade Codit com busca por @usuário, amizades e feed de mini-projetos",
   "PWA instalável com manifest.webmanifest, Tauri v2 (.exe) e Capacitor 8 (.apk)",
   "Endpoint de verificação de saúde operacional em /api/v1/health",
 ];
@@ -119,6 +120,12 @@ export default function HomePage() {
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
                 >
                   Meus projetos
+                </Link>
+                <Link
+                  href="/comunidade"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-accent-strong transition-colors hover:border-accent"
+                >
+                  Comunidade (@)
                 </Link>
               </div>
             </div>

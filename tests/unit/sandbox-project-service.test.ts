@@ -136,4 +136,60 @@ describe("sandbox-project-service", () => {
     expect(eqUser).toHaveBeenCalledWith("user_id", "user-123");
     expect(isNotDeleted).toHaveBeenCalledWith("deleted_at", null);
   });
+
+  it("supports creating and updating projects with visibility='friends'", async () => {
+    const row = createProjectRow({
+      visibility: "friends",
+      version: 2,
+    });
+
+    const single = vi.fn().mockResolvedValue({ data: row, error: null });
+    const insertSelect = vi.fn().mockReturnValue({ single });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle });
+    const isNotDeleted = vi.fn().mockReturnValue({ select: updateSelect });
+    const eqVersion = vi.fn().mockReturnValue({ is: isNotDeleted });
+    const eqUser = vi.fn().mockReturnValue({ eq: eqVersion });
+    const eqId = vi.fn().mockReturnValue({ eq: eqUser });
+    const update = vi.fn().mockReturnValue({ eq: eqId });
+
+    const mockClient = {
+      from: vi.fn().mockReturnValue({ insert, update }),
+    } as unknown as CoditSupabaseClient;
+
+    const created = await createSandboxProject(
+      "user-123",
+      {
+        title: "Projeto dos Amigos",
+        visibility: "friends",
+      },
+      mockClient,
+    );
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: "user-123",
+        visibility: "friends",
+      }),
+    );
+    expect(created.visibility).toBe("friends");
+
+    const updated = await updateSandboxProject(
+      "user-123",
+      "proj-1",
+      {
+        visibility: "friends",
+        expectedVersion: 1,
+      },
+      mockClient,
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      visibility: "friends",
+      version: 2,
+    });
+    expect(updated.visibility).toBe("friends");
+  });
 });

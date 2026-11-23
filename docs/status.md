@@ -1,12 +1,12 @@
 # Status e Progresso do Projeto — Codit (`TCC-Codit`)
 
-> **Estado Atual:** **Fase 2 (Em andamento) — Integração client-side com Supabase (`@supabase/supabase-js`) implementada para autenticação (e-mail/senha + Google OAuth PKCE) e persistência em `profiles` e `sandbox_projects` com RLS, preservando exportação estática `out/` para Web/PWA, Tauri `.exe` e Capacitor `.apk`.**
-> **Pendente para etapas seguintes:** catálogo curricular (`tracks`/`lessons`), sandbox de execução client-side (`iframe` + Pyodide) e proxy server-side do tutor Octopy.
+> **Estado Atual:** **Fase 2 (Em andamento) — Integração client-side com Supabase (`@supabase/supabase-js`) + Rede Social Embutida (`Comunidade Codit` com busca por `@username`, amizades, visualização de projetos, curtidas, comentários e clonagem) implementadas com RLS, preservando exportação estática `out/` para Web/PWA, Tauri `.exe` e Capacitor `.apk`.**
+> **Pendente para etapas seguintes:** aplicar migração `20261123000002_add_social_network.sql` no projeto Supabase real, catálogo curricular (`tracks`/`lessons`), sandbox de execução completo (`Pyodide`) e proxy server-side do tutor Octopy.
 
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Última atualização** | `2026-11-22` |
+| **Última atualização** | `2026-11-23` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [banco-de-dados.md](./banco-de-dados.md) · [regras-negocio.md](./regras-negocio.md) |
 
 ---
@@ -15,9 +15,9 @@
 
 | Aspecto | Situação Real | Detalhes |
 | :--- | :--- | :--- |
-| **Código da Aplicação** | **Fase 2 — Auth & Persistência Supabase** | Next.js `16.4.6` (exportação estática `out/`), React `19.3.1`, TypeScript strict (`5.9.3`), Tailwind CSS `4.3.5`, `@supabase/supabase-js` client-side (`src/lib/supabase/*`), rotas `/auth`, `/auth/callback` e `/conta`, módulos `src/modules/auth|profiles|sandbox`, Tauri v2, Capacitor 8 e suíte Vitest |
+| **Código da Aplicação** | **Fase 2 — Auth, Persistência & Comunidade** | Next.js `16.4.6` (exportação estática `out/`), React `19.3.1`, TypeScript strict (`5.9.3`), Tailwind CSS `4.3.5`, `@supabase/supabase-js` client-side (`src/lib/supabase/*`), rotas `/auth`, `/auth/callback`, `/conta`, `/comunidade` e `/comunidade/perfil`, módulos `src/modules/auth|profiles|sandbox|social`, Tauri v2, Capacitor 8 e suíte Vitest |
 | **Toolchain Local (Desktop/Mobile)** | **Operacional (`.exe` e `.apk` compilados localmente)** | Node.js `v26.7.0`, `npm 11.19.0`, Rust/Cargo `1.100.0`, Visual Studio 18 Insiders (MSVC `14.52.37025` + Windows SDK `10.0.26100.0`), Edge WebView2 Runtime `157.0.4341.60`, Java JDK `21.0.12.1` e Android Studio / Android SDK (`Build-Tools 35.0.0`, `Platform android-36`) |
-| **Banco de Dados** | **Supabase PostgreSQL + RLS (Migração Inicial Pronta)** | Migração SQL versionada em [supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql) criando `public.profiles` e `public.sandbox_projects` com triggers e policies RLS (`auth.uid()`); configurar `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em `.env.local` |
+| **Banco de Dados** | **Supabase PostgreSQL + RLS (Migrações Versionadas)** | Migrações em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql) e [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql) (`profiles.username`, `public_profiles`, `friendships`, `project_likes`, `project_comments`, visibilidade `friends` em `sandbox_projects`) |
 | **Documentação Base** | **Sincronizada (Fase 2)** | `GEMINI.md`, `arquitetura.md`, `banco-de-dados.md`, `regras-negocio.md` e `status.md` atualizados com a integração Supabase |
 | **Repositório Principal** | Ativo | `C:/Users/gusta/orca/projects/TCC-Codit` · branch `master` · remote `origin`: `https://github.com/siriuszzz17/Codit.git` |
 | **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/Fase2` · branch `siriuszzz17/Fase2` |
@@ -64,6 +64,7 @@
 | Tarefa | Worktree / Branch | Status | Próximo Passo |
 | :--- | :--- | :--- | :--- |
 | Integração Supabase (`@supabase/supabase-js`) — Auth + `profiles` + `sandbox_projects` + OAuth Nativo Multiplataforma | `Fase2` (`siriuszzz17/Fase2`) | Implementada (Web, Tauri `.exe` loopback RFC 8252 e Android `.apk` Chrome Custom Tab + Deep Link) | Cadastrar `http://127.0.0.1:*/auth/callback` e `com.codit.app://auth/callback` em Redirect URLs no painel Supabase, corrigir URL raiz em `.env.local` e regenerar `.exe`/`.apk` |
+| Rede Social Embutida (`Comunidade Codit`) — `@username`, amizades, feed e visualização de projetos | `Fase4` (`siriuszzz17/Fase4`) | Implementada no app e com SQL pronto | Executar [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql) no SQL Editor do painel Supabase |
 
 ---
 
@@ -101,3 +102,4 @@
 - **`2026-11-23`:**
   - **Fase2 (`v0.1.2` — Google OAuth Nativo Multiplataforma — RFC 8252):** Corrigido retorno OAuth fora do app no Android e bloqueio na WebView2 no Windows: implementado listener loopback local no backend Tauri (`src-tauri/src/oauth.rs` + `tauri-plugin-opener` abrindo navegador padrão em `127.0.0.1:43823/auth/callback` e emitindo `codit://oauth-callback` com testes Rust); configurados `@capacitor/browser`, `@capacitor/app` e `<intent-filter>` de Deep Link `com.codit.app://auth/callback` em `android/app/src/main/AndroidManifest.xml`; adicionados `src/lib/native-oauth.ts`, proteção de URL raiz em `src/lib/supabase/config.ts`, fallback PKCE em `/auth/callback`, botão de cancelamento de espera externa em `AuthScreen`, ajuste de `emailRedirectTo` por plataforma, suíte `tests/unit/native-oauth.test.ts` e elevação da versão para `0.1.2` (`versionCode 3` no Android).
   - **Identidade Visual (Octopy Pixel-Art + Ícone Multiplataforma + `Codit-mobile.apk`):** Substituído o mascote Octopy pelo novo design em pixel-art (`public/icons/octopy-{default,coding,headphones,happy}.png`, `public/icons/octopy-mark.svg` e `OctopyBadge` com suporte a variantes em `src/app/page.tsx` e `src/components/auth/auth-screen.tsx`); atualizado o ícone oficial do Codit em Web/PWA (`public/icons/*`, `public/manifest.webmanifest`, `public/sw.js`), Desktop Tauri (`src-tauri/icons/*`) e Android (`android/app/src/main/res/mipmap-*` e `ic_launcher_background.xml`); configurado `outputFileName = "Codit-mobile.apk"` em `android/app/build.gradle`, publicado o `Codit-mobile.apk` (`v0.1.2`) no GitHub (`v0.1.2`, `v0.1.1` e `Arquivos` com `latest.json` atualizado) e compilado localmente `Codit_0.1.2_x64-setup.exe` pronto para assinatura do updater.
+  - **Fase4 (`Comunidade Codit` — Rede Social Embutida):** Criada migração SQL idempotente [supabase/migrations/20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql) (`profiles.username`, `public_profiles` sem PII, `friendships` com par único simétrico, visibilidade `friends` em `sandbox_projects`, `project_likes`, `project_comments` e funções RLS); implementado módulo `src/modules/social/` (`social-schemas.ts`, `social-service.ts`), UI mobile-first (`CommunityHub`, `PublicProfileView`, `ProjectViewerModal` com prévia HTML isolada `RN-201`, `FriendshipActionButton`, `UserAvatar`), rotas estáticas `/comunidade` e `/comunidade/perfil`, edição de `@usuário` em `/conta` e cadastro opcional em `/auth`, além de suíte unitária e sincronização de `docs/`.

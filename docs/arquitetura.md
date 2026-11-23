@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Estado Atual** | Fase 2 em andamento (`@supabase/supabase-js` client-side integrado para Auth e persistência em `profiles` e `sandbox_projects` com RLS, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
-| **Última atualização** | `2026-11-22` |
+| **Estado Atual** | Fase 2 em andamento (`@supabase/supabase-js` client-side integrado para Auth, `profiles`, `sandbox_projects` e Rede Social Comunidade Codit com RLS, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
+| **Última atualização** | `2026-11-23` |
 | **Guia Rápido** | [GEMINI.md](../GEMINI.md) |
 
 ---
@@ -254,7 +254,7 @@ TCC-Codit/
 ├── tsconfig.json
 ├── vitest.config.ts
 ├── supabase/
-│   └── migrations/            # DDL PostgreSQL + triggers + RLS (profiles e sandbox_projects)
+│   └── migrations/            # DDL PostgreSQL + triggers + RLS (profiles, sandbox_projects e rede social)
 ├── android/                   # Projeto nativo Android gerado pelo Capacitor (configuração versionada)
 ├── src-tauri/                 # Backend desktop Tauri v2 (Cargo.toml, tauri.conf.json, capabilities, ícones, src/)
 ├── docs/
@@ -267,13 +267,13 @@ TCC-Codit/
 │   ├── manifest.webmanifest
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
-│   ├── app/                   # App Router (/, /auth, /auth/callback, /conta, /offline, /api/v1/health)
-│   ├── components/            # Brand (OctopyBadge), Auth, Account, PWA e Native (AppUpdateModal)
-│   ├── modules/               # Domínios auth, profiles e sandbox (serviços tipados + AuthProvider)
+│   ├── app/                   # App Router (/, /auth, /auth/callback, /conta, /comunidade, /comunidade/perfil, /offline, /api/v1/health)
+│   ├── components/            # Brand (OctopyBadge), Auth, Account, Social (Comunidade Codit), PWA e Native (AppUpdateModal)
+│   ├── modules/               # Domínios auth, profiles, sandbox e social (serviços tipados + AuthProvider)
 │   └── lib/                   # supabase/*, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/
-    └── unit/                  # Testes unitários Vitest (env, logger, auth-schemas, native-oauth, supabase-config, services, updater)
+    └── unit/                  # Testes unitários Vitest (env, logger, auth-schemas, native-oauth, supabase-config, services, social, updater)
 ```
 
 ### Planejada (Expansão Fases 2–4)
@@ -306,3 +306,4 @@ TCC-Codit/
 - **ADR-004 (Aceita — 2026-11-22):** Convenção bilíngue estrita — código, rotas, identificadores e esquema PostgreSQL em **inglês**; interface, mensagens e conteúdo educacional em **português (`pt-BR`)**.
 - **ADR-005 (Aceita — 2026-11-22):** Empacotamento multiplataforma nativo sobre uma única base TypeScript/React usando exportação estática compartilhada (`out/`) com **Tauri v2** (`.exe` Windows + `tauri-plugin-updater` pré-configurado) e **Capacitor 8** (`.apk` Android), mantendo `npm run dev` e builds server-side futuros (`CODIT_BUILD_TARGET=server`) preservados e segredos estritamente fora dos pacotes cliente.
 - **ADR-006 (Aceita — 2026-11-22):** Adoção de `@supabase/supabase-js` client-side (`NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`) com fluxo PKCE (`flowType: "pkce"`) para autenticação (e-mail/senha + Google OAuth) e persistência direta nas tabelas `public.profiles` e `public.sandbox_projects` protegidas por RLS (`auth.uid()`), garantindo compatibilidade integral com `output: "export"` no Web/PWA, `.exe` (Tauri) e `.apk` (Capacitor) sem depender de Route Handlers `app/api` dinâmicos no bundle estático. Segredos privilegiados (`SUPABASE_SERVICE_ROLE_KEY`, chaves de IA e sandbox remoto) permanecem estritamente proibidos em variáveis `NEXT_PUBLIC_*`.
+- **ADR-007 (Aceita — 2026-11-23):** Rede social embutida (**Comunidade Codit**) construída sobre exportação estática (`/comunidade` e `/comunidade/perfil?u=...` com `<Suspense>`), mantendo `public.profiles` isolada e espelhando apenas atributos públicos sem PII em `public.public_profiles` para pesquisa por `@username`, com amizades bilaterais (`public.friendships`), visibilidade `'friends'` em `sandbox_projects`, curtidas/comentários com RLS e prévia HTML/JS isolada via `<iframe sandbox="allow-scripts">` sem `allow-same-origin`.

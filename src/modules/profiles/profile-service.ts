@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseClient, type CoditSupabaseClient } from "@/lib/supabase/client";
 import type { ProfileRow } from "@/lib/supabase/database.types";
 import { mapSupabaseDatabaseError } from "@/lib/supabase/errors";
+import { coditUsernameSchema } from "@/modules/social/social-schemas";
 
 const GITHUB_USERNAME_REGEX = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
@@ -28,6 +29,10 @@ export const updateProfileSchema = z.object({
     .trim()
     .min(2, "O nome deve ter pelo menos 2 caracteres.")
     .max(120, "O nome pode ter no máximo 120 caracteres."),
+  username: z.preprocess(
+    emptyStringToNull,
+    coditUsernameSchema.nullable().optional(),
+  ),
   bio: z.preprocess(
     emptyStringToNull,
     z
@@ -112,6 +117,18 @@ function deriveAvatarUrl(user: Pick<User, "user_metadata">): string | null {
   return trimmed && isSafeHttpUrl(trimmed) ? trimmed : null;
 }
 
+function deriveOptionalUsername(
+  user: Pick<User, "user_metadata">,
+): string | undefined {
+  const rawUsername = user.user_metadata?.username;
+  if (typeof rawUsername !== "string" || rawUsername.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = coditUsernameSchema.safeParse(rawUsername);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export async function getProfileByUserId(
   userId: string,
   client: CoditSupabaseClient = requireSupabaseClient(),
@@ -145,6 +162,8 @@ export async function ensureProfile(
     );
   }
 
+  const optionalUsername = deriveOptionalUsername(user);
+
   const { data, error } = await client
     .from("profiles")
     .upsert(
@@ -152,6 +171,7 @@ export async function ensureProfile(
         id: user.id,
         email: normalizedEmail,
         full_name: deriveFullName(user),
+        ...(optionalUsername ? { username: optionalUsername } : {}),
         avatar_url: deriveAvatarUrl(user),
         role: "student",
       },
@@ -182,6 +202,9 @@ export async function updateProfile(
 
   const payload = {
     full_name: parsed.data.fullName,
+    ...(parsed.data.username !== undefined && parsed.data.username !== null
+      ? { username: parsed.data.username }
+      : {}),
     ...(parsed.data.bio !== undefined ? { bio: parsed.data.bio } : {}),
     ...(parsed.data.githubUsername !== undefined
       ? { github_username: parsed.data.githubUsername }

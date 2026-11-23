@@ -117,6 +117,22 @@ export function mapSupabaseAuthError(error: unknown): string {
   return "Não foi possível concluir a autenticação no momento. Tente novamente em instantes.";
 }
 
+export function isMissingDatabaseSchemaError(error: unknown): boolean {
+  const { message, code } = extractErrorFields(error);
+  const messageLower = message.toLowerCase();
+  const codeUpper = code.toUpperCase();
+
+  return (
+    codeUpper === "42P01" ||
+    codeUpper === "42703" ||
+    codeUpper === "PGRST204" ||
+    codeUpper === "PGRST205" ||
+    messageLower.includes("could not find the table") ||
+    messageLower.includes("schema cache") ||
+    messageLower.includes("does not exist")
+  );
+}
+
 export function mapSupabaseDatabaseError(error: unknown): string {
   const { message, code } = extractErrorFields(error);
   const messageLower = message.toLowerCase();
@@ -125,7 +141,17 @@ export function mapSupabaseDatabaseError(error: unknown): string {
     return "Sem comunicação com o banco de dados. Verifique sua conexão com a internet.";
   }
 
+  if (isMissingDatabaseSchemaError(error)) {
+    return "A estrutura da rede social ainda não foi aplicada no Supabase. Execute a migração 20261123000002_add_social_network.sql no SQL Editor do projeto.";
+  }
+
   if (code === "23505") {
+    if (messageLower.includes("username")) {
+      return "Este @usuário já está em uso por outra pessoa. Escolha outro identificador.";
+    }
+    if (messageLower.includes("friendships")) {
+      return "Já existe uma solicitação ou amizade registrada entre essas contas.";
+    }
     return "Já existe um registro com esses dados únicos (por exemplo, slug ou e-mail duplicado).";
   }
 

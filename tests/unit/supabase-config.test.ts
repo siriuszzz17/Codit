@@ -4,6 +4,7 @@ import {
   validateSupabaseConfig,
 } from "@/lib/supabase/config";
 import {
+  isMissingDatabaseSchemaError,
   mapSupabaseAuthError,
   mapSupabaseDatabaseError,
 } from "@/lib/supabase/errors";
@@ -88,5 +89,31 @@ describe("supabase error mappers", () => {
     expect(
       mapSupabaseDatabaseError({ message: "TypeError: Failed to fetch" }),
     ).toContain("Sem comunicação com o banco de dados");
+
+    expect(
+      mapSupabaseDatabaseError({
+        code: "23505",
+        message: "duplicate key value violates unique constraint uq_profiles_username_lower",
+      }),
+    ).toContain("@usuário");
+
+    expect(
+      mapSupabaseDatabaseError({
+        code: "23505",
+        message: "duplicate key value violates unique constraint uq_friendships_user_pair",
+      }),
+    ).toContain("solicitação ou amizade");
+
+    const missingTableError = {
+      code: "PGRST205",
+      message: "Could not find the table 'public.public_profiles' in the schema cache",
+    };
+    expect(isMissingDatabaseSchemaError(missingTableError)).toBe(true);
+    expect(
+      isMissingDatabaseSchemaError({ code: "42P01", message: "relation does not exist" }),
+    ).toBe(true);
+    expect(mapSupabaseDatabaseError(missingTableError)).toContain(
+      "20261123000002_add_social_network.sql",
+    );
   });
 });

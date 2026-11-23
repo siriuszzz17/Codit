@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Status** | Especificação inicial da visão SaaS (`Fase 0`) |
-| **Última atualização** | `2026-11-22` |
+| **Status** | Especificação viva (Fases 0–2 + Rede Social Comunidade Codit) |
+| **Última atualização** | `2026-11-23` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [banco-de-dados.md](./banco-de-dados.md) |
 
 ---
@@ -98,6 +98,22 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
 - **`RN-305` — Privacidade do Histórico com o Octopy:**
   - Conversas (`octopy_conversations` e `octopy_messages`) são estritamente privadas por `user_id` e jamais são compartilhadas entre alunos.
 
+### Módulo E — Comunidade Codit, Perfis `@`, Amizades e Projetos Compartilhados (`RN-401` a `RN-405`)
+
+- **`RN-401` — Identificador Público `@username` Sem Exposição de PII:**
+  - Todo perfil possui um `username` único normalizado em minúsculas (`[a-z0-9._]`, 3–30 caracteres, sem termos reservados).
+  - Buscas por `@usuário` ou nome consultam exclusivamente `public.public_profiles`, sem jamais expor `email` ou `role` de `public.profiles`.
+- **`RN-402` — Amizade Bilateral com Integridade de Par Único:**
+  - Solicitações de amizade exigem `requester_id = auth.uid()`, impedem auto-amizade e garantem unicidade simétrica por par `(LEAST, GREATEST)`.
+  - Apenas o destinatário (`addressee_id`) pode aceitar um pedido `pending`, e apenas os participantes podem cancelar ou desfazer a amizade.
+- **`RN-403` — Controle de Visibilidade de Projetos (`private`, `friends`, `unlisted`, `public_portfolio`):**
+  - Projetos `private` permanecem acessíveis apenas ao dono; projetos `friends` ficam visíveis apenas para amigos aceitos; projetos `public_portfolio` são visíveis no feed público da Comunidade.
+- **`RN-404` — Execução Isolada na Visualização Social:**
+  - A prévia de mini-projetos HTML/CSS/JS de terceiros roda em `<iframe sandbox="allow-scripts">` sem `allow-same-origin` e com política CSP restritiva (`RN-201`).
+- **`RN-405` — Interações Sociais e Clonagem Privada:**
+  - Curtidas (`project_likes`) e comentários (`project_comments`, 1–500 caracteres) exigem acesso legítimo ao projeto (`can_view_sandbox_project`).
+  - Clonar um projeto de outro usuário cria uma cópia estritamente `private` vinculada ao `user_id` do usuário autenticado.
+
 ---
 
 ## 5. Fluxos Críticos e Máquinas de Estado
@@ -138,3 +154,4 @@ stateDiagram-v2
 | Data | Escopo | Resumo |
 | :--- | :--- | :--- |
 | `2026-11-22` | Inicial | Formalização completa de glossário, RBAC, regras `RN-001` a `RN-305`, estados e casos de borda do SaaS Codit |
+| `2026-11-23` | Módulo E | Inclusão das regras `RN-401` a `RN-405` da rede social embutida (**Comunidade Codit**): `@username`, `public_profiles`, amizades, visibilidade `friends` e clonagem segura |

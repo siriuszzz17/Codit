@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migração inicial aplicada para `public.profiles` e `public.sandbox_projects` com RLS em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql)) |
-| **Última atualização** | `2026-11-22` |
+| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql) e [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql)) |
+| **Última atualização** | `2026-11-23` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
 ---
@@ -37,7 +37,10 @@ Toda tabela do **Codit** pertence a exatamente uma de duas categorias:
 ### Defesa em Profundidade (Aplicação + PostgreSQL RLS no Supabase)
 - **Camada de Aplicação (`src/modules/`):** toda consulta e mutação em `profiles` e `sandbox_projects` filtra explicitamente pelo `userId` da sessão autenticada (`eq("id", userId)` / `eq("user_id", userId)`).
 - **PostgreSQL Row-Level Security (RLS ativa na Fase 2):** `public.profiles` e `public.sandbox_projects` operam com RLS habilitada usando `auth.uid()` diretamente no banco, protegendo as operações realizadas via cliente client-side (`NEXT_PUBLIC_SUPABASE_ANON_KEY`) em Web/PWA, Tauri `.exe` e Capacitor `.apk`.
-- **Exceção controlada para Portfólio:** um mini-projeto em `sandbox_projects` com `visibility = 'public_portfolio'` e `deleted_at IS NULL` possui policy `SELECT` pública somente leitura (`sandbox_projects_select_public_portfolio`), mantendo criação, edição e exclusão restritas ao dono (`auth.uid() = user_id`).
+- **Exceção controlada para Portfólio e Amigos (`Comunidade Codit`):**
+  - Um mini-projeto em `sandbox_projects` com `visibility = 'public_portfolio'` e `deleted_at IS NULL` possui policy `SELECT` pública somente leitura (`sandbox_projects_select_public_portfolio`).
+  - Um mini-projeto com `visibility = 'friends'` e `deleted_at IS NULL` possui policy `SELECT` restrita a amigos aceitos (`sandbox_projects_select_friends` via `public.is_friend_with_current_user(user_id)`), mantendo criação, edição e exclusão exclusivas do dono (`auth.uid() = user_id`).
+- **Diretório Público Sem PII (`public.public_profiles`):** `public.profiles` continua estritamente privada ao dono (`profiles_select_own`), protegendo `email` e `role`. Para busca por `@username`, listagem de perfis e autoria na Comunidade, o trigger `trg_profiles_sync_public_profile` espelha somente campos públicos (`id`, `username`, `full_name`, `avatar_url`, `bio`, `github_username`) em `public.public_profiles`.
 - **Atenção em Soft Delete com RLS:** a policy `sandbox_projects_select_own` para o dono não inclui `AND deleted_at IS NULL` para evitar erro de permissão quando o cliente executa `.update({ deleted_at }).select()` ao excluir logicamente; o filtro `deleted_at IS NULL` é aplicado nas queries ativas em `src/modules/sandbox/sandbox-project-service.ts`.
 
 ---
@@ -47,7 +50,13 @@ Toda tabela do **Codit** pertence a exatamente uma de duas categorias:
 ```mermaid
 erDiagram
     auth_users ||--|| profiles : provisions
+    profiles ||--|| public_profiles : mirrors
+    profiles ||--o{ friendships : requests_or_receives
     profiles ||--o{ sandbox_projects : creates
+    sandbox_projects ||--o{ project_likes : receives
+    sandbox_projects ||--o{ project_comments : receives
+    profiles ||--o{ project_likes : likes
+    profiles ||--o{ project_comments : authors
     profiles ||--o{ user_lesson_progress : tracks
     profiles ||--o{ exercise_submissions : submits
     profiles ||--o{ sandbox_files : owns
@@ -69,10 +78,32 @@ erDiagram
         uuid id PK
         varchar email UK
         varchar full_name
+        varchar username UK
         text avatar_url
         varchar role
         text bio
         varchar github_username
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    public_profiles {
+        uuid id PK
+        varchar username UK
+        varchar full_name
+        text avatar_url
+        text bio
+        varchar github_username
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    friendships {
+        uuid id PK
+        uuid requester_id FK
+        uuid addressee_id FK
+        varchar status
+        timestamptz accepted_at
         timestamptz created_at
         timestamptz updated_at
     }
@@ -125,12 +156,20 @@ erDiagram
 | `id` | `UUID` | Não | `PK`, `FK -> auth.users(id) ON DELETE CASCADE` | Identificador único do usuário (`user_id` global) |
 | `email` | `VARCHAR(255)` | Não | `uq_profiles_email_lower` (case-insensitive) | E-mail normalizado em minúsculas |
 | `full_name` | `VARCHAR(120)` | Não | `''` | Nome de exibição do usuário |
+| `username` | `VARCHAR(30)` | Não | `uq_profiles_username_lower`, `chk_profiles_username_format` | Handle público único (`@username`, gerado automaticamente se omitido no cadastro) |
 | `avatar_url` | `TEXT` | Sim | `-` | URL sanitizada (`http`/`https`) da foto de perfil |
 | `role` | `VARCHAR(20)` | Não | `'student'` (`chk_profiles_role`: `'student'`, `'admin'`) | Papel RBAC do aluno ou equipe |
 | `bio` | `TEXT` | Sim | `chk_profiles_bio_length` (máx. 500 chars) | Resumo/objetivo de carreira do aluno |
 | `github_username` | `VARCHAR(60)` | Sim | `chk_profiles_github_format` | Identificador público no GitHub (sem `@`) |
 | `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação em UTC |
 | `updated_at` | `TIMESTAMPTZ` | Não | `NOW()` | Última atualização em UTC |
+
+#### `public.public_profiles`, `public.friendships`, `public.project_likes` e `public.project_comments` *(Migração `20261123000001`)*
+- **`public.public_profiles`:** espelho público somente leitura sem PII (`id`, `username`, `full_name`, `avatar_url`, `bio`, `github_username`, `created_at`, `updated_at`), sincronizado via trigger `trg_profiles_sync_public_profile` e indexado por prefixo (`idx_public_profiles_username_prefix`) para busca rápida por `@usuário`.
+- **`public.friendships`:** vínculo simétrico entre estudantes (`id`, `requester_id`, `addressee_id`, `status` em `'pending' | 'accepted'`, `accepted_at`, `created_at`, `updated_at`), com índice único `uq_friendships_user_pair` em `(LEAST(requester_id, addressee_id), GREATEST(requester_id, addressee_id))`, bloqueio de auto-amizade (`chk_friendships_no_self`), trigger `guard_friendship_update` e RLS restrita aos participantes (`auth.uid() = requester_id OR auth.uid() = addressee_id`).
+- **`public.project_likes`:** curtidas por projeto (`PK (project_id, user_id)`), protegidas por `public.can_view_sandbox_project(project_id)`.
+- **`public.project_comments`:** comentários em projetos (`id`, `project_id`, `user_id`, `content` de 1..500 chars, `created_at`, `updated_at`), com exclusão permitida ao autor do comentário ou dono do projeto.
+- **Funções auxiliares `SECURITY DEFINER`:** `public.generate_unique_username`, `public.is_friend_with_current_user`, `public.get_profile_friend_count` e `public.can_view_sandbox_project`.
 
 ---
 
@@ -159,7 +198,7 @@ erDiagram
 
 #### `public.sandbox_projects` *(Implementada na migração `20261122000001` — Privado por padrão)*
 - **Regras associadas:** `RN-201` a `RN-205`
-- **Políticas RLS:** `sandbox_projects_select_own`, `sandbox_projects_select_public_portfolio`, `sandbox_projects_insert_own`, `sandbox_projects_update_own`, `sandbox_projects_delete_own`.
+- **Políticas RLS:** `sandbox_projects_select_own`, `sandbox_projects_select_public_portfolio`, `sandbox_projects_select_friends`, `sandbox_projects_insert_own`, `sandbox_projects_update_own`, `sandbox_projects_delete_own`.
 
 | Coluna | Tipo | Nulo | Restrição / Valores | Descrição |
 | :--- | :--- | :--- | :--- | :--- |
@@ -170,7 +209,7 @@ erDiagram
 | `primary_language` | `VARCHAR(30)` | Não | `'html_css_js'`, `'python'`, `'javascript'`, `'typescript'` | Stack principal do projeto |
 | `runtime_target` | `VARCHAR(30)` | Não | `'client_iframe'`, `'client_pyodide'`, `'remote_judge0'`, `'remote_piston'` | Motor de execução associado |
 | `source_code` | `TEXT` | Não | `''` (`chk_sandbox_projects_source_size`, máx. 200.000 chars) | Código-fonte principal do mini-projeto no MVP |
-| `visibility` | `VARCHAR(20)` | Não | `'private'` (`'private'`, `'unlisted'`, `'public_portfolio'`) | Visibilidade padrão estritamente privada |
+| `visibility` | `VARCHAR(20)` | Não | `'private'` (`'private'`, `'friends'`, `'unlisted'`, `'public_portfolio'`) | Visibilidade padrão estritamente privada |
 | `share_slug` | `VARCHAR(80)` | Sim | `uq_sandbox_projects_share_slug` (parcial `WHERE share_slug IS NOT NULL AND deleted_at IS NULL`) | Slug público somente leitura para portfólio |
 | `version` | `INTEGER` | Não | `1` (`chk_sandbox_projects_version >= 1`) | Lock otimista anti-sobrescrita multi-aba (`RN-203`) |
 | `created_at` / `updated_at` / `deleted_at` | `TIMESTAMPTZ` | `created`/`updated` Não | `trg_sandbox_projects_set_updated_at` | Auditoria temporal e soft delete |
