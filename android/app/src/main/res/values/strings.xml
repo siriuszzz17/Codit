@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Codit</string>
+    <string name="title_activity_main">Codit</string>
+    <string name="package_name">com.codit.app</string>
+    <string name="custom_url_scheme">com.codit.app</string>
+</resources>

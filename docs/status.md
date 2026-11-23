@@ -1,6 +1,6 @@
 # Status e Progresso do Projeto — Codit (`TCC-Codit`)
 
-> **Estado Atual:** **Fase 1 (Em andamento) — Base inicial Next.js + TypeScript + Tailwind CSS + PWA criada.**
+> **Estado Atual:** **Fase 1 (Em andamento) — Base inicial Next.js + TypeScript + Tailwind CSS + PWA + empacotamento multiplataforma (Tauri v2 + Capacitor 8 Android) configurados.**
 > **Autenticação, banco de dados PostgreSQL, ORM, sandbox de código e proxy do tutor Octopy ainda não foram implementados.**
 
 | Campo | Valor |
@@ -15,11 +15,12 @@
 
 | Aspecto | Situação Real | Detalhes |
 | :--- | :--- | :--- |
-| **Código da Aplicação** | **Base inicial criada (Fase 1)** | Next.js `16.4.6` (App Router), React `19.3.1`, TypeScript strict (`5.9.3`), Tailwind CSS `4.3.5`, suporte PWA (`/manifest.webmanifest`, `/sw.js`, `/offline`, ícones), `src/lib/*` (`env.ts`, `problem-details.ts`, `logger.ts`), `GET /api/v1/health` e testes Vitest (sem auth/banco/sandbox/Octopy) |
+| **Código da Aplicação** | **Base inicial + Multiplataforma (Fase 1)** | Next.js `16.4.6` (App Router com exportação estática `out/`), React `19.3.1`, TypeScript strict (`5.9.3`), Tailwind CSS `4.3.5`, suporte PWA, Tauri v2 (`src-tauri/` + `tauri-plugin-updater` + `src/lib/desktop-updater.ts`), Capacitor 8 (`capacitor.config.ts` + `android/`), `src/lib/*`, `GET /api/v1/health` e testes Vitest |
+| **Toolchain Local (Desktop/Mobile)** | **Operacional (`.exe` e `.apk` compilados localmente)** | Node.js `v26.7.0`, `npm 11.19.0`, Rust/Cargo `1.100.0`, Visual Studio 18 Insiders (MSVC `14.52.37025` + Windows SDK `10.0.26100.0`), Edge WebView2 Runtime `157.0.4341.60`, Java JDK `21.0.12.1` e Android Studio / Android SDK (`Build-Tools 35.0.0`, `Platform android-36`) |
 | **Banco de Dados** | **Não provisionado** | Apenas modelagem conceitual/dicionário documentados em [banco-de-dados.md](./banco-de-dados.md); ORM e provedor pendentes em `DEC-001` e `DEC-004` |
-| **Documentação Base** | **Sincronizada (Fase 1)** | `GEMINI.md` + `arquitetura.md`, `banco-de-dados.md`, `regras-negocio.md` e `status.md` atualizados com o estado da fundação |
+| **Documentação Base** | **Sincronizada (Fase 1)** | `GEMINI.md` + `arquitetura.md`, `banco-de-dados.md`, `regras-negocio.md` e `status.md` atualizados com o setup multiplataforma |
 | **Repositório Principal** | Ativo | `C:/Users/gusta/orca/projects/TCC-Codit` · branch `master` · remote `origin`: `https://github.com/siriuszzz17/Codit.git` |
-| **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/BaseSetup` · branch `siriuszzz17/BaseSetup` |
+| **Worktree Secundário Ativo** | Ativo (Orca) | `C:/Users/gusta/orca/workspaces/TCC-Codit/SetupTauri` · branch `siriuszzz17/SetupTauri` |
 
 ---
 
@@ -35,6 +36,7 @@
 - [ ] Fechar decisões `DEC-001` a `DEC-004` (ORM, biblioteca de Auth, provedor LLM do Octopy, ambiente PostgreSQL)
 - [x] Criar projeto Next.js (App Router) + TypeScript `strict` + Tailwind CSS + configuração PWA (`manifest.webmanifest`, ícones e Service Worker)
 - [x] Configurar `.env.example`, `.gitignore`, validação *fail-fast* de variáveis de ambiente, ESLint e estrutura de testes
+- [x] Configurar empacotamento multiplataforma nativo sobre exportação estática (`out/`) com Tauri v2 (Windows `.exe` + `tauri-plugin-updater`) e Capacitor 8 (Android `.apk`)
 
 ### Fase 2 — Banco PostgreSQL, Autenticação e Isolamento por `user_id`
 - [ ] Provisionar PostgreSQL e implementar migrações iniciais de `users`, `auth_accounts`, `user_sessions` e catálogo curricular
@@ -60,7 +62,7 @@
 
 | Tarefa | Worktree / Branch | Status | Próximo Passo |
 | :--- | :--- | :--- | :--- |
-| Scaffold base Next.js + TypeScript + Tailwind CSS + PWA + `.env.example` + `.gitignore` | `BaseSetup` (`siriuszzz17/BaseSetup`) | Entregue e validado localmente (aguardando commit/revisão) | Revisar alterações, commitar e fechar decisões `DEC-001` a `DEC-004` para iniciar a Fase 2 |
+| Setup multiplataforma Next.js static export (`out/`) + Tauri v2 (Windows) + Capacitor 8 (Android) | `SetupTauri` (`siriuszzz17/SetupTauri`) | Entregue e validado com `.exe` (Tauri) e `.apk` (Android) gerados localmente | Revisar/commitar alterações (sem chaves privadas) e fechar `DEC-001` a `DEC-004` para iniciar a Fase 2 |
 
 ---
 
@@ -91,4 +93,5 @@
   - `7815ce3`: Commit inicial do repositório `TCC-Codit`.
   - `0ac8955`: Bootstrap inicial da estrutura de arquivos `GEMINI.md` e `docs/`.
   - `b73c9e8`: Consolidação completa da visão do SaaS **Codit**, mascote/tutor IA **Octopy**, experiência Web Mobile-First + PWA, stack TypeScript/Next.js/Tailwind/PostgreSQL, Sandbox client-side + expansão Judge0/Piston e isolamento estrito por `user_id` em `GEMINI.md` e `docs/*.md`.
-  - **BaseSetup (atual, ainda sem commit):** Criada a estrutura inicial do projeto Next.js `16.4.6` (App Router), React `19.3.1`, TypeScript `strict` (`5.9.3`), Tailwind CSS `4.3.5`, suporte a PWA (`public/manifest.webmanifest`, `public/sw.js`, `public/icons/*`, registro de Service Worker, banner offline e página `/offline`), `.env.example`, `.gitignore`, base server-side (`src/lib/env.ts`, `src/lib/problem-details.ts`, `src/lib/logger.ts`), endpoint `GET /api/v1/health` e testes unitários Vitest (`tests/unit/*`), sem autenticação, ORM/PostgreSQL, sandbox ou proxy do Octopy. Validado localmente com `npm install` (`388` pacotes, `0 vulnerabilities`), `npm run typecheck`, `npm run lint`, `npm run test` (`3` arquivos, `6` testes aprovados), `npm run build` e smoke test HTTP em `next start` (`127.0.0.1:3099`).
+  - `d5a91a5`: Scaffold inicial da aplicação Next.js `16.4.6` (App Router), React `19.3.1`, TypeScript `strict` (`5.9.3`), Tailwind CSS `4.3.5`, suporte a PWA (`public/manifest.webmanifest`, `public/sw.js`, `public/icons/*`, registro de Service Worker, banner offline e página `/offline`), `.env.example`, `.gitignore`, base server-side (`src/lib/env.ts`, `src/lib/problem-details.ts`, `src/lib/logger.ts`), endpoint `GET /api/v1/health` e testes unitários Vitest (`tests/unit/*`).
+  - **SetupTauri (atual, ainda sem commit):** Configurado empacotamento multiplataforma nativo sobre uma única base TypeScript: `next.config.ts` adaptado para exportação estática em `out/` (`output: "export"`, `images: { unoptimized: true }`) mantendo `npm run dev` com headers de segurança e suporte futuro a `CODIT_BUILD_TARGET=server`; `GET /api/v1/health` ajustado para `force-static`; guarda em `ServiceWorkerRegister` para não registrar `sw.js` em shells nativos; Tauri v2 inicializado em `src-tauri/` (`com.codit.app`, janela `Codit`, `frontendDist: "../out"`, `devUrl: "http://localhost:3000"`, ícones gerados e `tauri-plugin-updater` + `tauri-plugin-process` + `src/lib/desktop-updater.ts` pré-configurados); chaves do Tauri movidas com segurança para fora do repositório (`C:/Users/gusta/.tauri/codit.key` e `codit.key.pub`), regra `*.key` adicionada ao `.gitignore` e `plugins.updater.pubkey` preenchida em `src-tauri/tauri.conf.json` (mantendo `createUpdaterArtifacts: false` para build local sem senha); Capacitor 8 inicializado em `capacitor.config.ts` e `android/` (`com.codit.app`, `Codit`, `webDir: "out"`) com sincronização Android via `npm run android:sync`; `.gitignore`, `eslint.config.mjs`, `tsconfig.json`, `GEMINI.md` e `docs/arquitetura.md` (`ADR-005`) atualizados. Validado com `typecheck`, `lint`, `test`, `build` (`out/`), `android:sync`, smoke test do `next dev`, compilação Tauri (`src-tauri/target/release/codit.exe`, instaladores NSIS `.exe` e MSI `.msi`) e compilação Gradle Android (`android/app/build/outputs/apk/debug/app-debug.apk`).

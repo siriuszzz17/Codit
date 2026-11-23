@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Estado Atual** | Base inicial criada (`Fase 1` — Next.js App Router + TypeScript strict + Tailwind CSS + PWA + `/api/v1/health`; ainda sem autenticação, banco, sandbox ou proxy do Octopy) |
+| **Estado Atual** | Base inicial + empacotamento multiplataforma configurados (`Fase 1` — Next.js App Router com exportação estática `out/` + TypeScript strict + Tailwind CSS + PWA + Tauri v2 + Capacitor 8 Android + `/api/v1/health`; ainda sem autenticação, banco, sandbox ou proxy do Octopy) |
 | **Última atualização** | `2026-11-22` |
 | **Guia Rápido** | [GEMINI.md](../GEMINI.md) |
 
@@ -28,14 +28,16 @@ O **Codit** é uma plataforma SaaS educacional projetada para funcionar de forma
 
 ## 2. Stack Tecnológica Alvo (Planejada)
 
-> **Estado das dependências:** O scaffold base já conta com `Next.js 16.4.6`, `React 19.3.1`, `TypeScript 5.9.3`, `Tailwind CSS 4.3.5`, `zod`, `server-only`, `eslint` e `vitest` instalados em `package.json`. Os itens marcados com `DEC-XXX` (ORM/PostgreSQL, Auth e provedor LLM do Octopy) aguardam decisão final antes de serem instalados.
+> **Estado das dependências:** O scaffold base conta com `Next.js 16.4.6`, `React 19.3.1`, `TypeScript 5.9.3`, `Tailwind CSS 4.3.5`, `zod`, `server-only`, `eslint`, `vitest`, pacotes Tauri v2 (`@tauri-apps/cli`, `@tauri-apps/api`, `@tauri-apps/plugin-updater`, `@tauri-apps/plugin-process`) e pacotes Capacitor 8 (`@capacitor/core`, `@capacitor/cli`, `@capacitor/android`) instalados em `package.json`. Os itens marcados com `DEC-XXX` (ORM/PostgreSQL, Auth e provedor LLM do Octopy) aguardam decisão final antes de serem instalados.
 
 | Camada | Tecnologia Planejada | Observações / Decisão |
 | :--- | :--- | :--- |
 | **Linguagem** | TypeScript (`strict: true`) | Ponta a ponta (frontend, API routes, validação e camada de dados) |
-| **Framework Full-Stack / UI** | Next.js (App Router) + React | Renderização híbrida (RSC + Client Components interativos para Sandbox/Octopy) |
+| **Framework Full-Stack / UI** | Next.js (App Router) + React | Renderização híbrida (RSC + Client Components interativos para Sandbox/Octopy) e exportação estática `out/` para empacotamento nativo |
 | **Estilização** | Tailwind CSS | Design system responsivo Mobile-First e suporte a tema escuro/claro |
 | **PWA** | Web App Manifest + Service Worker | Instalação em Android/iOS/Desktop e cache seguro de assets públicos (nunca cachear rotas autenticadas privadas no SW compartilhado) |
+| **Empacotamento Desktop (Windows)** | Tauri v2 (`com.codit.app`) | Shell nativo WebView2 sobre `out/`, com `tauri-plugin-updater` e `tauri-plugin-process` pré-configurados para atualizações via pop-up |
+| **Empacotamento Mobile (Android)** | Capacitor 8 (`com.codit.app`) | Projeto nativo Android em `android/` empacotando `out/` via `npx cap sync android` para geração de `.apk`/`.aab` |
 | **Banco de Dados** | PostgreSQL (`16+` alvo) | Isolamento rigoroso por `user_id` + suporte a Row-Level Security (RLS) |
 | **ORM / Migrações** | `[Em aberto — DEC-001]` | Avaliar Prisma vs. Drizzle ORM |
 | **Autenticação** | Cadastro/Login tradicional + Google OAuth 2.0 | Sessões seguras `HttpOnly`; biblioteca a fechar em `DEC-003` |
@@ -195,20 +197,54 @@ Nenhuma chave secreta pode usar prefixo `NEXT_PUBLIC_*` ou ser commitada. A apli
 
 ---
 
-## 8. Estrutura de Diretórios (Atual vs. Planejada)
+## 8. Empacotamento Multiplataforma Nativo (Web/PWA, Tauri v2 e Capacitor Android)
 
-### Atual (`2026-11-22` — Base Inicial Fase 1)
+A mesma base TypeScript/React do Codit alimenta três canais de distribuição a partir da exportação estática do Next.js em `out/`, sem duplicação de código de interface:
+
+| Alvo | Tecnologia | Identificador / Entrada | Diretório Web Consumido | Scripts `package.json` |
+| :--- | :--- | :--- | :--- | :--- |
+| **Web / PWA** | Next.js App Router | `npm run dev` / deploy server-side (`CODIT_BUILD_TARGET=server`) ou estático | `.next/` / `out/` | `dev`, `build`, `start` |
+| **Desktop Windows (`.exe`)** | Tauri v2 (`src-tauri/`) | `com.codit.app` · janela `Codit` (`1280x800`, mín. `375x640`) | `../out` (`devUrl: http://localhost:3000`) | `tauri:dev`, `tauri:build` |
+| **Mobile Android (`.apk`)** | Capacitor 8 (`android/`) | `com.codit.app` · `Codit` (`androidScheme: https`) | `out` (`capacitor.config.ts`) | `android:sync`, `android:open` |
+
+### Estratégia do `next.config.ts` e Compatibilidade Estática
+- **`npm run dev` (`PHASE_DEVELOPMENT_SERVER`):** executa sem `output: "export"`, mantendo `headers()` de segurança (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `/sw.js`, `/manifest.webmanifest`) e Route Handlers dinâmicos em desenvolvimento local.
+- **`npm run build` (padrão):** ativa `output: "export"` e `images: { unoptimized: true }`, omitindo `headers()` (não suportado em export estático) para gerar `out/` limpo e sem avisos. O endpoint `GET /api/v1/health` usa `export const dynamic = "force-static"` para permanecer compatível com a exportação estática.
+- **`CODIT_BUILD_TARGET=server`:** reservado para builds SSR/backend Web com Route Handlers dinâmicos (`/api/v1/*`) quando autenticação, PostgreSQL e proxy do Octopy entrarem na Fase 2+.
+- **Service Worker em WebViews nativas:** [service-worker-register.tsx](../src/components/pwa/service-worker-register.tsx) detecta `__TAURI_INTERNALS__` e `Capacitor.isNativePlatform()` para não registrar `sw.js` dentro dos apps `.exe` e `.apk`, evitando cache obsoleto sobre assets locais empacotados.
+- **Segurança de segredos em clientes empacotados:** assim como no navegador Web, variáveis sensíveis (`.env`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) **nunca** entram no bundle `out/`, no binário Tauri ou no APK Android; todas as chamadas autenticadas e de IA apontarão para o backend remoto via HTTPS.
+
+### Atualização Automática no Desktop (`tauri-plugin-updater`)
+- **Backend Rust (`src-tauri/`):** `Cargo.toml` inclui `tauri-plugin-updater = "2"` (somente alvos desktop) e `tauri-plugin-process = "2"`; `src-tauri/capabilities/default.json` concede `"updater:default"` e `"process:default"` à janela `main`; `src-tauri/src/lib.rs` ativa o plugin quando `plugins.updater.pubkey` estiver preenchida em `tauri.conf.json`.
+- **Cliente TypeScript:** [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` usando imports dinâmicos para futura UI de pop-up de atualização sem impactar o bundle Web/Android.
+- **Ativação de assinatura para release:**
+  1. Gerar par de chaves Ed25519/minisign com `npx tauri signer generate -w ~/.tauri/codit.key`.
+  2. Preencher `plugins.updater.pubkey` e ajustar `bundle.createUpdaterArtifacts: true` em [tauri.conf.json](../src-tauri/tauri.conf.json).
+  3. Exportar `TAURI_SIGNING_PRIVATE_KEY` (e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, se houver) antes de rodar `npm run tauri:build`.
+
+### Pré-requisitos de Toolchain por Plataforma
+- **Windows Desktop (`.exe` via Tauri v2):** Rust + Cargo (`rustup`), Microsoft C++ Build Tools (MSVC + Windows SDK) e Microsoft Edge WebView2 Runtime.
+- **Android Mobile (`.apk` via Capacitor 8):** Java JDK 21 (`JAVA_HOME`) e Android Studio / Android SDK (`ANDROID_HOME`, SDK API 36 / `minSdk` 24).
+
+---
+
+## 9. Estrutura de Diretórios (Atual vs. Planejada)
+
+### Atual (`2026-11-22` — Base Inicial Fase 1 + Setup Multiplataforma)
 ```text
 TCC-Codit/
 ├── GEMINI.md
 ├── .env.example               # Contrato de variáveis server-side sem segredos
-├── .gitignore
+├── .gitignore                 # Ignora out/, src-tauri/target/, android/app/build/ e artefatos locais
+├── capacitor.config.ts        # Configuração Capacitor 8 (com.codit.app, webDir: "out")
 ├── eslint.config.mjs
-├── next.config.ts
-├── package.json
+├── next.config.ts             # Exportação estática out/ + dev server com headers de segurança
+├── package.json               # Scripts dev/build + tauri:dev/build + android:sync/open
 ├── postcss.config.mjs
 ├── tsconfig.json
 ├── vitest.config.ts
+├── android/                   # Projeto nativo Android gerado pelo Capacitor (configuração versionada)
+├── src-tauri/                 # Backend desktop Tauri v2 (Cargo.toml, tauri.conf.json, capabilities, ícones, src/)
 ├── docs/
 │   ├── arquitetura.md
 │   ├── banco-de-dados.md
@@ -221,7 +257,7 @@ TCC-Codit/
 ├── src/
 │   ├── app/                   # App Router (UI pt-BR, /offline, /api/v1/health)
 │   ├── components/            # Brand (OctopyBadge) e PWA (SW, Banner, Reload)
-│   └── lib/                   # env.ts (fail-fast), problem-details.ts (RFC 9457), logger.ts
+│   └── lib/                   # env.ts, problem-details.ts, logger.ts, desktop-updater.ts
 └── tests/
     ├── mocks/
     └── unit/                  # Testes unitários Vitest (env, problem-details, health)
@@ -231,13 +267,16 @@ TCC-Codit/
 ```text
 TCC-Codit/
 ├── GEMINI.md
+├── capacitor.config.ts        # Empacotamento Android
+├── src-tauri/                 # Empacotamento Desktop Windows + updater
+├── android/                   # Projeto Android Studio / Gradle
 ├── docs/                      # Documentação viva e ADRs
 ├── public/                    # Ícones PWA, manifest.webmanifest, sw.js e assets
 ├── src/
 │   ├── app/                   # Páginas autenticadas e rotas /api/v1/* (Auth, Tracks, Octopy)
 │   ├── components/            # Componentes React Mobile-First (Editor, Preview, Octopy)
 │   ├── modules/               # Domínios desacoplados (auth, curriculum, sandbox, octopy, career)
-│   ├── lib/                   # Validação env, DB client, logger JSON, erros RFC 9457
+│   ├── lib/                   # Validação env, DB client, logger JSON, erros RFC 9457, desktop-updater
 │   └── workers/               # Web Workers client-side (ex.: Pyodide runner)
 ├── tests/                     # Testes unitários, integração e E2E
 ├── .env.example               # Contrato de variáveis sem segredos
@@ -246,9 +285,10 @@ TCC-Codit/
 
 ---
 
-## 9. Registro de Decisões Arquiteturais (ADRs)
+## 10. Registro de Decisões Arquiteturais (ADRs)
 
 - **ADR-001 (Aceita — 2026-11-22):** Adoção de TypeScript ponta a ponta com Next.js App Router + Tailwind CSS + PostgreSQL e documentação viva (`GEMINI.md` + `docs/`) com fluxo isolado por Git Worktrees no Orca.
 - **ADR-002 (Aceita — 2026-11-22):** Execução de código no MVP 100% client-side (`iframe` sandboxed sem `allow-same-origin` para HTML/CSS/JS; Pyodide WASM em Web Worker para Python) + adaptador `CodeExecutionProvider` para Judge0/Piston em fases futuras, proibindo execução arbitrária no servidor principal.
 - **ADR-003 (Aceita — 2026-11-22):** Tutor IA **Octopy** operado exclusivamente via proxy server-side (`/api/v1/octopy/chat`) com system prompt protegido, cotas por `user_id` e fallback para dicas estáticas pré-curadas.
 - **ADR-004 (Aceita — 2026-11-22):** Convenção bilíngue estrita — código, rotas, identificadores e esquema PostgreSQL em **inglês**; interface, mensagens e conteúdo educacional em **português (`pt-BR`)**.
+- **ADR-005 (Aceita — 2026-11-22):** Empacotamento multiplataforma nativo sobre uma única base TypeScript/React usando exportação estática compartilhada (`out/`) com **Tauri v2** (`.exe` Windows + `tauri-plugin-updater` pré-configurado) e **Capacitor 8** (`.apk` Android), mantendo `npm run dev` e builds server-side futuros (`CODIT_BUILD_TARGET=server`) preservados e segredos estritamente fora dos pacotes cliente.

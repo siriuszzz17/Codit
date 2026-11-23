@@ -12,6 +12,20 @@ export function ServiceWorkerRegister() {
       return;
     }
 
+    const isNativeShell =
+      "__TAURI_INTERNALS__" in window ||
+      Boolean(
+        (
+          window as Window & {
+            Capacitor?: { isNativePlatform?: () => boolean };
+          }
+        ).Capacitor?.isNativePlatform?.(),
+      );
+
+    if (isNativeShell) {
+      return;
+    }
+
     navigator.serviceWorker
       .register("/sw.js", {
         scope: "/",
