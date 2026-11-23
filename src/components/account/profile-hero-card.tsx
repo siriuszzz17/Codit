@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState, type CSSProperties } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { LanguageIcon } from "@/components/sandbox/language-icon";
@@ -204,6 +205,14 @@ export function ProfileHeroCard({
                 >
                   {accentTheme.label}
                 </span>
+                {profile.username ? (
+                  <Link
+                    href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
+                    className="inline-flex items-center rounded-full border border-border bg-surface-muted px-2.5 py-0.5 font-mono text-[11px] font-semibold text-accent-strong transition-colors hover:border-accent"
+                  >
+                    @{profile.username}
+                  </Link>
+                ) : null}
               </div>
 
               <p className="mt-0.5 text-sm font-medium text-muted">

@@ -139,9 +139,27 @@ export function mapSupabaseAuthError(error: unknown): string {
   return "Não foi possível concluir a autenticação no momento. Tente novamente em instantes.";
 }
 
-export function mapSupabaseDatabaseError(error: unknown): string {
+export function isMissingDatabaseSchemaError(error: unknown): boolean {
   const { message, code } = extractErrorFields(error);
   const messageLower = message.toLowerCase();
+  const codeUpper = code.toUpperCase();
+
+  return (
+    codeUpper === "42P01" ||
+    codeUpper === "42703" ||
+    codeUpper === "42883" ||
+    codeUpper === "PGRST204" ||
+    codeUpper === "PGRST205" ||
+    messageLower.includes("could not find the table") ||
+    messageLower.includes("schema cache") ||
+    messageLower.includes("does not exist")
+  );
+}
+
+export function mapSupabaseDatabaseError(error: unknown): string {
+  const { message, code, details, hint } = extractErrorFields(error);
+  const messageLower = message.toLowerCase();
+  const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
   const codeUpper = code.toUpperCase();
 
   if (isNetworkFailure(messageLower)) {
@@ -149,6 +167,12 @@ export function mapSupabaseDatabaseError(error: unknown): string {
   }
 
   if (codeUpper === "23505") {
+    if (messageLower.includes("username")) {
+      return "Este @usuário já está em uso por outra pessoa. Escolha outro identificador.";
+    }
+    if (messageLower.includes("friendships")) {
+      return "Já existe uma solicitação ou amizade registrada entre essas contas.";
+    }
     return "Já existe um registro com esses dados únicos (por exemplo, slug ou e-mail duplicado).";
   }
 
@@ -156,12 +180,8 @@ export function mapSupabaseDatabaseError(error: unknown): string {
     return "Seu perfil ainda está sendo sincronizado. Recarregue a página e tente novamente.";
   }
 
-  if (codeUpper === "42P01") {
-    return "A tabela necessária ainda não foi criada no banco Supabase. Execute as migrações em supabase/migrations/.";
-  }
-
-  if (codeUpper === "42703" || codeUpper === "PGRST204") {
-    return "O schema do banco está desatualizado. Execute a migração mais recente em supabase/migrations/.";
+  if (isMissingDatabaseSchemaError(error)) {
+    return "A estrutura da rede social ainda não foi aplicada no Supabase. Execute a migração 20261123000002_add_social_network.sql no SQL Editor do projeto.";
   }
 
   if (codeUpper === "42501" || messageLower.includes("row-level security")) {
@@ -173,6 +193,9 @@ export function mapSupabaseDatabaseError(error: unknown): string {
   }
 
   if (codeUpper === "23514") {
+    if (combinedLower.includes("chk_sandbox_projects_language")) {
+      return "As 15 linguagens do estúdio exigem a migração 20261123000001_enhance_profiles_and_projects.sql no SQL Editor do projeto.";
+    }
     return "Os dados informados não atendem às regras de validação do sistema.";
   }
 

@@ -26,6 +26,7 @@ import {
 
 export interface ProfileDraftState {
   fullName: string;
+  username: string;
   headline: string;
   location: string;
   bio: string;
@@ -478,6 +479,41 @@ export function ProfileCustomizerPanel({
               placeholder="Seu nome"
               className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="codit-profile-username"
+              className="block text-xs font-semibold text-foreground"
+            >
+              @usuário na Comunidade Codit
+            </label>
+            <div className="flex min-h-11 items-center rounded-xl border border-border bg-background px-3.5 focus-within:border-accent">
+              <span
+                aria-hidden="true"
+                className="pr-1 font-mono text-sm text-muted"
+              >
+                @
+              </span>
+              <input
+                id="codit-profile-username"
+                type="text"
+                maxLength={30}
+                value={draft.username}
+                onChange={(event) =>
+                  onChangeDraft((current) => ({
+                    ...current,
+                    username: event.target.value,
+                  }))
+                }
+                placeholder="ex.: maria.dev"
+                className="w-full bg-transparent py-2.5 font-mono text-sm text-foreground focus:outline-none"
+              />
+            </div>
+            <p className="text-[11px] text-muted">
+              3–30 caracteres (letras minúsculas, números, ponto ou sublinhado)
+              para encontrarem você por @ na Comunidade.
+            </p>
           </div>
 
           <div className="space-y-1.5">

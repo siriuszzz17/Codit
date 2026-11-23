@@ -1,0 +1,1259 @@
+"use client";
+
+import Link from "next/link";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { OctopyBadge } from "@/components/brand/octopy-badge";
+import { FriendshipActionButton } from "@/components/social/friendship-action-button";
+import { ProjectViewerModal } from "@/components/social/project-viewer-modal";
+import {
+  formatDatePtBr,
+  SANDBOX_LANGUAGE_LABELS,
+  SANDBOX_VISIBILITY_LABELS,
+} from "@/components/social/social-labels";
+import { UserAvatar } from "@/components/social/user-avatar";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import type {
+  PublicProfileRow,
+  SandboxLanguage,
+} from "@/lib/supabase/database.types";
+import { useIsOnline } from "@/lib/use-is-online";
+import { useAuth } from "@/modules/auth/auth-provider";
+import { formatHandle } from "@/modules/social/social-schemas";
+import {
+  acceptFriendRequest,
+  listCommunityProjects,
+  listUserFriendships,
+  removeFriendship,
+  resolveRelationStatus,
+  searchCommunityUsers,
+  SocialServiceError,
+  type CommunityProjectCard,
+  type UserFriendshipsBundle,
+} from "@/modules/social/social-service";
+
+type CommunityTab = "feed" | "people" | "friends" | "requests";
+type FeedScope = "all" | "friends";
+
+const EMPTY_FRIENDSHIPS: UserFriendshipsBundle = {
+  raw: [],
+  friends: [],
+  incomingRequests: [],
+  outgoingRequests: [],
+};
+
+export function CommunityHub() {
+  const isOnline = useIsOnline();
+  const {
+    user,
+    profile,
+    isLoading: isAuthLoading,
+    isConfigured,
+    signOut,
+  } = useAuth();
+
+  const [activeTab, setActiveTab] = useState<CommunityTab>("feed");
+  const [searchInput, setSearchInput] = useState("");
+  const [feedScope, setFeedScope] = useState<FeedScope>("all");
+  const [feedLanguage, setFeedLanguage] = useState<SandboxLanguage | "all">(
+    "all",
+  );
+  const [feedTextFilter, setFeedTextFilter] = useState("");
+
+  const [initialLoading, setInitialLoading] = useState<boolean>(isConfigured);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [friendshipsLoading, setFriendshipsLoading] = useState(false);
+
+  const [feedProjects, setFeedProjects] = useState<CommunityProjectCard[]>([]);
+  const [peopleResults, setPeopleResults] = useState<PublicProfileRow[]>([]);
+  const [friendshipsBundle, setFriendshipsBundle] =
+    useState<UserFriendshipsBundle>(EMPTY_FRIENDSHIPS);
+
+  const [selectedProject, setSelectedProject] =
+    useState<CommunityProjectCard | null>(null);
+  const [socialError, setSocialError] = useState<string | null>(null);
+  const [socialMessage, setSocialMessage] = useState<string | null>(null);
+  const [migrationMissing, setMigrationMissing] = useState(false);
+  const [copiedOwnHandle, setCopiedOwnHandle] = useState(false);
+  const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+
+  const searchInputRef = useRef(searchInput);
+  const feedScopeRef = useRef(feedScope);
+  const feedLanguageRef = useRef(feedLanguage);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    searchInputRef.current = searchInput;
+  }, [searchInput]);
+
+  useEffect(() => {
+    feedScopeRef.current = feedScope;
+  }, [feedScope]);
+
+  useEffect(() => {
+    feedLanguageRef.current = feedLanguage;
+  }, [feedLanguage]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isConfigured || isAuthLoading) {
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    let cancelled = false;
+    const currentViewerId = user?.id ?? null;
+
+    async function syncWorkspace() {
+      try {
+        const [projectsData, usersData, friendshipsData] = await Promise.all([
+          listCommunityProjects(
+            {
+              viewerId: currentViewerId,
+              scope: feedScopeRef.current,
+              language: feedLanguageRef.current,
+            },
+            client ?? undefined,
+          ),
+          searchCommunityUsers(
+            searchInputRef.current,
+            { limit: 24 },
+            client ?? undefined,
+          ),
+          currentViewerId
+            ? listUserFriendships(currentViewerId, client ?? undefined)
+            : Promise.resolve(EMPTY_FRIENDSHIPS),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setFeedProjects(projectsData);
+        setPeopleResults(usersData);
+        setFriendshipsBundle(friendshipsData);
+        setSocialError(null);
+        setMigrationMissing(false);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        if (error instanceof SocialServiceError && error.isMigrationMissing) {
+          setMigrationMissing(true);
+        }
+        setSocialError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível carregar a Comunidade Codit.",
+        );
+      } finally {
+        if (!cancelled) {
+          setInitialLoading(false);
+        }
+      }
+    }
+
+    void syncWorkspace();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthLoading, isConfigured, user?.id]);
+
+  async function reloadFeed(
+    nextScope: FeedScope,
+    nextLanguage: SandboxLanguage | "all",
+  ) {
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    setFeedLoading(true);
+    setSocialError(null);
+    try {
+      const projectsData = await listCommunityProjects(
+        {
+          viewerId: user?.id ?? null,
+          scope: nextScope,
+          language: nextLanguage,
+        },
+        client,
+      );
+      setFeedProjects(projectsData);
+      setMigrationMissing(false);
+    } catch (error) {
+      if (error instanceof SocialServiceError && error.isMigrationMissing) {
+        setMigrationMissing(true);
+      }
+      setSocialError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar o feed de projetos.",
+      );
+    } finally {
+      setFeedLoading(false);
+    }
+  }
+
+  async function runPeopleSearch(query: string) {
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    setPeopleLoading(true);
+    setSocialError(null);
+    try {
+      const usersData = await searchCommunityUsers(
+        query,
+        { limit: 24 },
+        client,
+      );
+      setPeopleResults(usersData);
+      setMigrationMissing(false);
+    } catch (error) {
+      if (error instanceof SocialServiceError && error.isMigrationMissing) {
+        setMigrationMissing(true);
+      }
+      setSocialError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível pesquisar perfis no momento.",
+      );
+    } finally {
+      setPeopleLoading(false);
+    }
+  }
+
+  async function reloadFriendshipsAndFeed() {
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    setFriendshipsLoading(true);
+    setSocialError(null);
+    try {
+      const [friendshipsData, projectsData] = await Promise.all([
+        user?.id
+          ? listUserFriendships(user.id, client)
+          : Promise.resolve(EMPTY_FRIENDSHIPS),
+        listCommunityProjects(
+          {
+            viewerId: user?.id ?? null,
+            scope: feedScope,
+            language: feedLanguage,
+          },
+          client,
+        ),
+      ]);
+      setFriendshipsBundle(friendshipsData);
+      setFeedProjects(projectsData);
+      setMigrationMissing(false);
+    } catch (error) {
+      if (error instanceof SocialServiceError && error.isMigrationMissing) {
+        setMigrationMissing(true);
+      }
+      setSocialError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar suas amizades.",
+      );
+    } finally {
+      setFriendshipsLoading(false);
+    }
+  }
+
+  function handleSearchChange(nextValue: string) {
+    setSearchInput(nextValue);
+    if (activeTab !== "people") {
+      return;
+    }
+
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      void runPeopleSearch(nextValue);
+    }, 320);
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setActiveTab("people");
+    void runPeopleSearch(searchInput);
+  }
+
+  function handleFeedScopeChange(nextScope: FeedScope) {
+    setFeedScope(nextScope);
+    void reloadFeed(nextScope, feedLanguage);
+  }
+
+  function handleFeedLanguageChange(nextLanguage: SandboxLanguage | "all") {
+    setFeedLanguage(nextLanguage);
+    void reloadFeed(feedScope, nextLanguage);
+  }
+
+  async function handleCopyOwnHandle() {
+    if (!profile?.username) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(formatHandle(profile.username));
+      setCopiedOwnHandle(true);
+      setTimeout(() => setCopiedOwnHandle(false), 2000);
+    } catch {
+      setSocialError("Não foi possível copiar seu @usuário.");
+    }
+  }
+
+  async function handleAcceptIncoming(friendshipId: string, fullName: string) {
+    if (!user?.id || !isOnline) {
+      setSocialError("Conecte-se à internet para aceitar esta solicitação.");
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    setBusyRequestId(friendshipId);
+    setSocialError(null);
+    setSocialMessage(null);
+    try {
+      await acceptFriendRequest(user.id, friendshipId, client);
+      setSocialMessage(`Agora você e ${fullName} são amigos no Codit!`);
+      await reloadFriendshipsAndFeed();
+    } catch (error) {
+      setSocialError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível aceitar a solicitação.",
+      );
+    } finally {
+      setBusyRequestId(null);
+    }
+  }
+
+  async function handleRemoveFriendshipItem(
+    friendshipId: string,
+    feedbackText: string,
+  ) {
+    if (!user?.id || !isOnline) {
+      setSocialError("Conecte-se à internet para atualizar a solicitação.");
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    setBusyRequestId(friendshipId);
+    setSocialError(null);
+    setSocialMessage(null);
+    try {
+      await removeFriendship(user.id, friendshipId, client);
+      setSocialMessage(feedbackText);
+      await reloadFriendshipsAndFeed();
+    } catch (error) {
+      setSocialError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar esta solicitação.",
+      );
+    } finally {
+      setBusyRequestId(null);
+    }
+  }
+
+  function handleProjectMetaChange(
+    projectId: string,
+    patch: Partial<
+      Pick<
+        CommunityProjectCard,
+        "likesCount" | "commentsCount" | "likedByViewer"
+      >
+    >,
+  ) {
+    setFeedProjects((current) =>
+      current.map((item) =>
+        item.project.id === projectId ? { ...item, ...patch } : item,
+      ),
+    );
+    setSelectedProject((current) =>
+      current && current.project.id === projectId
+        ? { ...current, ...patch }
+        : current,
+    );
+  }
+
+  const filteredFeedProjects = useMemo(() => {
+    const query = feedTextFilter.trim().toLowerCase().replace(/^@+/, "");
+    if (!query) {
+      return feedProjects;
+    }
+
+    return feedProjects.filter((item) => {
+      const titleMatch = item.project.title.toLowerCase().includes(query);
+      const descMatch = (item.project.description ?? "")
+        .toLowerCase()
+        .includes(query);
+      const authorNameMatch = (item.author?.full_name ?? "")
+        .toLowerCase()
+        .includes(query);
+      const authorHandleMatch = (item.author?.username ?? "")
+        .toLowerCase()
+        .includes(query);
+      return titleMatch || descMatch || authorNameMatch || authorHandleMatch;
+    });
+  }, [feedProjects, feedTextFilter]);
+
+  const ownHandle = formatHandle(profile?.username);
+
+  return (
+    <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-5 sm:px-6 sm:py-8">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+        <Link href="/" className="flex items-center gap-3">
+          <OctopyBadge size={40} className="shrink-0 rounded-xl shadow-xs" />
+          <div>
+            <p className="text-base font-bold tracking-tight text-foreground sm:text-lg">
+              Codit
+            </p>
+            <p className="text-xs text-muted">Comunidade &amp; Mini-Projetos</p>
+          </div>
+        </Link>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/"
+            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent sm:text-sm"
+          >
+            Início
+          </Link>
+          {user ? (
+            <>
+              <Link
+                href="/conta"
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-accent-soft px-3.5 py-2 text-xs font-semibold text-accent-strong transition-colors hover:border-accent sm:text-sm"
+              >
+                Minha conta
+              </Link>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent sm:text-sm"
+              >
+                Sair
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/auth"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"
+            >
+              Entrar / Criar conta
+            </Link>
+          )}
+        </div>
+      </header>
+
+      <main className="flex-1 space-y-6 py-6 sm:space-y-7">
+        {/* Hero da Comunidade + Busca por @ */}
+        <section className="space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-xs sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1.5">
+              <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent-strong">
+                Rede Social Embutida
+              </span>
+              <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                Comunidade Codit
+              </h1>
+              <p className="max-w-2xl text-xs leading-relaxed text-muted sm:text-sm">
+                Pesquise colegas por <code className="font-mono">@usuário</code>,
+                adicione amigos, explore mini-projetos compartilhados e troque
+                feedbacks com segurança.
+              </p>
+            </div>
+
+            {user && profile?.username ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface-muted/70 p-3">
+                <UserAvatar
+                  name={profile.full_name}
+                  username={profile.username}
+                  avatarUrl={profile.avatar_url}
+                  size="sm"
+                />
+                <div className="min-w-0 text-xs">
+                  <p className="text-[11px] text-muted">Seu identificador</p>
+                  <p className="truncate font-mono font-bold text-accent-strong">
+                    {ownHandle}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyOwnHandle()}
+                    className="inline-flex min-h-9 items-center justify-center rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-accent"
+                  >
+                    {copiedOwnHandle ? "Copiado!" : "Copiar @"}
+                  </button>
+                  <Link
+                    href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
+                    className="inline-flex min-h-9 items-center justify-center rounded-lg bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-foreground hover:opacity-90"
+                  >
+                    Meu perfil
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <form
+            onSubmit={handleSearchSubmit}
+            className="flex flex-col gap-2 sm:flex-row"
+          >
+            <label htmlFor="codit-community-search" className="sr-only">
+              Pesquisar pessoas por @usuário ou nome
+            </label>
+            <input
+              id="codit-community-search"
+              type="search"
+              value={searchInput}
+              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Pesquisar pessoas por @usuário ou nome (ex.: @octopy)..."
+              className="min-h-11 flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+            />
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={!isConfigured || !isOnline}
+                className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+              >
+                Buscar @
+              </button>
+              {searchInput ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchInput("");
+                    void runPeopleSearch("");
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2.5 text-sm font-medium text-foreground hover:border-accent"
+                >
+                  Limpar
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </section>
+
+        {!isConfigured ? (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 text-sm text-foreground"
+          >
+            <p className="font-semibold">Configuração do Supabase pendente</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted sm:text-sm">
+              Configure{" "}
+              <code className="font-mono text-foreground">
+                NEXT_PUBLIC_SUPABASE_URL
+              </code>{" "}
+              e{" "}
+              <code className="font-mono text-foreground">
+                NEXT_PUBLIC_SUPABASE_ANON_KEY
+              </code>{" "}
+              em <code className="font-mono">.env.local</code> para carregar
+              perfis, amizades e projetos da Comunidade.
+            </p>
+          </div>
+        ) : null}
+
+        {migrationMissing ? (
+          <div
+            role="alert"
+            className="space-y-2 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-5 text-xs leading-relaxed text-foreground sm:text-sm"
+          >
+            <p className="font-bold">
+              Migração da rede social pendente no Supabase
+            </p>
+            <p className="text-muted">
+              As tabelas ou colunas sociais (
+              <code className="font-mono text-foreground">public_profiles</code>,{" "}
+              <code className="font-mono text-foreground">friendships</code>,{" "}
+              <code className="font-mono text-foreground">project_likes</code>,{" "}
+              <code className="font-mono text-foreground">project_comments</code>{" "}
+              e <code className="font-mono text-foreground">profiles.username</code>
+              ) ainda não foram aplicadas neste projeto Supabase.
+            </p>
+            <p className="text-muted">
+              Execute o arquivo{" "}
+              <code className="font-mono text-foreground">
+                supabase/migrations/20261123000002_add_social_network.sql
+              </code>{" "}
+              no <strong>SQL Editor</strong> do painel Supabase e recarregue esta
+              página.
+            </p>
+          </div>
+        ) : null}
+
+        {socialError && !migrationMissing ? (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs font-medium text-foreground sm:text-sm"
+          >
+            {socialError}
+          </div>
+        ) : null}
+
+        {socialMessage ? (
+          <div
+            role="status"
+            className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs font-medium text-foreground sm:text-sm"
+          >
+            {socialMessage}
+          </div>
+        ) : null}
+
+        {/* Navegação por abas */}
+        <nav
+          aria-label="Seções da comunidade"
+          className="grid grid-cols-2 gap-2 rounded-2xl border border-border bg-surface p-1.5 sm:grid-cols-4"
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab("feed")}
+            className={`min-h-10 rounded-xl px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+              activeTab === "feed"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted hover:bg-surface-muted hover:text-foreground"
+            }`}
+          >
+            Feed de Projetos ({feedProjects.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("people")}
+            className={`min-h-10 rounded-xl px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+              activeTab === "people"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted hover:bg-surface-muted hover:text-foreground"
+            }`}
+          >
+            Pessoas &amp; @ ({peopleResults.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("friends")}
+            className={`min-h-10 rounded-xl px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+              activeTab === "friends"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted hover:bg-surface-muted hover:text-foreground"
+            }`}
+          >
+            Amigos ({user ? friendshipsBundle.friends.length : 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("requests")}
+            className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+              activeTab === "requests"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted hover:bg-surface-muted hover:text-foreground"
+            }`}
+          >
+            <span>Solicitações</span>
+            {friendshipsBundle.incomingRequests.length > 0 ? (
+              <span
+                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                  activeTab === "requests"
+                    ? "bg-white/20 text-white"
+                    : "bg-accent text-accent-foreground"
+                }`}
+              >
+                {friendshipsBundle.incomingRequests.length}
+              </span>
+            ) : null}
+          </button>
+        </nav>
+
+        {initialLoading || isAuthLoading ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-surface py-12 text-center">
+            <div className="h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent" />
+            <p className="text-sm text-muted">
+              Carregando perfis e projetos da Comunidade...
+            </p>
+          </div>
+        ) : activeTab === "feed" ? (
+          <section aria-label="Feed de mini-projetos" className="space-y-4">
+            {/* Barra de filtros do feed */}
+            <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleFeedScopeChange("all")}
+                  className={`min-h-10 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors ${
+                    feedScope === "all"
+                      ? "bg-accent-soft text-accent-strong"
+                      : "border border-border bg-surface-muted text-muted hover:text-foreground"
+                  }`}
+                >
+                  Todos visíveis
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFeedScopeChange("friends")}
+                  disabled={!user}
+                  className={`min-h-10 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    feedScope === "friends"
+                      ? "bg-accent-soft text-accent-strong"
+                      : "border border-border bg-surface-muted text-muted hover:text-foreground"
+                  }`}
+                >
+                  Somente amigos
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <label htmlFor="codit-feed-language" className="sr-only">
+                  Filtrar por linguagem
+                </label>
+                <select
+                  id="codit-feed-language"
+                  value={feedLanguage}
+                  onChange={(event) =>
+                    handleFeedLanguageChange(
+                      event.target.value as SandboxLanguage | "all",
+                    )
+                  }
+                  className="min-h-10 rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-foreground focus:border-accent focus:outline-none"
+                >
+                  <option value="all">Todas as linguagens</option>
+                  {Object.entries(SANDBOX_LANGUAGE_LABELS).map(
+                    ([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ),
+                  )}
+                </select>
+
+                <label htmlFor="codit-feed-filter" className="sr-only">
+                  Filtrar feed por título ou @autor
+                </label>
+                <input
+                  id="codit-feed-filter"
+                  type="search"
+                  value={feedTextFilter}
+                  onChange={(event) => setFeedTextFilter(event.target.value)}
+                  placeholder="Filtrar feed por título ou @..."
+                  className="min-h-10 rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => void reloadFeed(feedScope, feedLanguage)}
+                  disabled={feedLoading || !isConfigured || !isOnline}
+                  className="min-h-10 rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+                >
+                  {feedLoading ? "Atualizando..." : "Atualizar"}
+                </button>
+              </div>
+            </div>
+
+            {filteredFeedProjects.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-surface p-8 text-center">
+                <p className="text-sm font-semibold text-foreground">
+                  {feedScope === "friends"
+                    ? "Nenhum projeto de amigos para exibir ainda."
+                    : "Nenhum mini-projeto encontrado com os filtros atuais."}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {feedScope === "friends"
+                    ? "Adicione colegas na aba Pessoas & @ ou peça para compartilharem projetos com visibilidade Somente amigos."
+                    : "Publique um mini-projeto em Minha Conta com visibilidade Portfólio público ou Somente amigos."}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {filteredFeedProjects.map((item) => {
+                  const authorHref = item.author?.username
+                    ? `/comunidade/perfil?u=${encodeURIComponent(item.author.username)}`
+                    : `/comunidade/perfil?id=${encodeURIComponent(item.project.user_id)}`;
+
+                  return (
+                    <article
+                      key={item.project.id}
+                      className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-surface p-5 shadow-xs"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-strong">
+                            {
+                              SANDBOX_LANGUAGE_LABELS[
+                                item.project.primary_language
+                              ]
+                            }
+                          </span>
+                          <span className="rounded-md border border-border bg-surface-muted px-2 py-0.5 text-[11px] text-muted">
+                            {SANDBOX_VISIBILITY_LABELS[item.project.visibility]}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h2 className="text-base font-bold text-foreground">
+                            {item.project.title}
+                          </h2>
+                          {item.project.description ? (
+                            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">
+                              {item.project.description}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <pre className="max-h-24 overflow-hidden rounded-xl border border-border bg-background p-3 font-mono text-[11px] leading-relaxed text-muted">
+                          <code>
+                            {item.project.source_code || "// Projeto sem código"}
+                          </code>
+                        </pre>
+                      </div>
+
+                      <div className="space-y-3 border-t border-border pt-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <Link
+                            href={authorHref}
+                            className="flex min-w-0 items-center gap-2 text-xs hover:underline"
+                          >
+                            <UserAvatar
+                              name={item.author?.full_name ?? "Estudante Codit"}
+                              username={item.author?.username}
+                              avatarUrl={item.author?.avatar_url}
+                              size="sm"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-foreground">
+                                {item.author?.full_name ?? "Estudante Codit"}
+                              </p>
+                              <p className="truncate font-mono text-[11px] text-accent-strong">
+                                {item.author?.username
+                                  ? `@${item.author.username}`
+                                  : formatDatePtBr(item.project.updated_at)}
+                              </p>
+                            </div>
+                          </Link>
+
+                          <div className="flex shrink-0 items-center gap-3 text-xs text-muted">
+                            <span>
+                              {item.likedByViewer ? "♥" : "♡"} {item.likesCount}
+                            </span>
+                            <span>💬 {item.commentsCount}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProject(item)}
+                          className="inline-flex min-h-10 w-full items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                        >
+                          Visualizar código e interagir
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ) : activeTab === "people" ? (
+          <section aria-label="Pessoas e busca por @" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted sm:text-sm">
+                {searchInput.trim()
+                  ? `Resultados para "${searchInput.trim()}"`
+                  : "Membros recentes da Comunidade Codit"}
+              </p>
+              <button
+                type="button"
+                onClick={() => void runPeopleSearch(searchInput)}
+                disabled={peopleLoading || !isConfigured || !isOnline}
+                className="min-h-9 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+              >
+                {peopleLoading ? "Buscando..." : "Atualizar lista"}
+              </button>
+            </div>
+
+            {peopleResults.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-surface p-8 text-center">
+                <p className="text-sm font-semibold text-foreground">
+                  Nenhuma pessoa encontrada.
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Tente buscar por outro <code className="font-mono">@usuário</code>{" "}
+                  ou nome completo.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+                {peopleResults.map((person) => {
+                  const relation = resolveRelationStatus(
+                    user?.id ?? null,
+                    person.id,
+                    friendshipsBundle.raw,
+                  );
+                  const profileHref = `/comunidade/perfil?u=${encodeURIComponent(person.username)}`;
+
+                  return (
+                    <article
+                      key={person.id}
+                      className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-surface p-4 shadow-xs sm:p-5"
+                    >
+                      <div className="flex items-start gap-3">
+                        <UserAvatar
+                          name={person.full_name}
+                          username={person.username}
+                          avatarUrl={person.avatar_url}
+                          size="md"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <Link
+                            href={profileHref}
+                            className="block truncate text-sm font-bold text-foreground hover:underline sm:text-base"
+                          >
+                            {person.full_name}
+                          </Link>
+                          <p className="truncate font-mono text-xs font-semibold text-accent-strong">
+                            @{person.username}
+                          </p>
+                          {person.bio ? (
+                            <p className="line-clamp-2 text-xs leading-relaxed text-muted">
+                              {person.bio}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                        <Link
+                          href={profileHref}
+                          className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                        >
+                          Ver projetos
+                        </Link>
+                        <FriendshipActionButton
+                          viewerId={user?.id ?? null}
+                          targetUserId={person.id}
+                          relation={relation}
+                          isOnline={isOnline}
+                          onChanged={reloadFriendshipsAndFeed}
+                          onError={setSocialError}
+                        />
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ) : activeTab === "friends" ? (
+          <section aria-label="Meus amigos no Codit" className="space-y-4">
+            {!user ? (
+              <div className="rounded-2xl border border-border bg-surface p-6 text-center">
+                <p className="text-sm font-semibold text-foreground">
+                  Entre na sua conta para gerenciar amigos
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Com uma conta no Codit, você adiciona colegas por{" "}
+                  <code className="font-mono">@usuário</code> e visualiza
+                  mini-projetos exclusivos para amigos.
+                </p>
+                <Link
+                  href="/auth"
+                  className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground hover:opacity-90"
+                >
+                  Entrar / Criar conta
+                </Link>
+              </div>
+            ) : friendshipsBundle.friends.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-surface p-8 text-center">
+                <p className="text-sm font-semibold text-foreground">
+                  Você ainda não adicionou amigos no Codit.
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Pesquise colegas pelo <code className="font-mono">@usuário</code>{" "}
+                  para acompanhar os projetos deles!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("people")}
+                  className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90"
+                >
+                  Procurar pessoas por @
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void reloadFriendshipsAndFeed()}
+                    disabled={friendshipsLoading || !isOnline}
+                    className="min-h-9 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+                  >
+                    {friendshipsLoading ? "Atualizando..." : "Atualizar amigos"}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+                  {friendshipsBundle.friends.map(({ friendship, profile: friend }) => {
+                    const profileHref = `/comunidade/perfil?u=${encodeURIComponent(friend.username)}`;
+                    return (
+                      <article
+                        key={friendship.id}
+                        className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-surface p-4 shadow-xs sm:p-5"
+                      >
+                        <div className="flex items-start gap-3">
+                          <UserAvatar
+                            name={friend.full_name}
+                            username={friend.username}
+                            avatarUrl={friend.avatar_url}
+                            size="md"
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <Link
+                              href={profileHref}
+                              className="block truncate text-sm font-bold text-foreground hover:underline sm:text-base"
+                            >
+                              {friend.full_name}
+                            </Link>
+                            <p className="truncate font-mono text-xs font-semibold text-accent-strong">
+                              @{friend.username}
+                            </p>
+                            {friend.bio ? (
+                              <p className="line-clamp-2 text-xs text-muted">
+                                {friend.bio}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                          <Link
+                            href={profileHref}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent-soft px-3.5 py-2 text-xs font-semibold text-accent-strong hover:border hover:border-accent"
+                          >
+                            Ver perfil e projetos
+                          </Link>
+                          <FriendshipActionButton
+                            viewerId={user.id}
+                            targetUserId={friend.id}
+                            relation={{
+                              status: "friends",
+                              friendshipId: friendship.id,
+                            }}
+                            isOnline={isOnline}
+                            onChanged={reloadFriendshipsAndFeed}
+                            onError={setSocialError}
+                          />
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        ) : (
+          <section
+            aria-label="Solicitações de amizade"
+            className="space-y-6"
+          >
+            {!user ? (
+              <div className="rounded-2xl border border-border bg-surface p-6 text-center">
+                <p className="text-sm font-semibold text-foreground">
+                  Entre na sua conta para ver solicitações de amizade
+                </p>
+                <Link
+                  href="/auth"
+                  className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground hover:opacity-90"
+                >
+                  Entrar / Criar conta
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="space-y-3 rounded-2xl border border-border bg-surface p-5">
+                  <h2 className="text-base font-bold text-foreground">
+                    Pedidos recebidos ({friendshipsBundle.incomingRequests.length})
+                  </h2>
+
+                  {friendshipsBundle.incomingRequests.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-border bg-surface-muted/40 p-5 text-center text-xs text-muted">
+                      Nenhuma solicitação recebida pendente no momento.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {friendshipsBundle.incomingRequests.map(
+                        ({ friendship, profile: sender }) => (
+                          <li
+                            key={friendship.id}
+                            className="flex flex-col gap-3 rounded-xl border border-border bg-surface-muted/50 p-3.5"
+                          >
+                            <div className="flex items-center gap-3">
+                              <UserAvatar
+                                name={sender.full_name}
+                                username={sender.username}
+                                avatarUrl={sender.avatar_url}
+                                size="sm"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <Link
+                                  href={`/comunidade/perfil?u=${encodeURIComponent(sender.username)}`}
+                                  className="block truncate text-sm font-bold text-foreground hover:underline"
+                                >
+                                  {sender.full_name}
+                                </Link>
+                                <p className="truncate font-mono text-xs text-accent-strong">
+                                  @{sender.username}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={
+                                  busyRequestId === friendship.id || !isOnline
+                                }
+                                onClick={() =>
+                                  void handleAcceptIncoming(
+                                    friendship.id,
+                                    sender.full_name,
+                                  )
+                                }
+                                className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl bg-accent px-3.5 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90 disabled:opacity-60"
+                              >
+                                Aceitar
+                              </button>
+                              <button
+                                type="button"
+                                disabled={
+                                  busyRequestId === friendship.id || !isOnline
+                                }
+                                onClick={() =>
+                                  void handleRemoveFriendshipItem(
+                                    friendship.id,
+                                    `Solicitação de ${sender.full_name} recusada.`,
+                                  )
+                                }
+                                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-muted hover:border-accent hover:text-foreground disabled:opacity-60"
+                              >
+                                Recusar
+                              </button>
+                            </div>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-border bg-surface p-5">
+                  <h2 className="text-base font-bold text-foreground">
+                    Pedidos enviados ({friendshipsBundle.outgoingRequests.length})
+                  </h2>
+
+                  {friendshipsBundle.outgoingRequests.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-border bg-surface-muted/40 p-5 text-center text-xs text-muted">
+                      Você não possui solicitações enviadas aguardando resposta.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {friendshipsBundle.outgoingRequests.map(
+                        ({ friendship, profile: recipient }) => (
+                          <li
+                            key={friendship.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/50 p-3.5"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <UserAvatar
+                                name={recipient.full_name}
+                                username={recipient.username}
+                                avatarUrl={recipient.avatar_url}
+                                size="sm"
+                              />
+                              <div className="min-w-0">
+                                <Link
+                                  href={`/comunidade/perfil?u=${encodeURIComponent(recipient.username)}`}
+                                  className="block truncate text-sm font-bold text-foreground hover:underline"
+                                >
+                                  {recipient.full_name}
+                                </Link>
+                                <p className="truncate font-mono text-xs text-accent-strong">
+                                  @{recipient.username}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={
+                                busyRequestId === friendship.id || !isOnline
+                              }
+                              onClick={() =>
+                                void handleRemoveFriendshipItem(
+                                  friendship.id,
+                                  `Solicitação para ${recipient.full_name} cancelada.`,
+                                )
+                              }
+                              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+                            >
+                              Cancelar pedido
+                            </button>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+      </main>
+
+      {selectedProject ? (
+        <ProjectViewerModal
+          key={selectedProject.project.id}
+          item={selectedProject}
+          viewerId={user?.id ?? null}
+          isOnline={isOnline}
+          onClose={() => setSelectedProject(null)}
+          onProjectMetaChange={handleProjectMetaChange}
+          onMigrationMissing={() => setMigrationMissing(true)}
+        />
+      ) : null}
+    </div>
+  );
+}

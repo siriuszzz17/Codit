@@ -38,8 +38,8 @@ const PRODUCT_PILLARS: ReadonlyArray<PillarCard> = [
 const ACTIVE_FOUNDATION: ReadonlyArray<string> = [
   "Next.js App Router com TypeScript em modo strict e exportação estática out/",
   "Autenticação client-side via Supabase (e-mail/senha + Google OAuth 2.0 PKCE)",
-  "Perfil personalizável e projetos salvos com ícones de 15 linguagens e RLS",
-  "Estúdio de projetos com Sandbox HTML/CSS/JS isolado client-side",
+  "Perfil personalizável e estúdio com ícones de 15 linguagens + Sandbox HTML/CSS/JS isolado",
+  "Comunidade Codit com @usuário, amizades, feed de mini-projetos, curtidas, comentários e clonagem",
   "PWA instalável com manifest.webmanifest, Tauri v2 (.exe) e Capacitor 8 (.apk)",
 ];
 
@@ -119,6 +119,12 @@ export default function HomePage() {
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
                 >
                   Meus projetos
+                </Link>
+                <Link
+                  href="/comunidade"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-accent-strong transition-colors hover:border-accent"
+                >
+                  Comunidade (@)
                 </Link>
               </div>
             </div>
@@ -223,7 +229,10 @@ export default function HomePage() {
       </main>
 
       <footer className="flex flex-col gap-1 border-t border-border pt-4 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-        <p>Codit · Fase 3 (Perfil personalizável, projetos salvos e sandbox isolado)</p>
+        <p>
+          Codit · Perfil personalizável, Estúdio 15 linguagens &amp; Comunidade
+          Codit
+        </p>
         <p className="font-mono">GET /api/v1/health</p>
       </footer>
     </div>

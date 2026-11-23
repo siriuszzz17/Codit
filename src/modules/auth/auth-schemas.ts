@@ -3,6 +3,14 @@ import {
   NATIVE_MOBILE_AUTH_CALLBACK_URL,
   type AuthPlatform,
 } from "@/lib/native-oauth";
+import { coditUsernameSchema } from "@/modules/social/social-schemas";
+
+function emptyStringToUndefined(value: unknown): unknown {
+  if (typeof value === "string" && value.trim() === "") {
+    return undefined;
+  }
+  return value;
+}
 
 const emailFieldSchema = z
   .string({ error: "Informe seu e-mail." })
@@ -25,6 +33,10 @@ export const signUpSchema = z
       .trim()
       .min(2, "O nome deve ter pelo menos 2 caracteres.")
       .max(120, "O nome pode ter no máximo 120 caracteres."),
+    username: z.preprocess(
+      emptyStringToUndefined,
+      coditUsernameSchema.optional(),
+    ),
     email: emailFieldSchema,
     password: z
       .string({ error: "Crie uma senha." })
@@ -44,7 +56,7 @@ export const signUpSchema = z
   });
 
 export type LoginInput = z.infer<typeof loginSchema>;
-export type SignUpInput = z.infer<typeof signUpSchema>;
+export type SignUpInput = z.input<typeof signUpSchema>;
 
 export function resolveOAuthRedirectUrl(options?: {
   origin?: string | undefined;

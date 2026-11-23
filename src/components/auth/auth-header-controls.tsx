@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@/modules/auth/auth-provider";
+import { isAllowedAvatarPath } from "@/modules/profiles/profile-themes";
 
 function resolveDisplayLabel(
   fullName: string | undefined,
@@ -37,10 +38,18 @@ export function AuthHeaderControls() {
 
   if (isLoading) {
     return (
-      <div
-        aria-hidden="true"
-        className="h-9 w-28 animate-pulse rounded-full border border-border bg-surface-muted"
-      />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href="/comunidade"
+          className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+        >
+          Comunidade
+        </Link>
+        <div
+          aria-hidden="true"
+          className="h-9 w-28 animate-pulse rounded-full border border-border bg-surface-muted"
+        />
+      </div>
     );
   }
 
@@ -50,10 +59,18 @@ export function AuthHeaderControls() {
       user.email,
     );
     const avatarUrl = profile?.avatar_url ?? null;
+    const isPixelAvatar =
+      Boolean(avatarUrl) && isAllowedAvatarPath(avatarUrl ?? "");
     const showAvatar = Boolean(avatarUrl) && failedAvatarUrl !== avatarUrl;
 
     return (
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href="/comunidade"
+          className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+        >
+          Comunidade
+        </Link>
         <Link
           href="/conta"
           className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-accent-soft px-3 py-1 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
@@ -66,7 +83,12 @@ export function AuthHeaderControls() {
               height={20}
               unoptimized
               onError={() => setFailedAvatarUrl(avatarUrl)}
-              className="h-5 w-5 rounded-full object-cover"
+              className={`h-5 w-5 rounded-full ${
+                isPixelAvatar
+                  ? "bg-[#141124] object-contain p-0.5"
+                  : "object-cover"
+              }`}
+              style={isPixelAvatar ? { imageRendering: "pixelated" } : undefined}
             />
           ) : (
             <span
@@ -90,6 +112,12 @@ export function AuthHeaderControls() {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      <Link
+        href="/comunidade"
+        className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+      >
+        Comunidade
+      </Link>
       <Link
         href="/auth"
         className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"

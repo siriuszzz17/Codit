@@ -24,6 +24,7 @@ export const SANDBOX_LANGUAGES: readonly SandboxLanguage[] =
 
 export const SANDBOX_VISIBILITIES: readonly SandboxVisibility[] = [
   "private",
+  "friends",
   "unlisted",
   "public_portfolio",
 ];
@@ -124,7 +125,7 @@ export const createSandboxProjectSchema = z.object({
     )
     .default(""),
   visibility: z
-    .enum(["private", "unlisted", "public_portfolio"])
+    .enum(["private", "friends", "unlisted", "public_portfolio"])
     .default("private"),
   isPinned: z.boolean().optional(),
   tags: optionalTagsSchema,
@@ -181,7 +182,7 @@ export const updateSandboxProjectSchema = z.object({
     )
     .optional(),
   visibility: z
-    .enum(["private", "unlisted", "public_portfolio"])
+    .enum(["private", "friends", "unlisted", "public_portfolio"])
     .optional(),
   isPinned: z.boolean().optional(),
   tags: optionalTagsSchema,

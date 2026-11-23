@@ -103,6 +103,7 @@ export function AuthScreen() {
   const mode: AuthMode = selectedMode ?? urlMode ?? "login";
 
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -250,6 +251,7 @@ export function AuthScreen() {
 
     const parsed = signUpSchema.safeParse({
       fullName,
+      username,
       email,
       password,
       confirmPassword,
@@ -654,38 +656,89 @@ export function AuthScreen() {
                 className="space-y-4"
               >
                 {mode === "signup" ? (
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="codit-auth-fullname"
-                      className="block text-xs font-semibold text-foreground"
-                    >
-                      Nome completo
-                    </label>
-                    <input
-                      id="codit-auth-fullname"
-                      name="fullName"
-                      type="text"
-                      autoComplete="name"
-                      placeholder="Ex.: Maria Oliveira"
-                      value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
-                      aria-invalid={Boolean(fieldErrors.fullName)}
-                      aria-describedby={
-                        fieldErrors.fullName
-                          ? "codit-auth-fullname-error"
-                          : undefined
-                      }
-                      className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
-                    />
-                    {fieldErrors.fullName ? (
-                      <p
-                        id="codit-auth-fullname-error"
-                        className="text-xs font-medium text-red-500"
+                  <>
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="codit-auth-fullname"
+                        className="block text-xs font-semibold text-foreground"
                       >
-                        {fieldErrors.fullName}
-                      </p>
-                    ) : null}
-                  </div>
+                        Nome completo
+                      </label>
+                      <input
+                        id="codit-auth-fullname"
+                        name="fullName"
+                        type="text"
+                        autoComplete="name"
+                        placeholder="Ex.: Maria Oliveira"
+                        value={fullName}
+                        onChange={(event) => setFullName(event.target.value)}
+                        aria-invalid={Boolean(fieldErrors.fullName)}
+                        aria-describedby={
+                          fieldErrors.fullName
+                            ? "codit-auth-fullname-error"
+                            : undefined
+                        }
+                        className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                      />
+                      {fieldErrors.fullName ? (
+                        <p
+                          id="codit-auth-fullname-error"
+                          className="text-xs font-medium text-red-500"
+                        >
+                          {fieldErrors.fullName}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="codit-auth-username"
+                        className="block text-xs font-semibold text-foreground"
+                      >
+                        @usuário no Codit (opcional)
+                      </label>
+                      <div className="flex min-h-11 items-center rounded-xl border border-border bg-background px-3.5 focus-within:border-accent">
+                        <span
+                          aria-hidden="true"
+                          className="pr-1 font-mono text-sm text-muted"
+                        >
+                          @
+                        </span>
+                        <input
+                          id="codit-auth-username"
+                          name="username"
+                          type="text"
+                          autoComplete="username"
+                          placeholder="ex.: maria.dev"
+                          value={username}
+                          onChange={(event) => setUsername(event.target.value)}
+                          aria-invalid={Boolean(fieldErrors.username)}
+                          aria-describedby={
+                            fieldErrors.username
+                              ? "codit-auth-username-error"
+                              : "codit-auth-username-hint"
+                          }
+                          className="w-full bg-transparent py-2.5 font-mono text-sm text-foreground placeholder:text-muted focus:outline-none"
+                        />
+                      </div>
+                      {!fieldErrors.username ? (
+                        <p
+                          id="codit-auth-username-hint"
+                          className="text-[11px] text-muted"
+                        >
+                          Se deixar em branco, criaremos um @usuário automático
+                          para você na Comunidade.
+                        </p>
+                      ) : (
+                        <p
+                          id="codit-auth-username-error"
+                          className="text-xs font-medium text-red-500"
+                        >
+                          {fieldErrors.username}
+                        </p>
+                      )}
+                    </div>
+                  </>
                 ) : null}
 
                 <div className="space-y-1.5">

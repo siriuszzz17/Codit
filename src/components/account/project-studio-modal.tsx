@@ -44,11 +44,16 @@ const VISIBILITY_OPTIONS: ReadonlyArray<{
   hint: string;
 }> = [
   { id: "private", label: "Privado", hint: "Visível apenas para você" },
+  {
+    id: "friends",
+    label: "Somente amigos",
+    hint: "Visível na Comunidade apenas para amigos aceitos",
+  },
   { id: "unlisted", label: "Não listado", hint: "Acesso apenas por link" },
   {
     id: "public_portfolio",
     label: "Portfólio público",
-    hint: "Destaque no seu portfólio",
+    hint: "Destaque no seu portfólio e na Comunidade",
   },
 ];
 

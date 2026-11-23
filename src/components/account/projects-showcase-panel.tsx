@@ -32,6 +32,7 @@ interface ProjectsShowcasePanelProps {
 
 const VISIBILITY_LABELS: Record<SandboxVisibility, string> = {
   private: "Privado",
+  friends: "Somente amigos",
   unlisted: "Não listado",
   public_portfolio: "Portfólio público",
 };
@@ -225,6 +226,7 @@ export function ProjectsShowcasePanel({
             >
               <option value="all">Todas as visibilidades</option>
               <option value="private">Privado</option>
+              <option value="friends">Somente amigos</option>
               <option value="unlisted">Não listado</option>
               <option value="public_portfolio">Portfólio público</option>
             </select>

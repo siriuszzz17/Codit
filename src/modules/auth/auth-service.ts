@@ -98,6 +98,7 @@ export async function signUpWithEmail(
       ...(emailRedirectTo ? { emailRedirectTo } : {}),
       data: {
         full_name: parsed.data.fullName,
+        ...(parsed.data.username ? { username: parsed.data.username } : {}),
       },
     },
   });

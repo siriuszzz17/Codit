@@ -18,6 +18,7 @@ import {
   PROFILE_BANNER_IDS,
   type ProfileCustomizationFields,
 } from "@/modules/profiles/profile-themes";
+import { coditUsernameSchema } from "@/modules/social/social-schemas";
 
 const GITHUB_USERNAME_REGEX = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const PROFILE_PREFS_STORAGE_PREFIX = "codit:profile-prefs:";
@@ -71,6 +72,10 @@ export const updateProfileSchema = z.object({
     .trim()
     .min(2, "O nome deve ter pelo menos 2 caracteres.")
     .max(120, "O nome pode ter no máximo 120 caracteres."),
+  username: z.preprocess(
+    emptyStringToNull,
+    coditUsernameSchema.nullable().optional(),
+  ),
   bio: z.preprocess(
     emptyStringToNull,
     z
@@ -194,6 +199,7 @@ type RawProfileDbRow = Pick<
   | "created_at"
   | "updated_at"
 > &
+  Partial<Pick<ProfileRow, "username">> &
   Partial<ProfileCustomizationFields>;
 
 function readLocalProfilePrefs(
@@ -262,6 +268,7 @@ export function normalizeProfileRow(
     id: raw.id,
     email: raw.email,
     full_name: raw.full_name,
+    username: typeof raw.username === "string" ? raw.username : "",
     avatar_url: raw.avatar_url,
     role: raw.role,
     bio: raw.bio,
@@ -346,6 +353,18 @@ function deriveAvatarUrl(user: Pick<User, "user_metadata">): string | null {
   return trimmed && isAllowedAvatarValue(trimmed) ? trimmed : null;
 }
 
+function deriveOptionalUsername(
+  user: Pick<User, "user_metadata">,
+): string | undefined {
+  const rawUsername = user.user_metadata?.username;
+  if (typeof rawUsername !== "string" || rawUsername.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = coditUsernameSchema.safeParse(rawUsername);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export async function getProfileByUserId(
   userId: string,
   client: CoditSupabaseClient = requireSupabaseClient(),
@@ -401,26 +420,51 @@ export async function ensureProfile(
     );
   }
 
+  const optionalUsername = deriveOptionalUsername(user);
+  const baseInsert = {
+    id: user.id,
+    email: normalizedEmail,
+    full_name: deriveFullName(user),
+    avatar_url: deriveAvatarUrl(user),
+    role: "student" as const,
+  };
+
   const { data, error } = await client
     .from("profiles")
     .upsert(
       {
-        id: user.id,
-        email: normalizedEmail,
-        full_name: deriveFullName(user),
-        avatar_url: deriveAvatarUrl(user),
-        role: "student",
+        ...baseInsert,
+        ...(optionalUsername ? { username: optionalUsername } : {}),
       },
       { onConflict: "id" },
     )
     .select("*")
     .single();
 
-  if (error) {
-    throw new ProfileServiceError(mapSupabaseDatabaseError(error));
+  if (!error) {
+    return normalizeProfileRow(data as RawProfileDbRow, fallbackPrefs);
   }
 
-  return normalizeProfileRow(data as RawProfileDbRow, fallbackPrefs);
+  if (optionalUsername && isSchemaMismatchError(error)) {
+    const fallbackInsert = await client
+      .from("profiles")
+      .upsert(baseInsert, { onConflict: "id" })
+      .select("*")
+      .single();
+
+    if (!fallbackInsert.error) {
+      return normalizeProfileRow(
+        fallbackInsert.data as RawProfileDbRow,
+        fallbackPrefs,
+      );
+    }
+
+    throw new ProfileServiceError(
+      mapSupabaseDatabaseError(fallbackInsert.error),
+    );
+  }
+
+  throw new ProfileServiceError(mapSupabaseDatabaseError(error));
 }
 
 export async function updateProfile(
@@ -438,6 +482,9 @@ export async function updateProfile(
 
   const corePayload = {
     full_name: parsed.data.fullName,
+    ...(parsed.data.username !== undefined && parsed.data.username !== null
+      ? { username: parsed.data.username }
+      : {}),
     ...(parsed.data.bio !== undefined ? { bio: parsed.data.bio } : {}),
     ...(parsed.data.githubUsername !== undefined
       ? { github_username: parsed.data.githubUsername }
@@ -498,13 +545,28 @@ export async function updateProfile(
     throw new ProfileServiceError(mapSupabaseDatabaseError(error));
   }
 
-  // Fallback resiliente para banco Fase 2 ainda sem as colunas da Fase 3
-  const fallbackResult = await client
+  // Fallback resiliente para banco Fase 2 ainda sem as colunas da Fase 3 / Fase 4
+  let fallbackResult = await client
     .from("profiles")
     .update(corePayload)
     .eq("id", userId)
     .select("*")
     .single();
+
+  if (
+    fallbackResult.error &&
+    "username" in corePayload &&
+    isSchemaMismatchError(fallbackResult.error)
+  ) {
+    const { username: _omittedUsername, ...coreWithoutUsername } = corePayload;
+    void _omittedUsername;
+    fallbackResult = await client
+      .from("profiles")
+      .update(coreWithoutUsername)
+      .eq("id", userId)
+      .select("*")
+      .single();
+  }
 
   if (fallbackResult.error) {
     throw new ProfileServiceError(

@@ -121,6 +121,7 @@ export function AccountWorkspace() {
         : "";
     return {
       fullName: profile?.full_name ?? metadataFullName,
+      username: profile?.username ?? "",
       headline: profile?.headline ?? "",
       location: profile?.location ?? "",
       bio: profile?.bio ?? "",
@@ -154,6 +155,7 @@ export function AccountWorkspace() {
       id: user.id,
       email: user.email ?? "",
       full_name: baseProfileDraft.fullName || "Estudante Codit",
+      username: baseProfileDraft.username,
       avatar_url: baseProfileDraft.avatarUrl || null,
       role: "student",
       bio: null,
@@ -179,6 +181,7 @@ export function AccountWorkspace() {
     return {
       ...baseRow,
       full_name: activeDraft.fullName.trim() || baseRow.full_name,
+      username: activeDraft.username.trim().replace(/^@+/, "") || baseRow.username,
       headline: activeDraft.headline.trim() || null,
       location: activeDraft.location.trim() || null,
       bio: activeDraft.bio.trim() || null,
@@ -305,6 +308,7 @@ export function AccountWorkspace() {
         user.id,
         {
           fullName: activeDraft.fullName,
+          username: activeDraft.username,
           headline: activeDraft.headline,
           location: activeDraft.location,
           bio: activeDraft.bio,
@@ -681,7 +685,21 @@ export function AccountWorkspace() {
           </div>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/comunidade"
+            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-accent-soft px-3.5 py-2 text-xs font-semibold text-accent-strong transition-colors hover:border-accent sm:text-sm"
+          >
+            Comunidade
+          </Link>
+          {profile?.username ? (
+            <Link
+              href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 font-mono text-xs font-semibold text-accent-strong transition-colors hover:border-accent sm:text-sm"
+            >
+              Meu perfil
+            </Link>
+          ) : null}
           <Link
             href="/"
             className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent sm:text-sm"
