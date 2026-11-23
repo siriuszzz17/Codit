@@ -38,18 +38,10 @@ export function AuthHeaderControls() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link
-          href="/comunidade"
-          className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
-        >
-          Comunidade
-        </Link>
-        <div
-          aria-hidden="true"
-          className="h-9 w-28 animate-pulse rounded-full border border-border bg-surface-muted"
-        />
-      </div>
+      <div
+        aria-hidden="true"
+        className="h-9 w-24 animate-pulse rounded-xl border border-border bg-surface-muted"
+      />
     );
   }
 
@@ -64,16 +56,11 @@ export function AuthHeaderControls() {
     const showAvatar = Boolean(avatarUrl) && failedAvatarUrl !== avatarUrl;
 
     return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link
-          href="/comunidade"
-          className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
-        >
-          Comunidade
-        </Link>
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <Link
           href="/conta"
-          className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-accent-soft px-3 py-1 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
+          title="Abrir Meu Perfil"
+          className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-border bg-surface-muted/80 px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
         >
           {showAvatar && avatarUrl ? (
             <Image
@@ -83,7 +70,7 @@ export function AuthHeaderControls() {
               height={20}
               unoptimized
               onError={() => setFailedAvatarUrl(avatarUrl)}
-              className={`h-5 w-5 rounded-full ${
+              className={`h-5 w-5 rounded-md ${
                 isPixelAvatar
                   ? "bg-[#141124] object-contain p-0.5"
                   : "object-cover"
@@ -96,13 +83,13 @@ export function AuthHeaderControls() {
               className="inline-flex h-2 w-2 rounded-full bg-accent"
             />
           )}
-          <span>Olá, {label}</span>
+          <span className="max-w-20 truncate sm:max-w-28">{label}</span>
         </Link>
         <button
           type="button"
           onClick={() => void handleSignOut()}
           disabled={isSigningOut}
-          className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 sm:px-3"
         >
           {isSigningOut ? "Saindo..." : "Sair"}
         </button>
@@ -111,22 +98,16 @@ export function AuthHeaderControls() {
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      <Link
-        href="/comunidade"
-        className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
-      >
-        Comunidade
-      </Link>
+    <div className="flex items-center gap-1.5 sm:gap-2">
       <Link
         href="/auth"
-        className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+        className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
       >
         Entrar
       </Link>
       <Link
         href="/auth?mode=signup"
-        className="inline-flex min-h-9 items-center justify-center rounded-full bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+        className="hidden min-h-9 items-center justify-center rounded-xl bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:inline-flex"
       >
         Criar conta
       </Link>

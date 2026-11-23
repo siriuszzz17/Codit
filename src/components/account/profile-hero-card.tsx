@@ -20,8 +20,6 @@ interface ProfileHeroCardProps {
   profile: ProfileRow;
   userEmail: string;
   projects: readonly SandboxProjectRow[];
-  activeTab: "projetos" | "personalizar";
-  onSelectTab: (tab: "projetos" | "personalizar") => void;
   isEditingPreview?: boolean;
 }
 
@@ -64,8 +62,6 @@ export function ProfileHeroCard({
   profile,
   userEmail,
   projects,
-  activeTab,
-  onSelectTab,
   isEditingPreview = false,
 }: ProfileHeroCardProps) {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
@@ -131,13 +127,9 @@ export function ProfileHeroCard({
                 Pré-visualização ao vivo
               </span>
             ) : (
-              <button
-                type="button"
-                onClick={() => onSelectTab("personalizar")}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3 py-1 text-xs font-semibold text-white backdrop-blur-xs transition-colors hover:bg-black/60"
-              >
-                Personalizar perfil
-              </button>
+              <span className="inline-flex items-center rounded-full border border-white/20 bg-black/35 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-xs">
+                Perfil &amp; Identidade
+              </span>
             )}
           </div>
 
@@ -222,38 +214,22 @@ export function ProfileHeroCard({
             </div>
           </div>
 
-          {/* Navegação por abas */}
-          <div
-            role="tablist"
-            aria-label="Seções da conta Codit"
-            className="grid w-full grid-cols-2 gap-1.5 rounded-2xl border border-border bg-surface-muted p-1 sm:w-auto"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "projetos"}
-              onClick={() => onSelectTab("projetos")}
-              className={`min-h-10 rounded-xl px-4 py-2 text-xs font-semibold transition-colors sm:text-sm ${
-                activeTab === "projetos"
-                  ? "bg-surface text-foreground shadow-xs"
-                  : "text-muted hover:text-foreground"
-              }`}
+          {/* Ações rápidas do perfil */}
+          <div className="flex flex-wrap items-center gap-2 sm:pb-1">
+            <Link
+              href="/projetos"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"
             >
-              Projetos ({projects.length})
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "personalizar"}
-              onClick={() => onSelectTab("personalizar")}
-              className={`min-h-10 rounded-xl px-4 py-2 text-xs font-semibold transition-colors sm:text-sm ${
-                activeTab === "personalizar"
-                  ? "bg-surface text-foreground shadow-xs"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              Personalizar perfil
-            </button>
+              Meus Projetos ({projects.length})
+            </Link>
+            {profile.username ? (
+              <Link
+                href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent sm:text-sm"
+              >
+                Ver perfil público
+              </Link>
+            ) : null}
           </div>
         </div>
 

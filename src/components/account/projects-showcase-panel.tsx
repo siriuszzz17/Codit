@@ -22,6 +22,7 @@ interface ProjectsShowcasePanelProps {
   deletingProjectId: string | null;
   pinningProjectId: string | null;
   duplicatingProjectId: string | null;
+  hideTopHeader?: boolean;
   onCreateNew: (language?: SandboxLanguage) => void;
   onOpenProject: (project: SandboxProjectRow) => void;
   onTogglePin: (project: SandboxProjectRow) => Promise<void>;
@@ -82,6 +83,7 @@ export function ProjectsShowcasePanel({
   deletingProjectId,
   pinningProjectId,
   duplicatingProjectId,
+  hideTopHeader = false,
   onCreateNew,
   onOpenProject,
   onTogglePin,
@@ -149,39 +151,53 @@ export function ProjectsShowcasePanel({
       className="space-y-5 rounded-3xl border border-border bg-surface p-5 shadow-xs sm:p-6"
     >
       {/* Cabeçalho e ações */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-        <div>
+      {!hideTopHeader ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+          <div>
+            <h2
+              id="projects-section-title"
+              className="text-lg font-bold text-foreground sm:text-xl"
+            >
+              Meus Projetos ({projects.length})
+            </h2>
+            <p className="text-xs text-muted sm:text-sm">
+              Crie, execute no sandbox isolado, organize por linguagem e destaque
+              no seu portfólio.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void onRefresh()}
+              disabled={isLoading || !isOnline}
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-60"
+            >
+              {isLoading ? "Atualizando..." : "Atualizar"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onCreateNew()}
+              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"
+            >
+              <span>+ Novo projeto</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2
             id="projects-section-title"
-            className="text-lg font-bold text-foreground sm:text-xl"
+            className="text-base font-bold text-foreground sm:text-lg"
           >
-            Meus Projetos ({projects.length})
+            Todos os projetos ({projects.length})
           </h2>
-          <p className="text-xs text-muted sm:text-sm">
-            Crie, execute no sandbox isolado, organize por linguagem e destaque
-            no seu portfólio.
-          </p>
+          <span className="text-xs text-muted">
+            Clique em um projeto para editar código e rodar o Sandbox
+          </span>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void onRefresh()}
-            disabled={isLoading || !isOnline}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-60"
-          >
-            {isLoading ? "Atualizando..." : "Atualizar"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onCreateNew()}
-            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"
-          >
-            <span>+ Novo projeto</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {error ? (
         <p
@@ -345,7 +361,7 @@ export function ProjectsShowcasePanel({
             return (
               <article
                 key={project.id}
-                className={`flex flex-col justify-between overflow-hidden rounded-2xl border bg-surface-muted/35 transition-colors ${
+                className={`flex flex-col justify-between overflow-hidden rounded-2xl border bg-background/70 transition-all ${
                   project.is_pinned
                     ? "border-amber-500/45 shadow-xs"
                     : "border-border hover:border-accent/60"

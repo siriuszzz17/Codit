@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { AccountWorkspace } from "@/components/account/account-workspace";
 
 export const metadata: Metadata = {
-  title: "Meu Perfil e Projetos",
+  title: "Meu Perfil",
   description:
-    "Personalize seu perfil no Codit e gerencie seus projetos salvos com ícones de linguagem e preview em sandbox.",
+    "Personalize seu perfil, capa, tema visual, habilidades e @usuário na Comunidade Codit.",
 };
 
 export default function ContaPage() {

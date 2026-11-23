@@ -449,7 +449,7 @@ export function ProjectViewerModal({
                 salva nos seus mini-projetos!
               </span>
               <Link
-                href="/conta"
+                href="/projetos"
                 onClick={onClose}
                 className="font-semibold text-accent-strong underline"
               >

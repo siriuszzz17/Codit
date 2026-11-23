@@ -269,13 +269,13 @@ TCC-Codit/
 │   ├── manifest.webmanifest
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
-│   ├── app/                   # App Router (/, /auth, /auth/callback, /conta, /comunidade, /comunidade/perfil, /offline, /api/v1/health)
-│   ├── components/            # Brand (OctopyBadge), Auth, Account (Perfil/Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit), PWA e Native (AppUpdateModal)
+│   ├── app/                   # App Router (/, /auth, /auth/callback, /projetos, /comunidade, /comunidade/perfil, /conta, /offline, /api/v1/health)
+│   ├── components/            # Layout (TopNavbar), Brand (OctopyBadge), Auth, Account (Perfil), Projects (Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit & FriendshipsDrawer), PWA e Native (AppUpdateModal)
 │   ├── modules/               # Domínios auth, profiles, sandbox e social (serviços tipados + AuthProvider)
-│   └── lib/                   # supabase/*, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
+│   └── lib/                   # supabase/*, navigation.ts, social-events.ts, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/
-    └── unit/                  # Testes unitários Vitest (env, logger, auth-schemas, native-oauth, supabase-config, services, social, updater)
+    └── unit/                  # Testes unitários Vitest (env, logger, navigation, auth-schemas, auth-service, native-oauth, supabase-config, services, social, updater)
 ```
 
 ### Planejada (Expansão Fases 2–4)

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { TopNavbar } from "@/components/layout/top-navbar";
 import { AppUpdateModal } from "@/components/native/app-update-modal";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
@@ -51,11 +52,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className="min-h-dvh bg-background text-foreground antialiased">
+      <body className="codit-app-shell min-h-dvh bg-background text-foreground antialiased">
         <AuthProvider>
           <ServiceWorkerRegister />
           <OfflineBanner />
           <AppUpdateModal />
+          <TopNavbar />
           {children}
         </AuthProvider>
       </body>

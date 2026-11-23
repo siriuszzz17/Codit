@@ -1,67 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type FormEvent,
-} from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ProfileCustomizerPanel,
   type ProfileDraftState,
 } from "@/components/account/profile-customizer-panel";
 import { ProfileHeroCard } from "@/components/account/profile-hero-card";
-import {
-  ProjectStudioModal,
-  type ProjectStudioSubmitPayload,
-} from "@/components/account/project-studio-modal";
-import { ProjectsShowcasePanel } from "@/components/account/projects-showcase-panel";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type {
   ProfileRow,
-  SandboxLanguage,
   SandboxProjectRow,
 } from "@/lib/supabase/database.types";
 import { useIsOnline } from "@/lib/use-is-online";
 import { useAuth } from "@/modules/auth/auth-provider";
 import { DEFAULT_PROFILE_CUSTOMIZATION } from "@/modules/profiles/profile-themes";
 import { updateProfile } from "@/modules/profiles/profile-service";
-import {
-  createSandboxProject,
-  listUserSandboxProjects,
-  SandboxProjectConflictError,
-  softDeleteSandboxProject,
-  togglePinSandboxProject,
-  updateSandboxProject,
-} from "@/modules/sandbox/sandbox-project-service";
-
-type AccountTab = "projetos" | "personalizar";
-
-function subscribeTabQuery(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined") {
-    return () => {};
-  }
-  window.addEventListener("popstate", onStoreChange);
-  return () => {
-    window.removeEventListener("popstate", onStoreChange);
-  };
-}
-
-function getTabQuerySnapshot(): AccountTab {
-  if (typeof window === "undefined") {
-    return "projetos";
-  }
-  const tab = new URLSearchParams(window.location.search).get("tab");
-  return tab === "personalizar" ? "personalizar" : "projetos";
-}
-
-function getServerTabQuerySnapshot(): AccountTab {
-  return "projetos";
-}
+import { listUserSandboxProjects } from "@/modules/sandbox/sandbox-project-service";
 
 export function AccountWorkspace() {
   const isOnline = useIsOnline();
@@ -72,47 +28,15 @@ export function AccountWorkspace() {
     isConfigured,
     authError,
     refreshProfile,
-    signOut,
   } = useAuth();
+  const userId = user?.id ?? null;
 
-  const urlTab = useSyncExternalStore(
-    subscribeTabQuery,
-    getTabQuerySnapshot,
-    getServerTabQuerySnapshot,
-  );
-  const [selectedTab, setSelectedTab] = useState<AccountTab | null>(null);
-  const activeTab: AccountTab = selectedTab ?? urlTab;
-
-  // Estado de edição do perfil
   const [profileDraftOverride, setProfileDraftOverride] =
     useState<ProfileDraftState | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
-
-  // Estado dos projetos
   const [projects, setProjects] = useState<SandboxProjectRow[]>([]);
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [projectsError, setProjectsError] = useState<string | null>(null);
-  const [projectsMessage, setProjectsMessage] = useState<string | null>(null);
-  const [pinningProjectId, setPinningProjectId] = useState<string | null>(null);
-  const [duplicatingProjectId, setDuplicatingProjectId] = useState<
-    string | null
-  >(null);
-  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
-    null,
-  );
-
-  // Estado do modal/estúdio de projeto
-  const [studioOpen, setStudioOpen] = useState(false);
-  const [studioSessionKey, setStudioSessionKey] = useState(1);
-  const [studioInitialLanguage, setStudioInitialLanguage] =
-    useState<SandboxLanguage>("html_css_js");
-  const [editingProject, setEditingProject] =
-    useState<SandboxProjectRow | null>(null);
-  const [savingStudio, setSavingStudio] = useState(false);
-  const [studioError, setStudioError] = useState<string | null>(null);
-  const [studioMessage, setStudioMessage] = useState<string | null>(null);
 
   const baseProfileDraft = useMemo<ProfileDraftState>(() => {
     const metadataFullName =
@@ -182,7 +106,8 @@ export function AccountWorkspace() {
     return {
       ...baseRow,
       full_name: activeDraft.fullName.trim() || baseRow.full_name,
-      username: activeDraft.username.trim().replace(/^@+/, "") || baseRow.username,
+      username:
+        activeDraft.username.trim().replace(/^@+/, "") || baseRow.username,
       headline: activeDraft.headline.trim() || null,
       location: activeDraft.location.trim() || null,
       bio: activeDraft.bio.trim() || null,
@@ -199,75 +124,35 @@ export function AccountWorkspace() {
     };
   }, [activeDraft, baseProfileDraft, profile, profileDraftOverride, user]);
 
-  const loadProjects = useCallback(async (userId: string) => {
-    const client = getSupabaseClient();
-    if (!client) {
-      return;
-    }
-
-    setLoadingProjects(true);
-    setProjectsError(null);
-    try {
-      const items = await listUserSandboxProjects(userId, client);
-      setProjects(items);
-    } catch (error) {
-      setProjectsError(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível carregar seus projetos.",
-      );
-    } finally {
-      setLoadingProjects(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (!user?.id) {
+    if (!userId) {
       return;
     }
 
     let cancelled = false;
 
-    async function fetchInitialProjects(targetUserId: string) {
+    async function fetchSummaryProjects(targetUserId: string) {
       const client = getSupabaseClient();
       if (!client) {
         return;
       }
 
-      setLoadingProjects(true);
-      setProjectsError(null);
       try {
         const items = await listUserSandboxProjects(targetUserId, client);
         if (!cancelled) {
           setProjects(items);
         }
-      } catch (error) {
-        if (!cancelled) {
-          setProjectsError(
-            error instanceof Error
-              ? error.message
-              : "Não foi possível carregar seus projetos.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingProjects(false);
-        }
+      } catch {
+        // Métricas de projetos são complementares nesta página de perfil.
       }
     }
 
-    void fetchInitialProjects(user.id);
+    void fetchSummaryProjects(userId);
 
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
-
-  function handleSelectTab(nextTab: AccountTab) {
-    setSelectedTab(nextTab);
-    setProfileError(null);
-    setProfileMessage(null);
-  }
+  }, [userId]);
 
   function handleChangeDraft(
     updater: (current: ProfileDraftState) => ProfileDraftState,
@@ -279,7 +164,7 @@ export function AccountWorkspace() {
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user) {
+    if (!userId) {
       return;
     }
 
@@ -304,7 +189,7 @@ export function AccountWorkspace() {
       const resolvedCurrentProfile = profile ?? (await refreshProfile());
 
       await updateProfile(
-        user.id,
+        userId,
         {
           fullName: activeDraft.fullName,
           username: activeDraft.username,
@@ -341,297 +226,13 @@ export function AccountWorkspace() {
     }
   }
 
-  function openNewProjectStudio(language: SandboxLanguage = "html_css_js") {
-    setEditingProject(null);
-    setStudioInitialLanguage(language);
-    setStudioError(null);
-    setStudioMessage(null);
-    setStudioSessionKey((current) => current + 1);
-    setStudioOpen(true);
-  }
-
-  function openEditProjectStudio(project: SandboxProjectRow) {
-    setEditingProject(project);
-    setStudioInitialLanguage(project.primary_language);
-    setStudioError(null);
-    setStudioMessage(null);
-    setStudioSessionKey((current) => current + 1);
-    setStudioOpen(true);
-  }
-
-  async function handleSaveStudioProject(payload: ProjectStudioSubmitPayload) {
-    if (!user) {
-      return;
-    }
-
-    setStudioError(null);
-    setStudioMessage(null);
-    setProjectsError(null);
-    setProjectsMessage(null);
-
-    if (!isOnline) {
-      setStudioError(
-        "Você está offline. Conecte-se à internet para salvar projetos.",
-      );
-      return;
-    }
-
-    const client = getSupabaseClient();
-    if (!client) {
-      setStudioError("Cliente Supabase não configurado.");
-      return;
-    }
-
-    setSavingStudio(true);
-    try {
-      if (!profile) {
-        await refreshProfile();
-      }
-
-      if (editingProject) {
-        const updated = await updateSandboxProject(
-          user.id,
-          editingProject.id,
-          {
-            title: payload.title,
-            description: payload.description,
-            primaryLanguage: payload.primaryLanguage,
-            visibility: payload.visibility,
-            sourceCode: payload.sourceCode,
-            isPinned: payload.isPinned,
-            tags: payload.tags,
-            repositoryUrl: payload.repositoryUrl,
-            liveUrl: payload.liveUrl,
-            expectedVersion: editingProject.version,
-          },
-          client,
-        );
-
-        setProjects((current) =>
-          current
-            .map((item) => (item.id === updated.id ? updated : item))
-            .sort((a, b) => {
-              if (a.is_pinned !== b.is_pinned) {
-                return a.is_pinned ? -1 : 1;
-              }
-              return Date.parse(b.updated_at) - Date.parse(a.updated_at);
-            }),
-        );
-        setEditingProject(updated);
-        setStudioMessage(
-          `Projeto "${updated.title}" atualizado (v${updated.version}).`,
-        );
-      } else {
-        const created = await createSandboxProject(
-          user.id,
-          {
-            title: payload.title,
-            description: payload.description,
-            primaryLanguage: payload.primaryLanguage,
-            visibility: payload.visibility,
-            sourceCode: payload.sourceCode,
-            isPinned: payload.isPinned,
-            tags: payload.tags,
-            repositoryUrl: payload.repositoryUrl,
-            liveUrl: payload.liveUrl,
-          },
-          client,
-        );
-
-        setProjects((current) =>
-          [created, ...current].sort((a, b) => {
-            if (a.is_pinned !== b.is_pinned) {
-              return a.is_pinned ? -1 : 1;
-            }
-            return Date.parse(b.updated_at) - Date.parse(a.updated_at);
-          }),
-        );
-        setEditingProject(created);
-        setStudioMessage(
-          `Projeto "${created.title}" salvo no seu perfil!`,
-        );
-        setProjectsMessage(`Projeto "${created.title}" criado com sucesso.`);
-      }
-    } catch (error) {
-      if (error instanceof SandboxProjectConflictError) {
-        setStudioError(error.message);
-        await loadProjects(user.id);
-      } else {
-        setStudioError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível salvar o projeto.",
-        );
-      }
-    } finally {
-      setSavingStudio(false);
-    }
-  }
-
-  async function handleTogglePin(project: SandboxProjectRow) {
-    if (!user) {
-      return;
-    }
-
-    setProjectsError(null);
-    setProjectsMessage(null);
-
-    if (!isOnline) {
-      setProjectsError(
-        "Você está offline. Conecte-se à internet para fixar projetos.",
-      );
-      return;
-    }
-
-    const client = getSupabaseClient();
-    if (!client) {
-      setProjectsError("Cliente Supabase não configurado.");
-      return;
-    }
-
-    setPinningProjectId(project.id);
-    try {
-      const updated = await togglePinSandboxProject(user.id, project, client);
-      setProjects((current) =>
-        current
-          .map((item) => (item.id === updated.id ? updated : item))
-          .sort((a, b) => {
-            if (a.is_pinned !== b.is_pinned) {
-              return a.is_pinned ? -1 : 1;
-            }
-            return Date.parse(b.updated_at) - Date.parse(a.updated_at);
-          }),
-      );
-      setProjectsMessage(
-        updated.is_pinned
-          ? `Projeto "${updated.title}" fixado no topo.`
-          : `Projeto "${updated.title}" desafixado.`,
-      );
-    } catch (error) {
-      if (error instanceof SandboxProjectConflictError) {
-        setProjectsError(error.message);
-        await loadProjects(user.id);
-      } else {
-        setProjectsError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível atualizar a fixação do projeto.",
-        );
-      }
-    } finally {
-      setPinningProjectId(null);
-    }
-  }
-
-  async function handleDuplicateProject(project: SandboxProjectRow) {
-    if (!user) {
-      return;
-    }
-
-    setProjectsError(null);
-    setProjectsMessage(null);
-
-    if (!isOnline) {
-      setProjectsError(
-        "Você está offline. Conecte-se à internet para duplicar projetos.",
-      );
-      return;
-    }
-
-    const client = getSupabaseClient();
-    if (!client) {
-      setProjectsError("Cliente Supabase não configurado.");
-      return;
-    }
-
-    setDuplicatingProjectId(project.id);
-    try {
-      const copyTitle = `${project.title} (Cópia)`.slice(0, 120);
-      const created = await createSandboxProject(
-        user.id,
-        {
-          title: copyTitle,
-          description: project.description,
-          primaryLanguage: project.primary_language,
-          sourceCode: project.source_code,
-          visibility: "private",
-          isPinned: false,
-          tags: project.tags,
-          repositoryUrl: project.repository_url,
-          liveUrl: project.live_url,
-        },
-        client,
-      );
-
-      setProjects((current) => [created, ...current]);
-      setProjectsMessage(`Cópia "${created.title}" criada.`);
-    } catch (error) {
-      setProjectsError(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível duplicar o projeto.",
-      );
-    } finally {
-      setDuplicatingProjectId(null);
-    }
-  }
-
-  async function handleDeleteProject(project: SandboxProjectRow) {
-    if (!user) {
-      return;
-    }
-
-    setProjectsError(null);
-    setProjectsMessage(null);
-
-    if (!isOnline) {
-      setProjectsError(
-        "Você está offline. Conecte-se à internet para excluir o projeto.",
-      );
-      return;
-    }
-
-    const client = getSupabaseClient();
-    if (!client) {
-      setProjectsError("Cliente Supabase não configurado.");
-      return;
-    }
-
-    setDeletingProjectId(project.id);
-    try {
-      const removed = await softDeleteSandboxProject(
-        user.id,
-        project.id,
-        client,
-      );
-      if (removed) {
-        setProjects((current) =>
-          current.filter((item) => item.id !== project.id),
-        );
-        if (editingProject?.id === project.id) {
-          setStudioOpen(false);
-          setEditingProject(null);
-        }
-        setProjectsMessage(`Projeto "${project.title}" removido.`);
-      }
-    } catch (error) {
-      setProjectsError(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível remover o projeto.",
-      );
-    } finally {
-      setDeletingProjectId(null);
-    }
-  }
-
   if (isLoading) {
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-4xl items-center justify-center px-4 py-10">
+      <main className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-6xl items-center justify-center px-4 py-10">
         <div className="space-y-3 text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-border border-t-accent" />
           <p className="text-sm text-muted">
-            Carregando seu perfil e projetos no Codit...
+            Carregando seu perfil no Codit...
           </p>
         </div>
       </main>
@@ -640,18 +241,18 @@ export function AccountWorkspace() {
 
   if (!user || !previewProfile) {
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col items-center justify-center px-4 py-10 text-center">
-        <div className="w-full space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-xs sm:p-8">
+      <main className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-lg flex-col items-center justify-center px-4 py-10 text-center">
+        <div className="w-full space-y-5 rounded-3xl border border-border bg-surface p-6 shadow-xs sm:p-8">
           <div className="flex justify-center">
             <OctopyBadge size={64} decorative={false} />
           </div>
           <div className="space-y-2">
             <h1 className="text-xl font-bold text-foreground sm:text-2xl">
-              Entre para acessar seu perfil e projetos
+              Entre para acessar e personalizar seu perfil
             </h1>
             <p className="text-sm leading-relaxed text-muted">
               {isConfigured
-                ? "Faça login ou crie sua conta gratuita para personalizar seu perfil e salvar seus projetos na nuvem."
+                ? "Faça login ou crie sua conta gratuita para escolher seu @usuário, tema visual, habilidades e avatar do Octopy."
                 : "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no .env.local e faça login para acessar seus dados."}
             </p>
           </div>
@@ -675,130 +276,67 @@ export function AccountWorkspace() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-5 sm:px-6 sm:py-8">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-        <Link href="/" className="flex items-center gap-3">
-          <OctopyBadge size={40} className="shrink-0 rounded-xl shadow-xs" />
-          <div>
-            <p className="text-base font-bold tracking-tight text-foreground sm:text-lg">
-              Codit
-            </p>
-            <p className="text-xs text-muted">Perfil e Projetos</p>
-          </div>
-        </Link>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/comunidade"
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-accent-soft px-3.5 py-2 text-xs font-semibold text-accent-strong transition-colors hover:border-accent sm:text-sm"
-          >
-            Comunidade
-          </Link>
-          {profile?.username ? (
-            <Link
-              href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 font-mono text-xs font-semibold text-accent-strong transition-colors hover:border-accent sm:text-sm"
-            >
-              Meu perfil
-            </Link>
-          ) : null}
-          <Link
-            href="/"
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent sm:text-sm"
-          >
-            Início
-          </Link>
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+      {authError ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-foreground sm:text-sm"
+        >
+          <p className="min-w-0 flex-1">{authError}</p>
           <button
             type="button"
-            onClick={() => void signOut()}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent sm:text-sm"
+            onClick={() => void refreshProfile()}
+            disabled={!isOnline}
+            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
           >
-            Sair
+            Tentar novamente
           </button>
         </div>
-      </header>
-
-      <main className="flex-1 space-y-6 py-6 sm:space-y-8">
-        {authError ? (
-          <div
-            role="alert"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-foreground sm:text-sm"
-          >
-            <p className="min-w-0 flex-1">{authError}</p>
-            <button
-              type="button"
-              onClick={() => void refreshProfile()}
-              disabled={!isOnline}
-              className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        ) : null}
-
-        <ProfileHeroCard
-          profile={previewProfile}
-          userEmail={user.email ?? ""}
-          projects={projects}
-          activeTab={activeTab}
-          onSelectTab={handleSelectTab}
-          isEditingPreview={
-            activeTab === "personalizar" && profileDraftOverride !== null
-          }
-        />
-
-        {activeTab === "projetos" ? (
-          <ProjectsShowcasePanel
-            projects={projects}
-            isLoading={loadingProjects}
-            isOnline={isOnline}
-            error={projectsError}
-            message={projectsMessage}
-            deletingProjectId={deletingProjectId}
-            pinningProjectId={pinningProjectId}
-            duplicatingProjectId={duplicatingProjectId}
-            onCreateNew={openNewProjectStudio}
-            onOpenProject={openEditProjectStudio}
-            onTogglePin={handleTogglePin}
-            onDuplicateProject={handleDuplicateProject}
-            onDeleteProject={handleDeleteProject}
-            onRefresh={() => loadProjects(user.id)}
-          />
-        ) : (
-          <ProfileCustomizerPanel
-            draft={activeDraft}
-            currentUsername={profile?.username ?? ""}
-            usernameChangedAt={profile?.username_changed_at ?? null}
-            user={user}
-            isSaving={savingProfile}
-            isOnline={isOnline}
-            hasUnsavedChanges={profileDraftOverride !== null}
-            error={profileError}
-            message={profileMessage}
-            onChangeDraft={handleChangeDraft}
-            onDiscard={() => {
-              setProfileDraftOverride(null);
-              setProfileError(null);
-              setProfileMessage(null);
-            }}
-            onSave={handleSaveProfile}
-          />
-        )}
-      </main>
-
-      {studioOpen ? (
-        <ProjectStudioModal
-          key={studioSessionKey}
-          editingProject={editingProject}
-          initialLanguage={studioInitialLanguage}
-          isSaving={savingStudio}
-          isOnline={isOnline}
-          error={studioError}
-          message={studioMessage}
-          onClose={() => setStudioOpen(false)}
-          onSubmit={handleSaveStudioProject}
-        />
       ) : null}
-    </div>
+
+      <ProfileHeroCard
+        profile={previewProfile}
+        userEmail={user.email ?? ""}
+        projects={projects}
+        isEditingPreview={profileDraftOverride !== null}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 shadow-xs sm:px-5">
+        <div className="space-y-0.5">
+          <p className="text-xs font-semibold text-foreground sm:text-sm">
+            Desenvolvimento de código em espaço dedicado
+          </p>
+          <p className="text-xs text-muted">
+            Crie, edite e execute seus mini-projetos na aba exclusiva de
+            Projetos.
+          </p>
+        </div>
+        <Link
+          href="/projetos"
+          className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
+        >
+          Ir para Estúdio de Projetos ({projects.length}) →
+        </Link>
+      </div>
+
+      <ProfileCustomizerPanel
+        draft={activeDraft}
+        currentUsername={profile?.username ?? ""}
+        usernameChangedAt={profile?.username_changed_at ?? null}
+        user={user}
+        isSaving={savingProfile}
+        isOnline={isOnline}
+        hasUnsavedChanges={profileDraftOverride !== null}
+        error={profileError}
+        message={profileMessage}
+        onChangeDraft={handleChangeDraft}
+        onDiscard={() => {
+          setProfileDraftOverride(null);
+          setProfileError(null);
+          setProfileMessage(null);
+        }}
+        onSave={handleSaveProfile}
+      />
+    </main>
   );
 }

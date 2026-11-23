@@ -443,27 +443,8 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-5 sm:px-6 sm:py-8">
-      <header className="flex items-center justify-between gap-3 border-b border-border pb-4">
-        <Link href="/" className="flex items-center gap-3">
-          <OctopyBadge size={40} className="shrink-0 rounded-xl shadow-xs" />
-          <div>
-            <p className="text-base font-bold tracking-tight text-foreground sm:text-lg">
-              Codit
-            </p>
-            <p className="text-xs text-muted">Acesso da plataforma</p>
-          </div>
-        </Link>
-
-        <Link
-          href="/"
-          className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent sm:text-sm"
-        >
-          Voltar ao início
-        </Link>
-      </header>
-
-      <main className="grid flex-1 items-center gap-6 py-6 lg:grid-cols-[1.05fr_1fr] lg:gap-8 lg:py-10">
+    <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-10">
+      <main className="grid flex-1 items-center gap-6 lg:grid-cols-[1.05fr_1fr] lg:gap-8">
         {/* Painel de identidade Codit + Mascote Octopy */}
         <section
           aria-labelledby="octopy-welcome-title"
@@ -635,20 +616,26 @@ export function AuthScreen() {
 
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Link
-                  href="/conta"
+                  href="/projetos"
                   className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
                 >
-                  Ir para minha conta e projetos
+                  Abrir Meus Projetos
+                </Link>
+                <Link
+                  href="/conta"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-accent"
+                >
+                  Meu Perfil
                 </Link>
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
                   disabled={effectiveAction === "signout"}
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {effectiveAction === "signout"
                     ? "Saindo..."
-                    : "Sair da conta"}
+                    : "Sair"}
                 </button>
               </div>
             </div>

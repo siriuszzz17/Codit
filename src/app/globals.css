@@ -55,6 +55,16 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
+  scroll-behavior: smooth;
+}
+
+.codit-app-shell {
+  background-image:
+    radial-gradient(
+      900px 420px at 50% -120px,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 72%
+    );
 }
 
 .codit-pattern-dots {
