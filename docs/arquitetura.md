@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Estado Atual** | Fase 2 em andamento (`@supabase/supabase-js` client-side integrado para Auth e persistência em `profiles` e `sandbox_projects` com RLS, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
-| **Última atualização** | `2026-11-22` |
+| **Estado Atual** | Fase 3 em andamento (perfil personalizável, estúdio de projetos salvos com 15 linguagens/ícones e sandbox `iframe` isolado client-side integrados ao Supabase com RLS, preservando exportação estática `out/`) |
+| **Última atualização** | `2026-11-23` |
 | **Guia Rápido** | [GEMINI.md](../GEMINI.md) |
 
 ---
@@ -268,8 +268,8 @@ TCC-Codit/
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
 │   ├── app/                   # App Router (/, /auth, /auth/callback, /conta, /offline, /api/v1/health)
-│   ├── components/            # Brand (OctopyBadge), Auth, Account, PWA e Native (AppUpdateModal)
-│   ├── modules/               # Domínios auth, profiles e sandbox (serviços tipados + AuthProvider)
+│   ├── components/            # Brand (OctopyBadge), Auth, Account (Perfil/Estúdio), Sandbox (LanguageIcon, SandboxPreview), PWA e Native
+│   ├── modules/               # Domínios auth, profiles (profile-themes + profile-service) e sandbox (language-catalog, sandbox-runner, sandbox-project-service)
 │   └── lib/                   # supabase/*, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/

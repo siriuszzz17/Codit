@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { AccountWorkspace } from "@/components/account/account-workspace";
 
 export const metadata: Metadata = {
-  title: "Minha Conta e Mini-Projetos",
+  title: "Meu Perfil e Projetos",
   description:
-    "Gerencie seu perfil de estudante e seus mini-projetos salvos no Codit.",
+    "Personalize seu perfil no Codit e gerencie seus projetos salvos com ícones de linguagem e preview em sandbox.",
 };
 
 export default function ContaPage() {
