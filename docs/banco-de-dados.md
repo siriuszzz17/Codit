@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **SGBD Alvo** | PostgreSQL (`16+` planejado — **sem migrações ou ORM instalados ainda**) |
+| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migração inicial aplicada para `public.profiles` e `public.sandbox_projects` com RLS em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql)) |
 | **Última atualização** | `2026-11-22` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
@@ -18,7 +18,7 @@
 | **Timestamps** | `TIMESTAMPTZ` em **UTC** | Toda tabela principal possui `created_at` e `updated_at` (e `deleted_at` onde houver exclusão lógica) |
 | **Prefixos de Constraints** | `pk_`, `fk_`, `uq_`, `idx_`, `chk_` | Padronização para leitura clara em logs de erro e migrações |
 | **Integridade Referencial** | `ON DELETE RESTRICT` por padrão | Evita exclusões em cascata acidentais; `CASCADE` apenas em vínculos estritamente dependentes (sessões, arquivos de um projeto excluído definitivamente) |
-| **ORM / Migrações** | `[Em aberto — DEC-001]` | Prisma ORM ou Drizzle ORM + SQL migrations versionadas |
+| **ORM / Migrações** | `Supabase SQL Migrations + @supabase/supabase-js` *(Fase 2)* | Migrações SQL versionadas em `supabase/migrations/`; avaliação de ORM complementar (`DEC-001`) para catálogo e backend Fase 3+ |
 
 ---
 
@@ -27,17 +27,18 @@
 Toda tabela do **Codit** pertence a exatamente uma de duas categorias:
 
 1. **Catálogo Curricular Público/Compartilhado:** conteúdo pedagógico criado pela plataforma (`tracks`, `modules`, `lessons`, `exercises`, `career_milestones`). Leitura pública/autenticada; escrita restrita ao papel `admin`.
-2. **Dados Privados do Usuário (Obrigatório `user_id`):** todos os registros gerados pelo aluno possuem coluna obrigatória `user_id UUID NOT NULL REFERENCES users(id)`:
-   - `auth_accounts` e `user_sessions`
-   - `user_lesson_progress` e `exercise_submissions`
-   - `sandbox_projects` e `sandbox_files`
-   - `octopy_conversations` e `octopy_messages`
-   - `user_career_progress`
+2. **Dados Privados do Usuário (Obrigatório `user_id` / `id` vinculado a `auth.users`):** todos os registros gerados pelo aluno possuem referência obrigatória ao usuário autenticado:
+   - `public.profiles` (`id UUID PRIMARY KEY REFERENCES auth.users(id)`)
+   - `public.sandbox_projects` (`user_id UUID NOT NULL REFERENCES public.profiles(id)`) e `sandbox_files` *(Fase 3+)*
+   - `user_lesson_progress` e `exercise_submissions` *(Fase 3+)*
+   - `octopy_conversations` e `octopy_messages` *(Fase 4)*
+   - `user_career_progress` *(Fase 3+)*
 
-### Defesa em Profundidade (Aplicação + PostgreSQL RLS)
-- **Camada de Aplicação/Repositório:** toda consulta e mutação em tabelas privadas **deve** receber o `userId` extraído da sessão validada no servidor (nunca confiado do body/query) e filtrar explicitamente `WHERE user_id = :sessionUserId`.
-- **PostgreSQL Row-Level Security (RLS):** planejado para habilitar RLS nas tabelas privadas usando `current_setting('app.current_user_id', true)::uuid`, garantindo isolamento no próprio SGBD mesmo em caso de falha humana em alguma query.
-- **Exceção controlada para Portfólio:** um mini-projeto em `sandbox_projects` com `visibility IN ('unlisted', 'public_portfolio')` pode ser lido por terceiros em modo **somente leitura** por rota pública dedicada, mantendo edição/exclusão restritas ao dono (`user_id`).
+### Defesa em Profundidade (Aplicação + PostgreSQL RLS no Supabase)
+- **Camada de Aplicação (`src/modules/`):** toda consulta e mutação em `profiles` e `sandbox_projects` filtra explicitamente pelo `userId` da sessão autenticada (`eq("id", userId)` / `eq("user_id", userId)`).
+- **PostgreSQL Row-Level Security (RLS ativa na Fase 2):** `public.profiles` e `public.sandbox_projects` operam com RLS habilitada usando `auth.uid()` diretamente no banco, protegendo as operações realizadas via cliente client-side (`NEXT_PUBLIC_SUPABASE_ANON_KEY`) em Web/PWA, Tauri `.exe` e Capacitor `.apk`.
+- **Exceção controlada para Portfólio:** um mini-projeto em `sandbox_projects` com `visibility = 'public_portfolio'` e `deleted_at IS NULL` possui policy `SELECT` pública somente leitura (`sandbox_projects_select_public_portfolio`), mantendo criação, edição e exclusão restritas ao dono (`auth.uid() = user_id`).
+- **Atenção em Soft Delete com RLS:** a policy `sandbox_projects_select_own` para o dono não inclui `AND deleted_at IS NULL` para evitar erro de permissão quando o cliente executa `.update({ deleted_at }).select()` ao excluir logicamente; o filtro `deleted_at IS NULL` é aplicado nas queries ativas em `src/modules/sandbox/sandbox-project-service.ts`.
 
 ---
 
@@ -45,15 +46,14 @@ Toda tabela do **Codit** pertence a exatamente uma de duas categorias:
 
 ```mermaid
 erDiagram
-    users ||--o{ auth_accounts : has
-    users ||--o{ user_sessions : owns
-    users ||--o{ user_lesson_progress : tracks
-    users ||--o{ exercise_submissions : submits
-    users ||--o{ sandbox_projects : creates
-    users ||--o{ sandbox_files : owns
-    users ||--o{ octopy_conversations : starts
-    users ||--o{ octopy_messages : owns
-    users ||--o{ user_career_progress : completes
+    auth_users ||--|| profiles : provisions
+    profiles ||--o{ sandbox_projects : creates
+    profiles ||--o{ user_lesson_progress : tracks
+    profiles ||--o{ exercise_submissions : submits
+    profiles ||--o{ sandbox_files : owns
+    profiles ||--o{ octopy_conversations : starts
+    profiles ||--o{ octopy_messages : owns
+    profiles ||--o{ user_career_progress : completes
 
     tracks ||--o{ modules : contains
     modules ||--o{ lessons : contains
@@ -65,25 +65,32 @@ erDiagram
     octopy_conversations ||--o{ octopy_messages : contains
     career_milestones ||--o{ user_career_progress : referenced_by
 
-    users {
+    profiles {
         uuid id PK
         varchar email UK
-        varchar password_hash
         varchar full_name
+        text avatar_url
         varchar role
-        timestamptz email_verified_at
+        text bio
+        varchar github_username
         timestamptz created_at
+        timestamptz updated_at
     }
 
     sandbox_projects {
         uuid id PK
         uuid user_id FK
         varchar title
-        varchar language
+        text description
+        varchar primary_language
         varchar runtime_target
+        text source_code
         varchar visibility
+        varchar share_slug
         int version
+        timestamptz created_at
         timestamptz updated_at
+        timestamptz deleted_at
     }
 
     octopy_conversations {
@@ -100,49 +107,30 @@ erDiagram
 
 ## 4. Dicionário de Dados Planejado
 
-### 4.1 Identidade e Autenticação
+### 4.1 Identidade e Autenticação (Implementado via Supabase — Fase 2)
 
-#### `users`
-- **Propósito:** Conta principal do aluno ou administrador na plataforma.
+> **Autenticação delegada ao Supabase Auth (`auth.users`):** credenciais de e-mail/senha, verificação de e-mail, fluxos Google OAuth 2.0 (PKCE) e tokens de sessão são gerenciados pelo esquema interno `auth` do Supabase. O esquema público (`public`) mantém a tabela `public.profiles` sincronizada 1:1 com `auth.users`.
+
+#### `public.profiles` *(Implementada na migração `20261122000001`)*
+- **Propósito:** Perfil do estudante/administrador espelhado 1:1 com `auth.users(id)`.
 - **Regras associadas:** `RN-001`, `RN-002`, `RN-003`
+- **Triggers:**
+  - `on_auth_user_created` (`AFTER INSERT ON auth.users` via `public.handle_new_user()` `SECURITY DEFINER`): cria automaticamente o perfil com `role = 'student'`, extraindo `full_name` e `avatar_url` dos metadados OAuth/cadastro (`ON CONFLICT (id) DO NOTHING`).
+  - `trg_profiles_prevent_role_escalation` (`BEFORE UPDATE` via `public.prevent_profile_role_escalation()`): bloqueia alteração do campo `role` por clientes comuns (`auth.role() <> 'service_role'`).
+  - `trg_profiles_set_updated_at` (`BEFORE UPDATE`): atualiza `updated_at = NOW()`.
+- **Políticas RLS:** `profiles_select_own` (`auth.uid() = id`), `profiles_insert_own` (`auth.uid() = id AND role = 'student'`) e `profiles_update_own` (`auth.uid() = id`).
 
 | Coluna | Tipo | Nulo | Default / Restrição | Descrição |
 | :--- | :--- | :--- | :--- | :--- |
-| `id` | `UUID` | Não | `PK` | Identificador único do usuário (`user_id` global) |
-| `email` | `VARCHAR(255)` | Não | `UQ` (case-insensitive) | E-mail principal normalizado em minúsculas |
-| `password_hash` | `TEXT` | Sim | `-` | Hash `Argon2id`/`bcrypt`; nulo para contas criadas apenas via Google OAuth |
-| `full_name` | `VARCHAR(120)` | Não | `-` | Nome de exibição do usuário |
-| `avatar_url` | `TEXT` | Sim | `-` | URL sanitizada de foto de perfil |
-| `role` | `VARCHAR(20)` | Não | `'student'` (`chk_users_role`) | Papel RBAC (`student`, `admin`) |
-| `email_verified_at` | `TIMESTAMPTZ` | Sim | `NULL` | Data/hora UTC da verificação do e-mail |
-| `is_active` | `BOOLEAN` | Não | `TRUE` | Controle de suspensão/desativação imediata |
+| `id` | `UUID` | Não | `PK`, `FK -> auth.users(id) ON DELETE CASCADE` | Identificador único do usuário (`user_id` global) |
+| `email` | `VARCHAR(255)` | Não | `uq_profiles_email_lower` (case-insensitive) | E-mail normalizado em minúsculas |
+| `full_name` | `VARCHAR(120)` | Não | `''` | Nome de exibição do usuário |
+| `avatar_url` | `TEXT` | Sim | `-` | URL sanitizada (`http`/`https`) da foto de perfil |
+| `role` | `VARCHAR(20)` | Não | `'student'` (`chk_profiles_role`: `'student'`, `'admin'`) | Papel RBAC do aluno ou equipe |
+| `bio` | `TEXT` | Sim | `chk_profiles_bio_length` (máx. 500 chars) | Resumo/objetivo de carreira do aluno |
+| `github_username` | `VARCHAR(60)` | Sim | `chk_profiles_github_format` | Identificador público no GitHub (sem `@`) |
 | `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação em UTC |
 | `updated_at` | `TIMESTAMPTZ` | Não | `NOW()` | Última atualização em UTC |
-| `deleted_at` | `TIMESTAMPTZ` | Sim | `NULL` | Exclusão lógica/anonimização LGPD |
-
-#### `auth_accounts`
-- **Propósito:** Vínculos de provedores externos (ex.: Google OAuth 2.0) associados a um `user_id`.
-
-| Coluna | Tipo | Nulo | Restrição | Descrição |
-| :--- | :--- | :--- | :--- | :--- |
-| `id` | `UUID` | Não | `PK` | Identificador do vínculo |
-| `user_id` | `UUID` | Não | `FK -> users(id)` | Dono da conta vinculada |
-| `provider` | `VARCHAR(30)` | Não | `uq_auth_provider_sub` | Provedor (`google`, etc.) |
-| `provider_account_id` | `VARCHAR(255)` | Não | `uq_auth_provider_sub` | Claim `sub` imutável do provedor OIDC |
-| `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Data do vínculo |
-
-#### `user_sessions`
-- **Propósito:** Controle explícito de sessões ativas para suportar logout e revogação imediata.
-
-| Coluna | Tipo | Nulo | Restrição | Descrição |
-| :--- | :--- | :--- | :--- | :--- |
-| `id` | `UUID` | Não | `PK` | Identificador da sessão |
-| `user_id` | `UUID` | Não | `FK -> users(id)` | Usuário dono da sessão |
-| `token_hash` | `CHAR(64)` | Não | `UQ` | Hash `SHA-256` do token de sessão (nunca salvar token puro) |
-| `expires_at` | `TIMESTAMPTZ` | Não | `-` | Expiração absoluta em UTC |
-| `revoked_at` | `TIMESTAMPTZ` | Sim | `NULL` | Preenchido no logout ou revogação de segurança |
-| `user_agent` | `VARCHAR(255)` | Sim | `-` | Metadado básico de dispositivo para auditoria |
-| `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação da sessão |
 
 ---
 
@@ -169,21 +157,23 @@ erDiagram
 
 ### 4.3 Sandbox e Mini-Projetos
 
-#### `sandbox_projects` (Privado por padrão — `user_id`)
+#### `public.sandbox_projects` *(Implementada na migração `20261122000001` — Privado por padrão)*
 - **Regras associadas:** `RN-201` a `RN-205`
+- **Políticas RLS:** `sandbox_projects_select_own`, `sandbox_projects_select_public_portfolio`, `sandbox_projects_insert_own`, `sandbox_projects_update_own`, `sandbox_projects_delete_own`.
 
 | Coluna | Tipo | Nulo | Restrição / Valores | Descrição |
 | :--- | :--- | :--- | :--- | :--- |
-| `id` | `UUID` | Não | `PK` | Identificador do mini-projeto |
-| `user_id` | `UUID` | Não | `FK -> users(id)` | Dono exclusivo para edição/exclusão |
-| `title` | `VARCHAR(120)` | Não | `-` | Título do mini-projeto |
-| `description` | `TEXT` | Sim | `-` | Descrição curta para portfólio |
-| `primary_language` | `VARCHAR(30)` | Não | `html_css_js`, `python`, etc. | Stack principal do projeto |
-| `runtime_target` | `VARCHAR(30)` | Não | `client_iframe`, `client_pyodide`, `remote_judge0`, `remote_piston` | Motor de execução associado |
-| `visibility` | `VARCHAR(20)` | Não | `'private'` (`private`, `unlisted`, `public_portfolio`) | Visibilidade padrão estritamente privada |
-| `share_slug` | `VARCHAR(80)` | Sim | `UQ` (parcial `WHERE share_slug IS NOT NULL`) | Slug público somente leitura para portfólio |
-| `version` | `INTEGER` | Não | `1` | Lock otimista anti-sobrescrita multi-aba |
-| `created_at` / `updated_at` / `deleted_at` | `TIMESTAMPTZ` | `created`/`updated` Não | `-` | Auditoria temporal e soft delete |
+| `id` | `UUID` | Não | `PK`, `DEFAULT gen_random_uuid()` | Identificador do mini-projeto |
+| `user_id` | `UUID` | Não | `fk_sandbox_projects_user_id -> public.profiles(id) ON DELETE CASCADE` | Dono exclusivo para edição/exclusão |
+| `title` | `VARCHAR(120)` | Não | `chk_sandbox_projects_title` (não vazio) | Título do mini-projeto |
+| `description` | `TEXT` | Sim | `chk_sandbox_projects_description` (máx. 500 chars) | Descrição curta para portfólio |
+| `primary_language` | `VARCHAR(30)` | Não | `'html_css_js'`, `'python'`, `'javascript'`, `'typescript'` | Stack principal do projeto |
+| `runtime_target` | `VARCHAR(30)` | Não | `'client_iframe'`, `'client_pyodide'`, `'remote_judge0'`, `'remote_piston'` | Motor de execução associado |
+| `source_code` | `TEXT` | Não | `''` (`chk_sandbox_projects_source_size`, máx. 200.000 chars) | Código-fonte principal do mini-projeto no MVP |
+| `visibility` | `VARCHAR(20)` | Não | `'private'` (`'private'`, `'unlisted'`, `'public_portfolio'`) | Visibilidade padrão estritamente privada |
+| `share_slug` | `VARCHAR(80)` | Sim | `uq_sandbox_projects_share_slug` (parcial `WHERE share_slug IS NOT NULL AND deleted_at IS NULL`) | Slug público somente leitura para portfólio |
+| `version` | `INTEGER` | Não | `1` (`chk_sandbox_projects_version >= 1`) | Lock otimista anti-sobrescrita multi-aba (`RN-203`) |
+| `created_at` / `updated_at` / `deleted_at` | `TIMESTAMPTZ` | `created`/`updated` Não | `trg_sandbox_projects_set_updated_at` | Auditoria temporal e soft delete |
 
 #### `sandbox_files` (Privado — `user_id`)
 - **Colunas:** `id` (`PK`), `project_id` (`FK -> sandbox_projects`, `ON DELETE CASCADE`), `user_id` (`FK -> users`, `NOT NULL` — garante RLS direta sem join), `file_path` (`VARCHAR(160)`), `language` (`VARCHAR(20)`), `content` (`TEXT`), `is_entry_point` (`BOOLEAN DEFAULT FALSE`), `updated_at` (`TIMESTAMPTZ`).
