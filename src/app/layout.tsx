@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { AppUpdateModal } from "@/components/native/app-update-modal";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
+import { AuthProvider } from "@/modules/auth/auth-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -50,9 +52,12 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className="min-h-dvh bg-background text-foreground antialiased">
-        <ServiceWorkerRegister />
-        <OfflineBanner />
-        {children}
+        <AuthProvider>
+          <ServiceWorkerRegister />
+          <OfflineBanner />
+          <AppUpdateModal />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

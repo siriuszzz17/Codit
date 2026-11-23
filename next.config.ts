@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
+import packageJson from "./package.json";
 
 function buildGlobalCsp(isDev: boolean): string {
   const directives = [
@@ -103,6 +104,9 @@ export default function createNextConfig(phase: string): NextConfig {
   return {
     reactStrictMode: true,
     poweredByHeader: false,
+    env: {
+      NEXT_PUBLIC_APP_VERSION: packageJson.version,
+    },
     images: {
       unoptimized: true,
     },

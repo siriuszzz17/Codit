@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { AuthHeaderControls } from "@/components/auth/auth-header-controls";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 
 interface PillarCard {
@@ -34,21 +36,21 @@ const PRODUCT_PILLARS: ReadonlyArray<PillarCard> = [
 ];
 
 const ACTIVE_FOUNDATION: ReadonlyArray<string> = [
-  "Next.js App Router com TypeScript em modo strict",
-  "Estilização Mobile-First (360px+) com Tailwind CSS v4",
-  "PWA instalável com manifest.webmanifest, ícones e fallback /offline",
-  "Contrato server-side de variáveis de ambiente (.env.example) e erros RFC 9457",
+  "Next.js App Router com TypeScript em modo strict e exportação estática out/",
+  "Autenticação client-side via Supabase (e-mail/senha + Google OAuth 2.0 PKCE)",
+  "Persistência isolada por usuário nas tabelas profiles e sandbox_projects com RLS",
+  "PWA instalável com manifest.webmanifest, Tauri v2 (.exe) e Capacitor 8 (.apk)",
   "Endpoint de verificação de saúde operacional em /api/v1/health",
 ];
 
 const NEXT_MILESTONES: ReadonlyArray<{ phase: string; title: string }> = [
   {
-    phase: "Fase 2",
-    title: "PostgreSQL, autenticação tradicional + Google OAuth 2.0 e isolamento por user_id",
+    phase: "Fase 2 (Em andamento)",
+    title: "Catálogo curricular, progresso por lição e políticas RLS completas",
   },
   {
     phase: "Fase 3",
-    title: "Trilhas didáticas, persistência de progresso e Sandbox client-side (iframe + Pyodide)",
+    title: "Trilhas didáticas, Sandbox client-side (iframe + Pyodide) e editor interativo",
   },
   {
     phase: "Fase 4",
@@ -72,9 +74,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <span className="inline-flex items-center rounded-full border border-border bg-accent-soft px-3 py-1 text-xs font-semibold text-accent-strong">
-          Fase 1 · Base PWA
-        </span>
+        <AuthHeaderControls />
       </header>
 
       <main className="flex-1 space-y-8 py-6 sm:space-y-10 sm:py-8">
@@ -101,6 +101,26 @@ export default function HomePage() {
                 destravar seu raciocínio sem entregar respostas prontas logo de
                 cara.
               </p>
+              <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                <Link
+                  href="/auth?mode=signup"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                >
+                  Começar agora
+                </Link>
+                <Link
+                  href="/auth"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-accent"
+                >
+                  Entrar
+                </Link>
+                <Link
+                  href="/conta"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+                >
+                  Meus projetos
+                </Link>
+              </div>
             </div>
 
             <div className="flex shrink-0 items-center gap-3 self-start rounded-2xl border border-border bg-surface-muted px-4 py-3 sm:self-center">
@@ -198,7 +218,7 @@ export default function HomePage() {
       </main>
 
       <footer className="flex flex-col gap-1 border-t border-border pt-4 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-        <p>Codit · Estrutura inicial limpa (sem autenticação ou sandbox nesta etapa)</p>
+        <p>Codit · Fase 2 (Supabase Auth, profiles e sandbox_projects em build estático)</p>
         <p className="font-mono">GET /api/v1/health</p>
       </footer>
     </div>

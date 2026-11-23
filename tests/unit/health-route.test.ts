@@ -17,7 +17,7 @@ describe("GET /api/v1/health", () => {
 
     expect(body.status).toBe("ok");
     expect(body.service).toBe("codit");
-    expect(body.version).toBe("0.1.0");
+    expect(body.version).toBe("0.1.1");
     expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
   });
 });

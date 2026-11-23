@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Estado Atual** | Base inicial + empacotamento multiplataforma configurados (`Fase 1` — Next.js App Router com exportação estática `out/` + TypeScript strict + Tailwind CSS + PWA + Tauri v2 + Capacitor 8 Android + `/api/v1/health`; ainda sem autenticação, banco, sandbox ou proxy do Octopy) |
+| **Estado Atual** | Fase 2 em andamento (`@supabase/supabase-js` client-side integrado para Auth e persistência em `profiles` e `sandbox_projects` com RLS, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
 | **Última atualização** | `2026-11-22` |
 | **Guia Rápido** | [GEMINI.md](../GEMINI.md) |
 
@@ -38,9 +38,9 @@ O **Codit** é uma plataforma SaaS educacional projetada para funcionar de forma
 | **PWA** | Web App Manifest + Service Worker | Instalação em Android/iOS/Desktop e cache seguro de assets públicos (nunca cachear rotas autenticadas privadas no SW compartilhado) |
 | **Empacotamento Desktop (Windows)** | Tauri v2 (`com.codit.app`) | Shell nativo WebView2 sobre `out/`, com `tauri-plugin-updater` e `tauri-plugin-process` pré-configurados para atualizações via pop-up |
 | **Empacotamento Mobile (Android)** | Capacitor 8 (`com.codit.app`) | Projeto nativo Android em `android/` empacotando `out/` via `npx cap sync android` para geração de `.apk`/`.aab` |
-| **Banco de Dados** | PostgreSQL (`16+` alvo) | Isolamento rigoroso por `user_id` + suporte a Row-Level Security (RLS) |
-| **ORM / Migrações** | `[Em aberto — DEC-001]` | Avaliar Prisma vs. Drizzle ORM |
-| **Autenticação** | Cadastro/Login tradicional + Google OAuth 2.0 | Sessões seguras `HttpOnly`; biblioteca a fechar em `DEC-003` |
+| **Banco de Dados** | PostgreSQL (`16+` gerenciado via **Supabase**) | Isolamento rigoroso por `user_id` + Row-Level Security (RLS) ativo em `profiles` e `sandbox_projects` |
+| **ORM / Migrações** | `Supabase SQL Migrations` + `[Complemento opcional — DEC-001]` | Migrações SQL versionadas em `supabase/migrations/` |
+| **Autenticação** | `@supabase/supabase-js` (E-mail/Senha + Google OAuth 2.0 PKCE) | Cliente client-side compatível com exportação estática (`out/`); `DEC-003` fechada |
 | **Tutor IA (`Octopy`)** | API LLM via proxy server-side (`DEC-002`) | Streaming SSE; suporte primário/contingência via interface `AiTutorProvider` |
 | **Sandbox MVP** | `iframe` sandboxed (HTML/CSS/JS) + Pyodide WASM (Python) | Execução 100% client-side em Web Worker / iframe isolado |
 | **Sandbox Escalável (Fase 2+)** | API externa isolada (`CodeExecutionProvider`) | Adaptador para Judge0 CE ou Piston (ou container self-hosted) |
@@ -154,18 +154,20 @@ O **Octopy** é o mascote e tutor interativo do Codit, operando exclusivamente a
   - **Regra anti-account-takeover:** vinculação automática entre conta local e conta Google pelo mesmo e-mail só ocorre se `email_verified === true` em ambos os provedores.
 - **Sessão:** cookie `HttpOnly`, `Secure` (em HTTPS), `SameSite=Lax`, com token opaco armazenado via hash no banco (`user_sessions`) ou JWT assinado com rotação/revogação suportada.
 
-### Gestão de Variáveis de Ambiente (`.env`)
-Nenhuma chave secreta pode usar prefixo `NEXT_PUBLIC_*` ou ser commitada. A aplicação deve validar na inicialização (*fail-fast*):
+### Gestão de Variáveis de Ambiente (`.env` e `.env.local`)
+Nenhuma chave secreta (`SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) pode usar prefixo `NEXT_PUBLIC_*` ou ser commitada. Apenas variáveis públicas protegidas por RLS no Supabase usam `NEXT_PUBLIC_*` para suportar a exportação estática (`out/`):
 
-| Variável (Server-Side) | Finalidade | Obrigatória |
-| :--- | :--- | :--- |
-| `DATABASE_URL` | String de conexão PostgreSQL | Sim |
-| `AUTH_SECRET` | Segredo criptográfico para assinatura de sessões/cookies (min. 32 bytes) | Sim |
-| `APP_BASE_URL` | URL canônica da aplicação (callbacks OAuth e links) | Sim |
-| `GOOGLE_CLIENT_ID` | Client ID OAuth 2.0 (Google Cloud Console) | Para OAuth |
-| `GOOGLE_CLIENT_SECRET` | Client Secret OAuth 2.0 (estritamente server-side) | Para OAuth |
-| `AI_PROVIDER_API_KEY` | Chave da API de IA do tutor Octopy | Para Octopy |
-| `SANDBOX_API_URL` / `SANDBOX_API_KEY` | URL e chave do sandbox remoto (Fase 2+) | Apenas Fase 2+ |
+| Variável | Escopo | Finalidade | Obrigatória |
+| :--- | :--- | :--- | :--- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Público (`out/`) | URL do projeto Supabase (Auth + PostgREST) | Sim (Fase 2+) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Público (`out/` + RLS) | Chave pública `anon` do Supabase (depende de RLS) | Sim (Fase 2+) |
+| `NEXT_PUBLIC_SUPABASE_AUTH_REDIRECT_URL` | Público (`out/`) | Sobrescrita opcional da URL de callback OAuth | Não |
+| `DATABASE_URL` | Server-Side | String de conexão PostgreSQL direta (backend Fase 3+) | Backend |
+| `AUTH_SECRET` | Server-Side | Segredo criptográfico server-side (min. 32 bytes) | Backend |
+| `APP_BASE_URL` | Server-Side | URL canônica da aplicação | Sim |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Server-Side / Painel Supabase | Credenciais Google OAuth 2.0 (no MVP client-side ficam configuradas no painel Supabase Auth) | Para OAuth |
+| `AI_PROVIDER_API_KEY` | Server-Side | Chave da API de IA do tutor Octopy | Para Octopy |
+| `SANDBOX_API_URL` / `SANDBOX_API_KEY` | Server-Side | URL e chave do sandbox remoto (Fase 2+) | Apenas Fase 2+ |
 
 ---
 
@@ -216,9 +218,13 @@ A mesma base TypeScript/React do Codit alimenta três canais de distribuição a
 - **Service Worker em WebViews nativas:** [service-worker-register.tsx](../src/components/pwa/service-worker-register.tsx) detecta `__TAURI_INTERNALS__` e `Capacitor.isNativePlatform()` para não registrar `sw.js` dentro dos apps `.exe` e `.apk`, evitando cache obsoleto sobre assets locais empacotados.
 - **Segurança de segredos em clientes empacotados:** assim como no navegador Web, variáveis sensíveis (`.env`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) **nunca** entram no bundle `out/`, no binário Tauri ou no APK Android; todas as chamadas autenticadas e de IA apontarão para o backend remoto via HTTPS.
 
-### Atualização Automática no Desktop (`tauri-plugin-updater`)
+### Atualização Automática Multiplataforma (Desktop Tauri + Android Capacitor)
+- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.1"`).
 - **Backend Rust (`src-tauri/`):** `Cargo.toml` inclui `tauri-plugin-updater = "2"` (somente alvos desktop) e `tauri-plugin-process = "2"`; `src-tauri/capabilities/default.json` concede `"updater:default"` e `"process:default"` à janela `main`; `src-tauri/src/lib.rs` ativa o plugin quando `plugins.updater.pubkey` estiver preenchida em `tauri.conf.json`.
-- **Cliente TypeScript:** [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` usando imports dinâmicos para futura UI de pop-up de atualização sem impactar o bundle Web/Android.
+- **Camada Cliente Unificada:**
+  - [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` via imports dinâmicos para desktop Windows.
+  - [app-updater.ts](../src/lib/app-updater.ts) unifica a detecção de versão (`parseSemver`, `isNewerVersion`, validação `zod` de `latest.json` e restrição de domínio oficial `https://github.com/siriuszzz17/Codit/releases/...`): no Windows usa o updater nativo do Tauri com barra de progresso; no Android usa `CapacitorHttp.get` nativo em `RELEASE_MANIFEST_URL` (evitando bloqueio de CORS no WebView sobre o `302` do GitHub) com fallback para a GitHub REST API (`https://api.github.com/repos/siriuszzz17/Codit/releases/latest`).
+  - [app-update-modal.tsx](../src/components/native/app-update-modal.tsx) (montado no [layout.tsx](../src/app/layout.tsx)) exibe pop-up acessível em `pt-BR` ao detectar versão superior (com download/instalação direta no Windows e link oficial para `.apk` no Android).
 - **Ativação de assinatura para release:**
   1. Gerar par de chaves Ed25519/minisign com `npx tauri signer generate -w ~/.tauri/codit.key`.
   2. Preencher `plugins.updater.pubkey` e ajustar `bundle.createUpdaterArtifacts: true` em [tauri.conf.json](../src-tauri/tauri.conf.json).
@@ -232,12 +238,12 @@ A mesma base TypeScript/React do Codit alimenta três canais de distribuição a
 
 ## 9. Estrutura de Diretórios (Atual vs. Planejada)
 
-### Atual (`2026-11-22` — Base Inicial Fase 1 + Setup Multiplataforma)
+### Atual (`2026-11-22` — Fase 2 Inicial: Multiplataforma + Supabase Client-Side)
 ```text
 TCC-Codit/
 ├── GEMINI.md
-├── .env.example               # Contrato de variáveis server-side sem segredos
-├── .gitignore                 # Ignora out/, src-tauri/target/, android/app/build/ e artefatos locais
+├── .env.example               # Contrato de variáveis (públicas RLS + server-side sem segredos)
+├── .gitignore                 # Ignora out/, .env.local, src-tauri/target/, android/app/build/
 ├── capacitor.config.ts        # Configuração Capacitor 8 (com.codit.app, webDir: "out")
 ├── eslint.config.mjs
 ├── next.config.ts             # Exportação estática out/ + dev server com headers de segurança
@@ -245,6 +251,8 @@ TCC-Codit/
 ├── postcss.config.mjs
 ├── tsconfig.json
 ├── vitest.config.ts
+├── supabase/
+│   └── migrations/            # DDL PostgreSQL + triggers + RLS (profiles e sandbox_projects)
 ├── android/                   # Projeto nativo Android gerado pelo Capacitor (configuração versionada)
 ├── src-tauri/                 # Backend desktop Tauri v2 (Cargo.toml, tauri.conf.json, capabilities, ícones, src/)
 ├── docs/
@@ -257,12 +265,13 @@ TCC-Codit/
 │   ├── manifest.webmanifest
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
-│   ├── app/                   # App Router (UI pt-BR, /offline, /api/v1/health)
-│   ├── components/            # Brand (OctopyBadge) e PWA (SW, Banner, Reload)
-│   └── lib/                   # env.ts, problem-details.ts, logger.ts, desktop-updater.ts
+│   ├── app/                   # App Router (/, /auth, /auth/callback, /conta, /offline, /api/v1/health)
+│   ├── components/            # Brand (OctopyBadge), Auth, Account, PWA e Native (AppUpdateModal)
+│   ├── modules/               # Domínios auth, profiles e sandbox (serviços tipados + AuthProvider)
+│   └── lib/                   # supabase/*, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/
-    └── unit/                  # Testes unitários Vitest (env, problem-details, health)
+    └── unit/                  # Testes unitários Vitest (env, auth-schemas, supabase-config, services, updater)
 ```
 
 ### Planejada (Expansão Fases 2–4)
@@ -294,3 +303,4 @@ TCC-Codit/
 - **ADR-003 (Aceita — 2026-11-22):** Tutor IA **Octopy** operado exclusivamente via proxy server-side (`/api/v1/octopy/chat`) com system prompt protegido, cotas por `user_id` e fallback para dicas estáticas pré-curadas.
 - **ADR-004 (Aceita — 2026-11-22):** Convenção bilíngue estrita — código, rotas, identificadores e esquema PostgreSQL em **inglês**; interface, mensagens e conteúdo educacional em **português (`pt-BR`)**.
 - **ADR-005 (Aceita — 2026-11-22):** Empacotamento multiplataforma nativo sobre uma única base TypeScript/React usando exportação estática compartilhada (`out/`) com **Tauri v2** (`.exe` Windows + `tauri-plugin-updater` pré-configurado) e **Capacitor 8** (`.apk` Android), mantendo `npm run dev` e builds server-side futuros (`CODIT_BUILD_TARGET=server`) preservados e segredos estritamente fora dos pacotes cliente.
+- **ADR-006 (Aceita — 2026-11-22):** Adoção de `@supabase/supabase-js` client-side (`NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`) com fluxo PKCE (`flowType: "pkce"`) para autenticação (e-mail/senha + Google OAuth) e persistência direta nas tabelas `public.profiles` e `public.sandbox_projects` protegidas por RLS (`auth.uid()`), garantindo compatibilidade integral com `output: "export"` no Web/PWA, `.exe` (Tauri) e `.apk` (Capacitor) sem depender de Route Handlers `app/api` dinâmicos no bundle estático. Segredos privilegiados (`SUPABASE_SERVICE_ROLE_KEY`, chaves de IA e sandbox remoto) permanecem estritamente proibidos em variáveis `NEXT_PUBLIC_*`.
