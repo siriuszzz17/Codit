@@ -1,6 +1,6 @@
 [package]
 name = "codit"
-version = "0.1.4"
+version = "0.1.5"
 description = "Codit — Plataforma SaaS educacional para programação, IA e carreira tech"
 authors = ["Codit"]
 edition = "2021"
