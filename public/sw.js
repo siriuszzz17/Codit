@@ -1,10 +1,13 @@
-const STATIC_CACHE = "codit-static-v1";
+const STATIC_CACHE = "codit-static-v2";
 const PRECACHE_URLS = [
   "/offline",
   "/manifest.webmanifest",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
   "/icons/octopy-mark.svg",
+  "/icons/octopy-default.png",
+  "/icons/octopy-coding.png",
+  "/icons/octopy-happy.png",
 ];
 
 self.addEventListener("install", (event) => {

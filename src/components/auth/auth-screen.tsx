@@ -372,6 +372,7 @@ export function AuthScreen() {
             <div className="flex items-center gap-4">
               <OctopyBadge
                 size={64}
+                variant="happy"
                 decorative={false}
                 className="shrink-0 rounded-2xl shadow-sm"
               />

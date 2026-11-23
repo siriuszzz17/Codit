@@ -124,7 +124,12 @@ export default function HomePage() {
             </div>
 
             <div className="flex shrink-0 items-center gap-3 self-start rounded-2xl border border-border bg-surface-muted px-4 py-3 sm:self-center">
-              <OctopyBadge size={52} decorative={false} />
+              <OctopyBadge
+                size={56}
+                variant="coding"
+                decorative={false}
+                className="shrink-0 rounded-xl shadow-sm"
+              />
               <div className="text-xs leading-snug">
                 <p className="font-semibold text-foreground">Octopy</p>
                 <p className="text-muted">Tutor IA socrático</p>
