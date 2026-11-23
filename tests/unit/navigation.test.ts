@@ -41,9 +41,11 @@ describe("navigation helpers", () => {
     expect(isNavItemActive("/conta", "/conta")).toBe(true);
   });
 
-  it("hides the top navbar on /auth/callback and shows it on main routes", () => {
+  it("hides the top navbar on /auth/callback and /auth/native-callback and shows it on main routes", () => {
     expect(shouldShowTopNavbar("/auth/callback")).toBe(false);
     expect(shouldShowTopNavbar("/auth/callback/")).toBe(false);
+    expect(shouldShowTopNavbar("/auth/native-callback")).toBe(false);
+    expect(shouldShowTopNavbar("/auth/native-callback/")).toBe(false);
     expect(shouldShowTopNavbar("/")).toBe(true);
     expect(shouldShowTopNavbar("/projetos")).toBe(true);
     expect(shouldShowTopNavbar("/comunidade")).toBe(true);

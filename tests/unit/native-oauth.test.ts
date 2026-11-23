@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildNativeAppCallbackUrls,
   completeOAuthCallbackUrl,
+  isAndroidUserAgent,
+  isNativeHandoffPath,
   isSupportedNativeCallbackUrl,
+  NATIVE_MOBILE_AUTH_BRIDGE_URL,
   NATIVE_MOBILE_AUTH_CALLBACK_URL,
   parseOAuthCallbackUrl,
   resetProcessedOAuthCodesForTests,
@@ -179,10 +183,23 @@ describe("native-oauth helpers", () => {
   });
 
   it("resolves email confirmation redirects per platform without leaking native localhost origins", () => {
-    expect(resolveNativeMobileRedirectUrl()).toBe(NATIVE_MOBILE_AUTH_CALLBACK_URL);
+    expect(resolveNativeMobileRedirectUrl()).toBe(
+      NATIVE_MOBILE_AUTH_BRIDGE_URL,
+    );
+    expect(
+      resolveNativeMobileRedirectUrl(NATIVE_MOBILE_AUTH_CALLBACK_URL),
+    ).toBe(NATIVE_MOBILE_AUTH_CALLBACK_URL);
+
     expect(
       resolveEmailConfirmationRedirectUrl({
         platform: "capacitor",
+      }),
+    ).toBe(NATIVE_MOBILE_AUTH_BRIDGE_URL);
+
+    expect(
+      resolveEmailConfirmationRedirectUrl({
+        platform: "capacitor",
+        nativeRedirectUrl: "com.codit.app://auth/callback/",
       }),
     ).toBe("com.codit.app://auth/callback");
 
@@ -206,5 +223,41 @@ describe("native-oauth helpers", () => {
         origin: "https://codit.app/",
       }),
     ).toBe("https://codit.app/auth/callback");
+  });
+
+  it("identifies the native handoff route and builds safe Android intent and custom scheme callback URLs", () => {
+    expect(isNativeHandoffPath("/auth/native-callback")).toBe(true);
+    expect(isNativeHandoffPath("/auth/native-callback/")).toBe(true);
+    expect(isNativeHandoffPath("/auth/callback")).toBe(false);
+    expect(isAndroidUserAgent("Mozilla/5.0 (Linux; Android 14)")).toBe(true);
+    expect(isAndroidUserAgent("Mozilla/5.0 (Windows NT 10.0)")).toBe(false);
+
+    const pkceHandoff = buildNativeAppCallbackUrls(
+      "https://codit-omega.vercel.app/auth/native-callback?code=pkce-xyz&ignored=attacker",
+    );
+    expect(pkceHandoff.hasAuthPayload).toBe(true);
+    expect(pkceHandoff.errorMessage).toBeNull();
+    expect(pkceHandoff.customSchemeUrl).toBe(
+      "com.codit.app://auth/callback?code=pkce-xyz",
+    );
+    expect(pkceHandoff.androidIntentUrl).toBe(
+      "intent://auth/callback?code=pkce-xyz#Intent;scheme=com.codit.app;package=com.codit.app;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end",
+    );
+
+    const errorHandoff = buildNativeAppCallbackUrls(
+      "https://codit-omega.vercel.app/auth/native-callback?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired",
+    );
+    expect(errorHandoff.hasAuthPayload).toBe(true);
+    expect(errorHandoff.errorMessage).toContain("link de confirmação expirou");
+    expect(errorHandoff.customSchemeUrl).toContain("error_code=otp_expired");
+
+    const hashHandoff = buildNativeAppCallbackUrls(
+      "https://codit-omega.vercel.app/auth/native-callback#access_token=atk&refresh_token=rtk",
+    );
+    expect(hashHandoff.hasAuthPayload).toBe(true);
+    expect(hashHandoff.customSchemeUrl).toBe(
+      "com.codit.app://auth/callback#access_token=atk&refresh_token=rtk",
+    );
+    expect(hashHandoff.androidIntentUrl).toBe(hashHandoff.customSchemeUrl);
   });
 });
