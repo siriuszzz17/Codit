@@ -1,6 +1,7 @@
 import { requireSupabaseClient, type CoditSupabaseClient } from "@/lib/supabase/client";
 import type {
   FriendshipRow,
+  ProfileRow,
   ProjectCommentRow,
   PublicProfileRow,
   SandboxLanguage,
@@ -16,6 +17,13 @@ import {
   assertAuthenticatedUserMatches,
   assertHasAuthenticatedSession,
 } from "@/lib/supabase/session-guard";
+import {
+  DEFAULT_PROFILE_CUSTOMIZATION,
+  getAccentThemeMeta,
+  getAvatarFrameMeta,
+  getBannerMeta,
+  getOctopyCompanionMeta,
+} from "@/modules/profiles/profile-themes";
 import {
   createSandboxProject,
   normalizeSandboxProjectRow,
@@ -69,6 +77,114 @@ export interface PublicProfileBundle {
   relation: SocialRelationSummary;
   friendCount: number | null;
   projects: CommunityProjectCard[];
+  hasPublicCustomizationColumns: boolean;
+}
+
+export type RawPublicProfileDbRow = Pick<
+  PublicProfileRow,
+  | "id"
+  | "username"
+  | "full_name"
+  | "avatar_url"
+  | "bio"
+  | "github_username"
+  | "created_at"
+  | "updated_at"
+> &
+  Partial<
+    Pick<
+      PublicProfileRow,
+      | "headline"
+      | "location"
+      | "website_url"
+      | "linkedin_url"
+      | "banner_preset"
+      | "accent_theme"
+      | "avatar_frame"
+      | "octopy_companion"
+      | "skills"
+    >
+  >;
+
+export function hasPublicCustomizationSchema(
+  raw: RawPublicProfileDbRow,
+): boolean {
+  return (
+    raw.banner_preset !== undefined &&
+    raw.accent_theme !== undefined &&
+    raw.skills !== undefined
+  );
+}
+
+export function normalizePublicProfileRow(
+  raw: RawPublicProfileDbRow,
+): PublicProfileRow {
+  const skills = Array.isArray(raw.skills)
+    ? raw.skills.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      )
+    : [...DEFAULT_PROFILE_CUSTOMIZATION.skills];
+
+  return {
+    id: raw.id,
+    username: raw.username,
+    full_name: raw.full_name,
+    avatar_url: raw.avatar_url ?? null,
+    bio: raw.bio ?? null,
+    github_username: raw.github_username ?? null,
+    headline: raw.headline ?? DEFAULT_PROFILE_CUSTOMIZATION.headline,
+    location: raw.location ?? DEFAULT_PROFILE_CUSTOMIZATION.location,
+    website_url: raw.website_url ?? DEFAULT_PROFILE_CUSTOMIZATION.website_url,
+    linkedin_url:
+      raw.linkedin_url ?? DEFAULT_PROFILE_CUSTOMIZATION.linkedin_url,
+    banner_preset: getBannerMeta(raw.banner_preset).id,
+    accent_theme: getAccentThemeMeta(raw.accent_theme).id,
+    avatar_frame: getAvatarFrameMeta(raw.avatar_frame).id,
+    octopy_companion: getOctopyCompanionMeta(raw.octopy_companion).id,
+    skills,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+  };
+}
+
+export function mergeSelfPublicProfileFallback(
+  publicProfile: PublicProfileRow,
+  ownProfile: Pick<
+    ProfileRow,
+    | "id"
+    | "headline"
+    | "location"
+    | "website_url"
+    | "linkedin_url"
+    | "banner_preset"
+    | "accent_theme"
+    | "avatar_frame"
+    | "octopy_companion"
+    | "skills"
+  > | null,
+  hasPublicCustomizationColumns: boolean,
+): PublicProfileRow {
+  if (
+    hasPublicCustomizationColumns ||
+    !ownProfile ||
+    ownProfile.id !== publicProfile.id
+  ) {
+    return publicProfile;
+  }
+
+  return {
+    ...publicProfile,
+    headline: ownProfile.headline,
+    location: ownProfile.location,
+    website_url: ownProfile.website_url,
+    linkedin_url: ownProfile.linkedin_url,
+    banner_preset: ownProfile.banner_preset,
+    accent_theme: ownProfile.accent_theme,
+    avatar_frame: ownProfile.avatar_frame,
+    octopy_companion: ownProfile.octopy_companion,
+    skills: ownProfile.skills,
+  };
 }
 
 export interface SocialServiceErrorDetails {
@@ -231,7 +347,9 @@ export async function searchCommunityUsers(
     });
   }
 
-  const rows = data ?? [];
+  const rows = ((data ?? []) as RawPublicProfileDbRow[]).map(
+    normalizePublicProfileRow,
+  );
   if (!query || rows.length <= 1) {
     return rows;
   }
@@ -247,10 +365,10 @@ export async function searchCommunityUsers(
   });
 }
 
-export async function getPublicProfileByUsername(
+async function fetchRawPublicProfileByUsername(
   rawUsername: string,
-  client: CoditSupabaseClient = requireSupabaseClient(),
-): Promise<PublicProfileRow | null> {
+  client: CoditSupabaseClient,
+): Promise<RawPublicProfileDbRow | null> {
   const parsed = coditUsernameSchema.safeParse(rawUsername);
   if (!parsed.success) {
     const firstIssue = parsed.error.issues[0];
@@ -273,13 +391,21 @@ export async function getPublicProfileByUsername(
     });
   }
 
-  return data;
+  return (data as RawPublicProfileDbRow | null) ?? null;
 }
 
-export async function getPublicProfileById(
-  userId: string,
+export async function getPublicProfileByUsername(
+  rawUsername: string,
   client: CoditSupabaseClient = requireSupabaseClient(),
 ): Promise<PublicProfileRow | null> {
+  const raw = await fetchRawPublicProfileByUsername(rawUsername, client);
+  return raw ? normalizePublicProfileRow(raw) : null;
+}
+
+async function fetchRawPublicProfileById(
+  userId: string,
+  client: CoditSupabaseClient,
+): Promise<RawPublicProfileDbRow | null> {
   const validId = assertValidUuid(userId, "Identificador de perfil");
 
   const { data, error, status } = await client
@@ -296,7 +422,15 @@ export async function getPublicProfileById(
     });
   }
 
-  return data;
+  return (data as RawPublicProfileDbRow | null) ?? null;
+}
+
+export async function getPublicProfileById(
+  userId: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<PublicProfileRow | null> {
+  const raw = await fetchRawPublicProfileById(userId, client);
+  return raw ? normalizePublicProfileRow(raw) : null;
 }
 
 export async function getProfileFriendCount(
@@ -383,7 +517,10 @@ export async function listUserFriendships(
   }
 
   const profileMap = new Map<string, PublicProfileRow>(
-    (profilesData ?? []).map((item) => [item.id, item]),
+    ((profilesData ?? []) as RawPublicProfileDbRow[]).map((item) => {
+      const normalized = normalizePublicProfileRow(item);
+      return [normalized.id, normalized];
+    }),
   );
 
   const friends: FriendshipListItem[] = [];
@@ -637,7 +774,10 @@ async function enrichProjectsWithSocialMeta(
   }
 
   const authorMap = new Map<string, PublicProfileRow>(
-    (authorsResult.data ?? []).map((author) => [author.id, author]),
+    ((authorsResult.data ?? []) as RawPublicProfileDbRow[]).map((author) => {
+      const normalized = normalizePublicProfileRow(author);
+      return [normalized.id, normalized];
+    }),
   );
 
   const likesCountMap = new Map<string, number>();
@@ -823,20 +963,24 @@ export async function getPublicProfileBundle(
   const targetUsername = target.username?.trim();
   const targetUserId = target.userId?.trim();
 
-  let profile: PublicProfileRow | null = null;
+  let rawProfile: RawPublicProfileDbRow | null = null;
   if (targetUsername) {
-    profile = await getPublicProfileByUsername(targetUsername, client);
+    rawProfile = await fetchRawPublicProfileByUsername(targetUsername, client);
   } else if (targetUserId) {
-    profile = await getPublicProfileById(targetUserId, client);
+    rawProfile = await fetchRawPublicProfileById(targetUserId, client);
   } else {
     throw new SocialValidationError(
       "Informe um @usuário ou identificador para abrir o perfil.",
     );
   }
 
-  if (!profile) {
+  if (!rawProfile) {
     return null;
   }
+
+  const profile = normalizePublicProfileRow(rawProfile);
+  const hasPublicCustomizationColumns =
+    hasPublicCustomizationSchema(rawProfile);
 
   const friendshipsPromise =
     viewerId && viewerId !== profile.id
@@ -875,6 +1019,7 @@ export async function getPublicProfileBundle(
     relation,
     friendCount,
     projects,
+    hasPublicCustomizationColumns,
   };
 }
 
@@ -983,7 +1128,10 @@ export async function listProjectComments(
   }
 
   const authorMap = new Map<string, PublicProfileRow>(
-    (authorsData ?? []).map((author) => [author.id, author]),
+    ((authorsData ?? []) as RawPublicProfileDbRow[]).map((author) => {
+      const normalized = normalizePublicProfileRow(author);
+      return [normalized.id, normalized];
+    }),
   );
 
   return comments.map((comment) => ({
@@ -1045,7 +1193,9 @@ export async function createProjectComment(
 
   return {
     comment,
-    author: authorData ?? null,
+    author: authorData
+      ? normalizePublicProfileRow(authorData as RawPublicProfileDbRow)
+      : null,
   };
 }
 

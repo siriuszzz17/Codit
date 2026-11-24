@@ -10,7 +10,10 @@ import {
   acceptFriendRequest,
   cloneProjectToMySandbox,
   createProjectComment,
+  getPublicProfileBundle,
   listVisibleProjectsByAuthor,
+  mergeSelfPublicProfileFallback,
+  normalizePublicProfileRow,
   removeFriendship,
   resolveRelationStatus,
   searchCommunityUsers,
@@ -37,6 +40,15 @@ function createPublicProfile(
     avatar_url: null,
     bio: "Aprendendo Python no Codit",
     github_username: "maria-dev",
+    headline: null,
+    location: null,
+    website_url: null,
+    linkedin_url: null,
+    banner_preset: "nebula",
+    accent_theme: "violet",
+    avatar_frame: "glow",
+    octopy_companion: "coding",
+    skills: [],
     created_at: "2026-11-23T10:00:00.000Z",
     updated_at: "2026-11-23T10:00:00.000Z",
     ...overrides,
@@ -434,5 +446,144 @@ describe("social-service", () => {
       }),
     );
     expect(result.visibility).toBe("private");
+  });
+
+  it("normalizes public_profiles customization fields, strips PII, and handles legacy fallback safely", async () => {
+    const rawWithExtraAndInvalid = {
+      id: USER_B,
+      username: "sirius",
+      full_name: "Sirius",
+      avatar_url: "/icons/octopy-coding.png",
+      bio: "Dev Codit",
+      github_username: "siriuszzz17",
+      headline: "Full-Stack Student",
+      location: "Brasil",
+      website_url: "https://codit.dev",
+      linkedin_url: "https://linkedin.com/in/sirius",
+      banner_preset: "midnight_grid" as const,
+      accent_theme: "invalido" as unknown as PublicProfileRow["accent_theme"],
+      avatar_frame: "pixel" as const,
+      octopy_companion: "headphones" as const,
+      skills: ["TypeScript", "Python", "React"],
+      created_at: "2026-11-23T10:00:00.000Z",
+      updated_at: "2026-11-24T10:00:00.000Z",
+      email: "secreto@codit.dev",
+      role: "admin",
+      username_changed_at: "2026-11-23T12:00:00.000Z",
+      show_email: true,
+    };
+
+    const normalized = normalizePublicProfileRow(rawWithExtraAndInvalid);
+    expect(normalized.banner_preset).toBe("midnight_grid");
+    expect(normalized.accent_theme).toBe("violet");
+    expect(normalized.avatar_frame).toBe("pixel");
+    expect(normalized.octopy_companion).toBe("headphones");
+    expect(normalized.skills).toEqual(["TypeScript", "Python", "React"]);
+    expect(normalized).not.toHaveProperty("email");
+    expect(normalized).not.toHaveProperty("role");
+    expect(normalized).not.toHaveProperty("username_changed_at");
+    expect(normalized).not.toHaveProperty("show_email");
+
+    const legacyPublic = normalizePublicProfileRow({
+      id: USER_A,
+      username: "sirius",
+      full_name: "Sirius",
+      avatar_url: null,
+      bio: null,
+      github_username: null,
+      created_at: "2026-11-23T10:00:00.000Z",
+      updated_at: "2026-11-23T10:00:00.000Z",
+    });
+
+    const ownCustomization = {
+      id: USER_A,
+      headline: "Estudante Codit",
+      location: "SP",
+      website_url: "https://sirius.dev",
+      linkedin_url: null,
+      banner_preset: "midnight_grid" as const,
+      accent_theme: "cyan" as const,
+      avatar_frame: "glow" as const,
+      octopy_companion: "happy" as const,
+      skills: ["TypeScript", "Python", "React"],
+    };
+
+    // Mescla para o próprio dono quando o banco ainda não tem as colunas públicas
+    const selfFallback = mergeSelfPublicProfileFallback(
+      legacyPublic,
+      ownCustomization,
+      false,
+    );
+    expect(selfFallback.banner_preset).toBe("midnight_grid");
+    expect(selfFallback.accent_theme).toBe("cyan");
+    expect(selfFallback.skills).toEqual(["TypeScript", "Python", "React"]);
+
+    // Não sobrescreve quando a migração já está ativa no banco ou para outro usuário
+    expect(
+      mergeSelfPublicProfileFallback(legacyPublic, ownCustomization, true)
+        .banner_preset,
+    ).toBe("nebula");
+    expect(
+      mergeSelfPublicProfileFallback(
+        legacyPublic,
+        { ...ownCustomization, id: USER_B },
+        false,
+      ).banner_preset,
+    ).toBe("nebula");
+
+    // Verifica getPublicProfileBundle preservando personalização e flag hasPublicCustomizationColumns
+    const profileMaybeSingle = vi.fn().mockResolvedValue({
+      data: createPublicProfile({
+        id: USER_B,
+        username: "sirius",
+        banner_preset: "midnight_grid",
+        skills: ["TypeScript", "Python", "React"],
+      }),
+      error: null,
+      status: 200,
+    });
+    const projectsLimit = vi
+      .fn()
+      .mockResolvedValue({ data: [], error: null, status: 200 });
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === "public_profiles") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({ maybeSingle: profileMaybeSingle }),
+            }),
+          };
+        }
+        if (table === "sandbox_projects") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                in: vi.fn().mockReturnValue({
+                  is: vi.fn().mockReturnValue({
+                    order: vi.fn().mockReturnValue({ limit: projectsLimit }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue({
+            or: vi.fn().mockResolvedValue({ data: [], error: null, status: 200 }),
+          }),
+        };
+      }),
+      rpc: vi.fn().mockResolvedValue({ data: 1, error: null }),
+    } as unknown as CoditSupabaseClient;
+
+    const bundle = await getPublicProfileBundle(
+      { username: "sirius" },
+      USER_B,
+      client,
+    );
+    expect(bundle?.hasPublicCustomizationColumns).toBe(true);
+    expect(bundle?.profile.banner_preset).toBe("midnight_grid");
+    expect(bundle?.profile.skills).toEqual(["TypeScript", "Python", "React"]);
   });
 });
