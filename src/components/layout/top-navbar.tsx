@@ -14,12 +14,15 @@ import {
 } from "@/lib/navigation";
 import {
   subscribeFriendshipsChanged,
+  subscribeMessagesChanged,
   subscribeOpenFriendshipsDrawer,
   type FriendshipsDrawerTab,
 } from "@/lib/social-events";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useIsOnline } from "@/lib/use-is-online";
 import { useAuth } from "@/modules/auth/auth-provider";
+import { listUserConversations } from "@/modules/messaging/messaging-service";
+import { useVoiceCall } from "@/modules/messaging/voice-call-provider";
 import {
   listUserFriendships,
   SocialServiceError,
@@ -92,6 +95,22 @@ function NavItemIcon({
           <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
         </svg>
       );
+    case "messages":
+      return (
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      );
     case "profile":
       return (
         <svg
@@ -116,10 +135,12 @@ export function TopNavbar() {
   const pathname = usePathname();
   const isOnline = useIsOnline();
   const { user, isLoading: isAuthLoading, isConfigured } = useAuth();
+  const { activeCall } = useVoiceCall();
   const userId = user?.id ?? null;
 
   const [friendshipsBundle, setFriendshipsBundle] =
     useState<UserFriendshipsBundle>(EMPTY_FRIENDSHIPS);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [loadingFriendships, setLoadingFriendships] = useState(false);
   const [friendshipsError, setFriendshipsError] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
@@ -203,6 +224,57 @@ export function TopNavbar() {
     return () => {
       cancelled = true;
       unsubscribe();
+    };
+  }, [isAuthLoading, isConfigured, userId]);
+
+  useEffect(() => {
+    if (!isConfigured || isAuthLoading) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadUnreadCount() {
+      if (!userId) {
+        await Promise.resolve();
+        if (!cancelled) {
+          setUnreadMessagesCount(0);
+        }
+        return;
+      }
+
+      const client = getSupabaseClient();
+      if (!client) {
+        return;
+      }
+
+      try {
+        const summaries = await listUserConversations(userId, client);
+        if (cancelled) {
+          return;
+        }
+        const totalUnread = summaries.reduce(
+          (sum, item) => sum + item.unreadCount,
+          0,
+        );
+        setUnreadMessagesCount(totalUnread);
+      } catch {
+        // Silencioso antes da aplicação da migração de mensagens.
+      }
+    }
+
+    void loadUnreadCount();
+    const unsubMessages = subscribeMessagesChanged(() => {
+      void loadUnreadCount();
+    });
+    const unsubFriends = subscribeFriendshipsChanged(() => {
+      void loadUnreadCount();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubMessages();
+      unsubFriends();
     };
   }, [isAuthLoading, isConfigured, userId]);
 
@@ -291,13 +363,14 @@ export function TopNavbar() {
           >
             {PRIMARY_NAV_ITEMS.map((item) => {
               const active = isNavItemActive(pathname, item.href);
+              const isMessages = item.icon === "messages";
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   title={item.description}
-                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                  className={`relative inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
                     active
                       ? "bg-surface text-accent-strong shadow-xs"
                       : "text-muted hover:text-foreground"
@@ -305,6 +378,16 @@ export function TopNavbar() {
                 >
                   <NavItemIcon icon={item.icon} />
                   <span>{item.label}</span>
+                  {isMessages && activeCall ? (
+                    <span
+                      aria-label="Chamada de voz ativa"
+                      className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"
+                    />
+                  ) : isMessages && userId && unreadMessagesCount > 0 ? (
+                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
+                      {unreadMessagesCount > 9 ? "9+" : unreadMessagesCount}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}
@@ -360,9 +443,10 @@ export function TopNavbar() {
         aria-label="Navegação móvel"
         className="codit-safe-bottom codit-safe-x fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-surface/95 backdrop-blur-md md:hidden"
       >
-        <div className="grid grid-cols-4 gap-1 px-2 py-1.5">
+        <div className="grid grid-cols-5 gap-1 px-2 py-1.5">
           {PRIMARY_NAV_ITEMS.map((item) => {
             const active = isNavItemActive(pathname, item.href);
+            const isMessages = item.icon === "messages";
             return (
               <Link
                 key={item.href}
@@ -382,6 +466,16 @@ export function TopNavbar() {
                 ) : null}
                 <NavItemIcon icon={item.icon} size={18} />
                 <span className="truncate">{item.shortLabel}</span>
+                {isMessages && activeCall ? (
+                  <span
+                    aria-label="Chamada de voz ativa"
+                    className="absolute right-2 top-1.5 h-2 w-2 animate-pulse rounded-full bg-emerald-500"
+                  />
+                ) : isMessages && userId && unreadMessagesCount > 0 ? (
+                  <span className="absolute right-1.5 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-accent-foreground">
+                    {unreadMessagesCount > 9 ? "9+" : unreadMessagesCount}
+                  </span>
+                ) : null}
               </Link>
             );
           })}

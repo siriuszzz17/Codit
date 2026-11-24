@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql), [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql) e [20261123000003_fix_grants_rls_and_username_cooldown.sql](../supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql)) |
-| **Última atualização** | `2026-11-23` |
+| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql), [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql), [20261123000003_fix_grants_rls_and_username_cooldown.sql](../supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql) e [20261124000002_add_embedded_messaging.sql](../supabase/migrations/20261124000002_add_embedded_messaging.sql)) |
+| **Última atualização** | `2026-11-24` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
 ---
@@ -183,6 +183,13 @@ erDiagram
 - **`public.project_likes`:** curtidas por projeto (`PK (project_id, user_id)`), protegidas por `public.can_view_sandbox_project(project_id)`.
 - **`public.project_comments`:** comentários em projetos (`id`, `project_id`, `user_id`, `content` de 1..500 chars, `created_at`, `updated_at`), com exclusão permitida ao autor do comentário ou dono do projeto.
 - **Funções auxiliares `SECURITY DEFINER`:** `public.generate_unique_username`, `public.is_friend_with_current_user`, `public.get_profile_friend_count` e `public.can_view_sandbox_project`.
+
+#### `public.chat_conversations`, `public.chat_conversation_members` e `public.chat_messages` *(Migração `20261124000002`)*
+- **Privilégios & RLS:** acesso **exclusivo para `authenticated`** (`REVOKE ALL` para `anon`); policies restringem leitura e escrita apenas a membros ativos (`public.is_active_chat_member`) e validam envio em tempo real (`public.can_send_chat_message`: DM apenas entre amigos aceitos; grupos até **10** membros ativos). Publicação `supabase_realtime` habilitada nas três tabelas.
+- **`public.chat_conversations`:** `id` (`PK`), `kind` (`'direct' | 'group'`), `title` (`NULL` em DM; `1..80` chars em grupo), `created_by` (`FK -> profiles`), `direct_pair_key` (índice único parcial `uq_chat_conversations_direct_pair` garantindo 1 DM por par de amigos), `last_message_at`, `last_message_preview`, `created_at`, `updated_at`.
+- **`public.chat_conversation_members`:** `PK (conversation_id, user_id)`, `role` (`'owner' | 'member'`), `added_by`, `joined_at`, `left_at`, `last_read_at`, `updated_at`. Trigger `trg_chat_members_enforce_limits` faz lock `FOR UPDATE` em `chat_conversations` para impedir mais de 2 ativos em DM ou mais de **10** ativos em grupo (`GROUP_MEMBER_LIMIT_EXCEEDED`); `trg_chat_members_guard_direct_update` bloqueia mutação direta de `role`/`left_at` fora das RPCs.
+- **`public.chat_messages`:** `id` (`PK`), `conversation_id`, `sender_id`, `message_type` (`'text' | 'system'`), `content` (`1..2000` chars), `created_at`, `updated_at`, `deleted_at` (soft delete imutável pelo remetente via `trg_chat_messages_guard_update`).
+- **RPCs `SECURITY DEFINER`:** `are_users_friends`, `get_or_create_direct_conversation`, `create_group_conversation`, `add_group_conversation_members`, `remove_or_leave_group_member`, `rename_group_conversation` e `mark_conversation_read`.
 
 ---
 

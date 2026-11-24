@@ -3,7 +3,8 @@ import { logError } from "@/lib/logger";
 export type MissingMigrationFile =
   | "20261123000001_enhance_profiles_and_projects.sql"
   | "20261123000002_add_social_network.sql"
-  | "20261123000003_fix_grants_rls_and_username_cooldown.sql";
+  | "20261123000003_fix_grants_rls_and_username_cooldown.sql"
+  | "20261124000002_add_embedded_messaging.sql";
 
 export interface SupabaseErrorContext {
   status?: number | null;
@@ -199,6 +200,22 @@ export function detectMissingMigrationName(
 
   const { message, details, hint } = extractSupabaseErrorMeta(error);
   const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
+
+  if (
+    combinedLower.includes("chat_conversations") ||
+    combinedLower.includes("chat_conversation_members") ||
+    combinedLower.includes("chat_messages") ||
+    combinedLower.includes("get_or_create_direct_conversation") ||
+    combinedLower.includes("create_group_conversation") ||
+    combinedLower.includes("add_group_conversation_members") ||
+    combinedLower.includes("remove_or_leave_group_member") ||
+    combinedLower.includes("rename_group_conversation") ||
+    combinedLower.includes("mark_conversation_read") ||
+    combinedLower.includes("can_send_chat_message") ||
+    combinedLower.includes("are_users_friends")
+  ) {
+    return "20261124000002_add_embedded_messaging.sql";
+  }
 
   if (
     combinedLower.includes("username_changed_at") ||
@@ -443,6 +460,9 @@ export function mapSupabaseDatabaseError(
     const missingMigration = detectMissingMigrationName(error);
     const codeSuffix = codeUpper ? ` (código ${codeUpper})` : "";
 
+    if (missingMigration === "20261124000002_add_embedded_messaging.sql") {
+      return `A estrutura do sistema de mensagens ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261124000002_add_embedded_messaging.sql no SQL Editor do projeto.`;
+    }
     if (missingMigration === "20261123000001_enhance_profiles_and_projects.sql") {
       return `Estrutura de perfil/projetos da Fase 3 desatualizada no Supabase${codeSuffix}. Execute a migração 20261123000001_enhance_profiles_and_projects.sql no SQL Editor do projeto.`;
     }
@@ -505,6 +525,18 @@ export function mapSupabaseDatabaseError(
   }
 
   if (codeUpper === "P0001") {
+    if (combinedLower.includes("chat_not_friends")) {
+      return "Apenas amigos aceitos podem trocar mensagens diretas ou entrar em grupos juntos no Codit.";
+    }
+    if (combinedLower.includes("group_member_limit_exceeded")) {
+      return "Grupos no Codit permitem no máximo 10 pessoas participantes.";
+    }
+    if (combinedLower.includes("group_min_members_required")) {
+      return "Convide pelo menos 1 amigo para criar um grupo no Codit.";
+    }
+    if (combinedLower.includes("direct_member_limit_exceeded")) {
+      return "Conversas diretas permitem exatamente 2 participantes.";
+    }
     if (combinedLower.includes("role")) {
       return "Alteração do papel da conta não é permitida diretamente (código P0001).";
     }

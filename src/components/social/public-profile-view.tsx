@@ -369,17 +369,27 @@ export function PublicProfileView() {
                     Personalizar meu perfil
                   </Link>
                 ) : (
-                  <FriendshipActionButton
-                    viewerId={viewerId}
-                    targetUserId={bundle.profile.id}
-                    relation={bundle.relation}
-                    isOnline={isOnline}
-                    onChanged={async () => {
-                      await reloadBundle();
-                      emitFriendshipsChanged();
-                    }}
-                    onError={setProfileError}
-                  />
+                  <>
+                    {bundle.relation.status === "friends" ? (
+                      <Link
+                        href={`/mensagens?dm=${encodeURIComponent(bundle.profile.id)}`}
+                        className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90"
+                      >
+                        Enviar mensagem
+                      </Link>
+                    ) : null}
+                    <FriendshipActionButton
+                      viewerId={viewerId}
+                      targetUserId={bundle.profile.id}
+                      relation={bundle.relation}
+                      isOnline={isOnline}
+                      onChanged={async () => {
+                        await reloadBundle();
+                        emitFriendshipsChanged();
+                      }}
+                      onError={setProfileError}
+                    />
+                  </>
                 )}
               </div>
             </div>

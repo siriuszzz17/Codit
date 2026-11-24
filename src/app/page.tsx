@@ -33,6 +33,14 @@ const WORKSPACE_SHORTCUTS: ReadonlyArray<WorkspaceShortcut> = [
     cta: "Explorar Comunidade →",
   },
   {
+    href: "/mensagens",
+    badge: "Voz & Chat",
+    title: "Mensagens & Voz",
+    description:
+      "Chat privado entre amigos, grupos de até 10 pessoas e chamadas de voz com compartilhamento de tela.",
+    cta: "Abrir Mensagens →",
+  },
+  {
     href: "/conta",
     badge: "Identidade",
     title: "Meu Perfil",
@@ -179,7 +187,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {WORKSPACE_SHORTCUTS.map((area) => (
               <Link
                 key={area.href}

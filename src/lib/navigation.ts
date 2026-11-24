@@ -1,4 +1,4 @@
-export type NavIconKey = "home" | "projects" | "community" | "profile";
+export type NavIconKey = "home" | "projects" | "community" | "messages" | "profile";
 
 export interface PrimaryNavItem {
   href: string;
@@ -29,6 +29,13 @@ export const PRIMARY_NAV_ITEMS: readonly PrimaryNavItem[] = [
     shortLabel: "Comunidade",
     description: "Feed de projetos e busca por @",
     icon: "community",
+  },
+  {
+    href: "/mensagens",
+    label: "Mensagens",
+    shortLabel: "Chat",
+    description: "Mensagens entre amigos, grupos e voz",
+    icon: "messages",
   },
   {
     href: "/conta",

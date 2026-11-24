@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Estado Atual** | Fase 3 e Fase 4 integradas (`@supabase/supabase-js` client-side para Auth, perfil personalizável, estúdio de projetos com 15 linguagens/ícones e sandbox `iframe` isolado + Rede Social Comunidade Codit com `@username`, amizades, feed, curtidas e comentários via RLS, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
-| **Última atualização** | `2026-11-23` |
+| **Estado Atual** | Fase 3 e Fase 4 integradas (`@supabase/supabase-js` client-side para Auth, perfil personalizável, estúdio de projetos com 15 linguagens/ícones e sandbox `iframe` isolado + Rede Social Comunidade Codit com `@username`, amizades, feed, curtidas e comentários via RLS + Sistema de Mensagens Embutido `/mensagens` exclusivo para amigos, grupos até 10 pessoas, voz WebRTC e compartilhamento de tela sem câmera, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
+| **Última atualização** | `2026-11-24` |
 | **Guia Rápido** | [GEMINI.md](../GEMINI.md) |
 
 ---
@@ -171,6 +171,7 @@ Nenhuma chave secreta (`SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `AUTH_SECRET
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Server-Side / Painel Supabase | Credenciais Google OAuth 2.0 (no MVP client-side ficam configuradas no painel Supabase Auth) | Para OAuth |
 | `AI_PROVIDER_API_KEY` | Server-Side | Chave da API de IA do tutor Octopy | Para Octopy |
 | `SANDBOX_API_URL` / `SANDBOX_API_KEY` | Server-Side | URL e chave do sandbox remoto (Fase 2+) | Apenas Fase 2+ |
+| `NEXT_PUBLIC_WEBRTC_ICE_SERVERS_JSON` | Público (`out/`) | JSON opcional de servidores STUN/TURN para chamadas de voz e tela WebRTC (padrão: Google e Cloudflare STUN) | Não |
 
 ---
 
@@ -310,3 +311,7 @@ TCC-Codit/
 - **ADR-005 (Aceita — 2026-11-22):** Empacotamento multiplataforma nativo sobre uma única base TypeScript/React usando exportação estática compartilhada (`out/`) com **Tauri v2** (`.exe` Windows + `tauri-plugin-updater` pré-configurado) e **Capacitor 8** (`.apk` Android), mantendo `npm run dev` e builds server-side futuros (`CODIT_BUILD_TARGET=server`) preservados e segredos estritamente fora dos pacotes cliente.
 - **ADR-006 (Aceita — 2026-11-22):** Adoção de `@supabase/supabase-js` client-side (`NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`) com fluxo PKCE (`flowType: "pkce"`) para autenticação (e-mail/senha + Google OAuth) e persistência direta nas tabelas `public.profiles` e `public.sandbox_projects` protegidas por RLS (`auth.uid()`), garantindo compatibilidade integral com `output: "export"` no Web/PWA, `.exe` (Tauri) e `.apk` (Capacitor) sem depender de Route Handlers `app/api` dinâmicos no bundle estático. Segredos privilegiados (`SUPABASE_SERVICE_ROLE_KEY`, chaves de IA e sandbox remoto) permanecem estritamente proibidos em variáveis `NEXT_PUBLIC_*`.
 - **ADR-007 (Aceita — 2026-11-23):** Rede social embutida (**Comunidade Codit**) construída sobre exportação estática (`/comunidade` e `/comunidade/perfil?u=...` com `<Suspense>`), mantendo `public.profiles` isolada e espelhando apenas atributos públicos sem PII em `public.public_profiles` para pesquisa por `@username`, com amizades bilaterais (`public.friendships`), visibilidade `'friends'` em `sandbox_projects`, curtidas/comentários com RLS e prévia HTML/JS isolada via `<iframe sandbox="allow-scripts">` sem `allow-same-origin`.
+- **ADR-008 (Aceita — 2026-11-24):** Sistema de Mensagens Embutido (`/mensagens`), grupos de até **10 pessoas**, chamadas de **voz** e **compartilhamento de tela** sem vídeo de câmera (`RN-501` a `RN-505`):
+  - **Persistência & Realtime:** tabelas `public.chat_conversations`, `public.chat_conversation_members` e `public.chat_messages` protegidas por RLS e RPCs `SECURITY DEFINER` com `FOR UPDATE` no Supabase PostgreSQL (`20261124000002_add_embedded_messaging.sql`), sincronizadas via `supabase_realtime` (`postgres_changes` + canais efêmeros `codit:conv:{id}` e `codit:user-inbox:{userId}`).
+  - **Voz & Tela WebRTC (Mesh P2P até 10 participantes):** sinalização *Perfect Negotiation* (`offer`, `answer`, `ice-candidate`, `screen-share-stopped`, `hangup`) e presença via canal `codit:call:{conversationId}` do Supabase Realtime; captura estritamente limitada a microfone (`getUserMedia({ audio: ..., video: false })`) e tela (`getDisplayMedia({ video: ..., audio: false })`), mantendo `Permissions-Policy: camera=()` bloqueada e sem permissão `CAMERA` no Android (`AndroidManifest.xml` inclui apenas `RECORD_AUDIO` e `MODIFY_AUDIO_SETTINGS`).
+  - **ICE / STUN / TURN (Contingência):** padrão usa STUN público (`stun:stun.l.google.com:19302`, `stun:stun1.l.google.com:19302`, `stun:stun.cloudflare.com:3478`), com sobrecarga opcional via `NEXT_PUBLIC_WEBRTC_ICE_SERVERS_JSON` para TURN em redes com NAT simétrico restrito.

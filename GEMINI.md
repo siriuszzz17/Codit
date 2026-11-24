@@ -1,6 +1,6 @@
 # GEMINI.md — Guia Rápido e Constituição do Projeto Codit
 
-> **Estado atual:** Fase 1 (base inicial + setup multiplataforma) — Next.js (App Router + exportação estática `out/`), TypeScript `strict`, Tailwind CSS, suporte a PWA, Tauri v2 (`src-tauri/`), Capacitor Android (`capacitor.config.ts` / `android/`), `.env.example`, `.gitignore` e `GET /api/v1/health` configurados. **Ainda sem autenticação, banco de dados/ORM, sandbox ou tutor Octopy.**
+> **Estado atual:** Fases 2–4 integradas + **Sistema de Mensagens Embutido (`/mensagens`)** — Next.js (App Router + exportação estática `out/`), TypeScript `strict`, Tailwind CSS, Supabase Auth + RLS, Comunidade Codit (`@username`, amizades, feed), Estúdio 15 linguagens + Sandbox `iframe` isolado, e **Sistema de Mensagens entre amigos, grupos de até 10 pessoas, chamadas de voz WebRTC e compartilhamento de tela (sem vídeo de câmera)**, além de PWA, Tauri v2 e Capacitor 8 Android. **Pendente:** catálogo curricular, Python Pyodide Web Worker e tutor Octopy.
 
 ## 1. Visão Geral e Stack Alvo (Planejada)
 - **Produto:** **Codit** — plataforma SaaS educacional Web Responsiva Mobile-First + PWA instalável, para ensinar programação (básico ao avançado), Inteligência Artificial, Git/GitHub, boas práticas e preparação para carreira tech (portfólio e entrevistas).

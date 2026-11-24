@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { TopNavbar } from "@/components/layout/top-navbar";
+import { GlobalCallOverlay } from "@/components/messaging/global-call-overlay";
 import { AppUpdateModal } from "@/components/native/app-update-modal";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { AuthProvider } from "@/modules/auth/auth-provider";
+import { VoiceCallProvider } from "@/modules/messaging/voice-call-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -54,13 +56,16 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className="codit-app-shell flex min-h-dvh flex-col bg-background text-foreground antialiased">
         <AuthProvider>
-          <ServiceWorkerRegister />
-          <TopNavbar />
-          <OfflineBanner />
-          <AppUpdateModal />
-          <div className="codit-safe-x codit-mobile-nav-clearance flex-1">
-            {children}
-          </div>
+          <VoiceCallProvider>
+            <ServiceWorkerRegister />
+            <TopNavbar />
+            <OfflineBanner />
+            <AppUpdateModal />
+            <GlobalCallOverlay />
+            <div className="codit-safe-x codit-mobile-nav-clearance flex-1">
+              {children}
+            </div>
+          </VoiceCallProvider>
         </AuthProvider>
       </body>
     </html>
