@@ -211,7 +211,7 @@ export function ProfileHeroCard({
 
               <p className="mt-0.5 text-sm font-medium text-muted">
                 {profile.headline ||
-                  "Adicione seu título ou objetivo na aba Personalizar perfil"}
+                  "Adicione seu título ou objetivo na seção Personalizar perfil abaixo"}
               </p>
             </div>
           </div>

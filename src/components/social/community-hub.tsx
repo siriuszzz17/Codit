@@ -8,7 +8,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { LanguageBadge } from "@/components/sandbox/language-icon";
+import { LanguageBadge, LanguageIcon } from "@/components/sandbox/language-icon";
 import { FriendshipActionButton } from "@/components/social/friendship-action-button";
 import { ProjectViewerModal } from "@/components/social/project-viewer-modal";
 import {
@@ -29,6 +29,10 @@ import type {
 } from "@/lib/supabase/database.types";
 import { useIsOnline } from "@/lib/use-is-online";
 import { useAuth } from "@/modules/auth/auth-provider";
+import {
+  findLanguageForSkill,
+  getAccentThemeMeta,
+} from "@/modules/profiles/profile-themes";
 import { getLanguageMeta } from "@/modules/sandbox/language-catalog";
 import { formatHandle } from "@/modules/social/social-schemas";
 import {
@@ -893,43 +897,86 @@ export function CommunityHub() {
                   friendshipsBundle.raw,
                 );
                 const profileHref = `/comunidade/perfil?u=${encodeURIComponent(person.username)}`;
+                const accentTheme = getAccentThemeMeta(person.accent_theme);
 
                 return (
                   <article
                     key={person.id}
-                    className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-surface p-5 shadow-xs transition-colors hover:border-accent/60"
+                    className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-surface shadow-xs transition-colors hover:border-accent/60"
                   >
-                    <div className="flex items-start gap-3">
-                      <UserAvatar
-                        name={person.full_name}
-                        username={person.username}
-                        avatarUrl={person.avatar_url}
-                        size="md"
+                    <div>
+                      <div
+                        aria-hidden="true"
+                        className="h-1.5 w-full"
+                        style={{ backgroundColor: accentTheme.swatchHex }}
                       />
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <Link
-                          href={profileHref}
-                          className="block truncate text-sm font-bold text-foreground hover:underline sm:text-base"
-                        >
-                          {person.full_name}
-                        </Link>
-                        <p className="truncate font-mono text-xs font-semibold text-accent-strong">
-                          @{person.username}
-                        </p>
-                        {person.bio ? (
-                          <p className="line-clamp-2 text-xs leading-relaxed text-muted">
-                            {person.bio}
-                          </p>
+
+                      <div className="space-y-3 p-5">
+                        <div className="flex items-start gap-3">
+                          <UserAvatar
+                            name={person.full_name}
+                            username={person.username}
+                            avatarUrl={person.avatar_url}
+                            size="md"
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <Link
+                              href={profileHref}
+                              className="block truncate text-sm font-bold text-foreground hover:underline sm:text-base"
+                            >
+                              {person.full_name}
+                            </Link>
+                            <p className="truncate font-mono text-xs font-semibold text-accent-strong">
+                              @{person.username}
+                            </p>
+                            {person.headline ? (
+                              <p className="truncate text-xs font-medium text-foreground/85">
+                                {person.headline}
+                              </p>
+                            ) : null}
+                            {person.bio ? (
+                              <p className="line-clamp-2 text-xs leading-relaxed text-muted">
+                                {person.bio}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {person.skills.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {person.skills.slice(0, 4).map((skill) => {
+                              const matchedLang = findLanguageForSkill(skill);
+                              return (
+                                <span
+                                  key={skill}
+                                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[11px] font-medium text-foreground ${accentTheme.borderClass} ${accentTheme.softBgClass}`}
+                                >
+                                  {matchedLang ? (
+                                    <LanguageIcon
+                                      language={matchedLang}
+                                      size={12}
+                                    />
+                                  ) : null}
+                                  <span>{skill}</span>
+                                </span>
+                              );
+                            })}
+                            {person.skills.length > 4 ? (
+                              <span className="text-[11px] font-medium text-muted">
+                                +{person.skills.length - 4}
+                              </span>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-muted/25 px-5 py-3">
                       <Link
                         href={profileHref}
-                        className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                        className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
                       >
-                        Ver projetos
+                        Ver perfil e projetos
                       </Link>
                       <FriendshipActionButton
                         viewerId={userId}

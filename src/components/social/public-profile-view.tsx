@@ -1,16 +1,19 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { LanguageBadge } from "@/components/sandbox/language-icon";
+import { useEffect, useState, type CSSProperties } from "react";
+import { OctopyBadge } from "@/components/brand/octopy-badge";
+import { LanguageBadge, LanguageIcon } from "@/components/sandbox/language-icon";
 import { FriendshipActionButton } from "@/components/social/friendship-action-button";
 import { ProjectViewerModal } from "@/components/social/project-viewer-modal";
 import {
   formatDatePtBr,
+  getInitials,
+  isSafeHttpUrl,
   SANDBOX_VISIBILITY_LABELS,
 } from "@/components/social/social-labels";
-import { UserAvatar } from "@/components/social/user-avatar";
 import {
   emitFriendshipsChanged,
   subscribeFriendshipsChanged,
@@ -18,13 +21,51 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useIsOnline } from "@/lib/use-is-online";
 import { useAuth } from "@/modules/auth/auth-provider";
-import { getLanguageMeta } from "@/modules/sandbox/language-catalog";
+import {
+  findLanguageForSkill,
+  getAccentThemeMeta,
+  getAvatarFrameMeta,
+  getBannerMeta,
+  getOctopyCompanionMeta,
+  isAllowedAvatarPath,
+} from "@/modules/profiles/profile-themes";
+import {
+  computeLanguageBreakdown,
+  getLanguageMeta,
+} from "@/modules/sandbox/language-catalog";
 import {
   getPublicProfileBundle,
+  mergeSelfPublicProfileFallback,
   SocialServiceError,
   type CommunityProjectCard,
   type PublicProfileBundle,
 } from "@/modules/social/social-service";
+
+function formatMemberSince(isoDate: string): string {
+  const parsed = Date.parse(isoDate);
+  if (Number.isNaN(parsed)) {
+    return "Recente";
+  }
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function toSafeExternalUrl(rawUrl: string | null | undefined): string | null {
+  if (!rawUrl) {
+    return null;
+  }
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      return parsed.toString();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export function PublicProfileView() {
   const searchParams = useSearchParams();
@@ -33,7 +74,12 @@ export function PublicProfileView() {
   const targetKey = `${usernameParam ?? ""}::${userIdParam ?? ""}`;
 
   const isOnline = useIsOnline();
-  const { user, isLoading: isAuthLoading, isConfigured } = useAuth();
+  const {
+    user,
+    profile: ownProfile,
+    isLoading: isAuthLoading,
+    isConfigured,
+  } = useAuth();
   const viewerId = user?.id ?? null;
 
   const [bundle, setBundle] = useState<PublicProfileBundle | null>(null);
@@ -42,6 +88,7 @@ export function PublicProfileView() {
   const [migrationMissing, setMigrationMissing] = useState(false);
   const [permissionGrantMissing, setPermissionGrantMissing] = useState(false);
   const [copiedHandle, setCopiedHandle] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] =
     useState<CommunityProjectCard | null>(null);
 
@@ -196,6 +243,45 @@ export function PublicProfileView() {
     );
   }
 
+  const displayProfile = bundle
+    ? mergeSelfPublicProfileFallback(
+        bundle.profile,
+        bundle.relation.status === "self" ? ownProfile : null,
+        bundle.hasPublicCustomizationColumns,
+      )
+    : null;
+
+  const banner = displayProfile
+    ? getBannerMeta(displayProfile.banner_preset)
+    : null;
+  const accentTheme = displayProfile
+    ? getAccentThemeMeta(displayProfile.accent_theme)
+    : null;
+  const avatarFrame = displayProfile
+    ? getAvatarFrameMeta(displayProfile.avatar_frame)
+    : null;
+  const companion = displayProfile
+    ? getOctopyCompanionMeta(displayProfile.octopy_companion)
+    : null;
+
+  const breakdown = bundle
+    ? computeLanguageBreakdown(bundle.projects.map((item) => item.project))
+    : [];
+
+  const isPixelAvatar =
+    Boolean(displayProfile?.avatar_url) &&
+    isAllowedAvatarPath(displayProfile?.avatar_url ?? "");
+  const showAvatarImage =
+    Boolean(displayProfile?.avatar_url) &&
+    (isSafeHttpUrl(displayProfile?.avatar_url) || isPixelAvatar) &&
+    failedAvatarUrl !== displayProfile?.avatar_url;
+
+  const githubUrl = displayProfile?.github_username
+    ? `https://github.com/${encodeURIComponent(displayProfile.github_username)}`
+    : null;
+  const linkedinUrl = toSafeExternalUrl(displayProfile?.linkedin_url);
+  const websiteUrl = toSafeExternalUrl(displayProfile?.website_url);
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -307,7 +393,12 @@ export function PublicProfileView() {
             </Link>
           </div>
         </div>
-      ) : !bundle ? (
+      ) : !bundle ||
+        !displayProfile ||
+        !banner ||
+        !accentTheme ||
+        !avatarFrame ||
+        !companion ? (
         <div className="space-y-3 rounded-3xl border border-border bg-surface p-8 text-center">
           <h1 className="text-lg font-bold text-foreground">
             Perfil não encontrado
@@ -324,94 +415,358 @@ export function PublicProfileView() {
         </div>
       ) : (
         <>
-          {/* Cartão do perfil */}
-          <section className="space-y-5 rounded-3xl border border-border bg-surface p-5 shadow-xs sm:p-7">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-4">
-                <UserAvatar
-                  name={bundle.profile.full_name}
-                  username={bundle.profile.username}
-                  avatarUrl={bundle.profile.avatar_url}
-                  size="lg"
-                />
-                <div className="min-w-0 space-y-1.5">
-                  <h1 className="text-xl font-bold text-foreground sm:text-2xl">
-                    {bundle.profile.full_name}
-                  </h1>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm font-semibold text-accent-strong">
-                      @{bundle.profile.username}
+          {bundle.relation.status === "self" &&
+          !bundle.hasPublicCustomizationColumns ? (
+            <div
+              role="status"
+              className="space-y-1.5 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-4 text-xs leading-relaxed text-foreground sm:text-sm"
+            >
+              <p className="font-bold">
+                Sincronização de personalizações no perfil público pendente
+              </p>
+              <p className="text-muted">
+                Você está vendo suas personalizações locais aqui porque é o dono
+                do perfil. Para que <strong>outros usuários</strong> também
+                vejam seu banner, cor, moldura, habilidades e links, execute o
+                arquivo{" "}
+                <code className="font-mono text-foreground">
+                  supabase/migrations/20261124000001_sync_public_profile_customization.sql
+                </code>{" "}
+                no <strong>SQL Editor</strong> do Supabase e clique em{" "}
+                <strong>Salvar personalizações</strong> na aba{" "}
+                <Link
+                  href="/conta"
+                  className="font-semibold text-accent-strong underline"
+                >
+                  Perfil
+                </Link>
+                .
+              </p>
+            </div>
+          ) : null}
+
+          {/* Cartão do perfil público com personalização completa */}
+          <section
+            aria-labelledby="public-profile-title"
+            style={accentTheme.cssVars as CSSProperties}
+            className="overflow-hidden rounded-3xl border border-border bg-surface shadow-xs"
+          >
+            {/* Banner personalizável */}
+            <div
+              className={`relative h-32 w-full overflow-hidden sm:h-40 ${banner.gradientClass}`}
+            >
+              <div
+                aria-hidden="true"
+                className={`absolute inset-0 opacity-80 ${banner.patternClass}`}
+              />
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent"
+              />
+
+              <div className="relative flex h-full flex-col justify-between p-4 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-xs">
+                    <span>Perfil Público</span>
+                    <span aria-hidden="true" className="opacity-50">
+                      ·
                     </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleCopyHandle(bundle.profile.username)
-                      }
-                      className="rounded-lg border border-border bg-surface-muted px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-accent"
-                    >
-                      {copiedHandle ? "Copiado!" : "Copiar @"}
-                    </button>
+                    <span className="text-white/90">{banner.label}</span>
                   </div>
-                  {bundle.profile.bio ? (
-                    <p className="max-w-2xl text-sm leading-relaxed text-muted">
-                      {bundle.profile.bio}
-                    </p>
-                  ) : null}
+                </div>
+
+                <div className="hidden items-center justify-end sm:flex">
+                  <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-black/40 px-2.5 py-1.5 text-white backdrop-blur-xs">
+                    <OctopyBadge
+                      size={26}
+                      variant={displayProfile.octopy_companion}
+                      className="rounded-lg"
+                    />
+                    <div className="text-left leading-tight">
+                      <p className="text-[11px] font-semibold">
+                        Octopy · {companion.label}
+                      </p>
+                      <p className="text-[10px] text-white/75">
+                        {companion.tagline}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Corpo principal */}
+            <div className="px-4 pb-5 sm:px-6 sm:pb-6">
+              <div className="-mt-10 flex flex-wrap items-end justify-between gap-4 sm:-mt-12">
+                <div className="flex flex-wrap items-end gap-4">
+                  <div
+                    className={`relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-surface-muted sm:h-24 sm:w-24 ${avatarFrame.wrapperClass}`}
+                  >
+                    {showAvatarImage && displayProfile.avatar_url ? (
+                      <Image
+                        src={displayProfile.avatar_url}
+                        alt={`Avatar de ${displayProfile.full_name || "Estudante Codit"}`}
+                        width={96}
+                        height={96}
+                        unoptimized
+                        onError={() =>
+                          setFailedAvatarUrl(displayProfile.avatar_url)
+                        }
+                        className={`h-full w-full rounded-[20px] ${
+                          isPixelAvatar
+                            ? "bg-[#141124] object-contain p-1.5"
+                            : "object-cover"
+                        }`}
+                        style={
+                          isPixelAvatar
+                            ? { imageRendering: "pixelated" }
+                            : undefined
+                        }
+                      />
+                    ) : (
+                      <span
+                        className={`flex h-full w-full items-center justify-center rounded-[20px] text-xl font-bold sm:text-2xl ${accentTheme.softBgClass} ${accentTheme.textClass}`}
+                      >
+                        {getInitials(
+                          displayProfile.full_name,
+                          displayProfile.username,
+                        )}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="pb-1 pt-2 sm:pt-12">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1
+                        id="public-profile-title"
+                        className="text-xl font-bold tracking-tight text-foreground sm:text-2xl"
+                      >
+                        {displayProfile.full_name || "Estudante Codit"}
+                      </h1>
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${accentTheme.badgeClass}`}
+                      >
+                        {accentTheme.label}
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-border bg-surface-muted px-2.5 py-0.5 font-mono text-[11px] font-semibold text-accent-strong">
+                        @{displayProfile.username}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleCopyHandle(displayProfile.username)
+                        }
+                        className="rounded-lg border border-border bg-surface-muted px-2.5 py-0.5 text-[11px] font-semibold text-foreground hover:border-accent"
+                      >
+                        {copiedHandle ? "Copiado!" : "Copiar @"}
+                      </button>
+                    </div>
+
+                    {displayProfile.headline ? (
+                      <p className="mt-0.5 text-sm font-medium text-muted">
+                        {displayProfile.headline}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 sm:pb-1">
+                  {bundle.relation.status === "self" ? (
+                    <Link
+                      href="/conta"
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent sm:text-sm"
+                    >
+                      Personalizar meu perfil
+                    </Link>
+                  ) : (
+                    <FriendshipActionButton
+                      viewerId={viewerId}
+                      targetUserId={displayProfile.id}
+                      relation={bundle.relation}
+                      isOnline={isOnline}
+                      onChanged={async () => {
+                        await reloadBundle();
+                        emitFriendshipsChanged();
+                      }}
+                      onError={setProfileError}
+                    />
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {bundle.relation.status === "self" ? (
-                  <Link
-                    href="/conta"
-                    className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground hover:border-accent"
-                  >
-                    Personalizar meu perfil
-                  </Link>
-                ) : (
-                  <FriendshipActionButton
-                    viewerId={viewerId}
-                    targetUserId={bundle.profile.id}
-                    relation={bundle.relation}
-                    isOnline={isOnline}
-                    onChanged={async () => {
-                      await reloadBundle();
-                      emitFriendshipsChanged();
-                    }}
-                    onError={setProfileError}
-                  />
-                )}
+              {/* Metadados + Bio + Links + Habilidades */}
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+                  {displayProfile.location ? (
+                    <span className="inline-flex items-center gap-1.5 text-foreground">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                        className="text-muted"
+                      >
+                        <path
+                          d="M12 21s-6-5.35-6-10.5a6 6 0 1 1 12 0C18 15.65 12 21 12 21Z"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        />
+                        <circle cx="12" cy="10.5" r="2" fill="currentColor" />
+                      </svg>
+                      {displayProfile.location}
+                    </span>
+                  ) : null}
+
+                  <span>
+                    Membro desde {formatMemberSince(displayProfile.created_at)}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5 sm:hidden">
+                    <OctopyBadge
+                      size={16}
+                      variant={displayProfile.octopy_companion}
+                      className="rounded-sm"
+                    />
+                    <span>Octopy · {companion.label}</span>
+                  </span>
+                </div>
+
+                {displayProfile.bio ? (
+                  <p className="max-w-3xl text-sm leading-relaxed text-foreground/90">
+                    {displayProfile.bio}
+                  </p>
+                ) : null}
+
+                {githubUrl || linkedinUrl || websiteUrl ? (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {githubUrl ? (
+                      <a
+                        href={githubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-border bg-surface-muted/70 px-3 py-1 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                      >
+                        <span>GitHub: @{displayProfile.github_username}</span>
+                      </a>
+                    ) : null}
+                    {linkedinUrl ? (
+                      <a
+                        href={linkedinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-border bg-surface-muted/70 px-3 py-1 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                      >
+                        <span>LinkedIn</span>
+                      </a>
+                    ) : null}
+                    {websiteUrl ? (
+                      <a
+                        href={websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-border bg-surface-muted/70 px-3 py-1 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                      >
+                        <span>Site / Portfólio</span>
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {displayProfile.skills.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {displayProfile.skills.map((skill) => {
+                      const matchedLang = findLanguageForSkill(skill);
+                      return (
+                        <span
+                          key={skill}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${accentTheme.borderClass} ${accentTheme.softBgClass} text-foreground`}
+                        >
+                          {matchedLang ? (
+                            <LanguageIcon language={matchedLang} size={14} />
+                          ) : null}
+                          <span>{skill}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4 text-xs text-muted">
-              {bundle.friendCount !== null ? (
-                <span className="rounded-xl border border-border bg-surface-muted px-3 py-1.5 font-medium text-foreground">
-                  Amigos: {bundle.friendCount}
-                </span>
-              ) : null}
-              <span className="rounded-xl border border-border bg-surface-muted px-3 py-1.5 font-medium text-foreground">
-                Projetos visíveis: {bundle.projects.length}
-              </span>
-              {bundle.profile.github_username ? (
-                <a
-                  href={`https://github.com/${encodeURIComponent(bundle.profile.github_username)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-xl border border-border bg-surface-muted px-3 py-1.5 font-mono font-medium text-accent-strong transition-colors hover:border-accent"
-                >
-                  GitHub: @{bundle.profile.github_username}
-                </a>
-              ) : null}
-            </div>
+              {/* Métricas públicas */}
+              <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-3">
+                <div className="rounded-2xl border border-border bg-surface-muted/50 px-3.5 py-2.5">
+                  <p className="text-[11px] font-medium text-muted">Amigos</p>
+                  <p className="mt-0.5 text-lg font-bold text-foreground">
+                    {bundle.friendCount ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-border bg-surface-muted/50 px-3.5 py-2.5">
+                  <p className="text-[11px] font-medium text-muted">
+                    Projetos visíveis
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-foreground">
+                    {bundle.projects.length}
+                  </p>
+                </div>
+                <div className="col-span-2 rounded-2xl border border-border bg-surface-muted/50 px-3.5 py-2.5 sm:col-span-1">
+                  <p className="text-[11px] font-medium text-muted">
+                    Linguagens nos projetos
+                  </p>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <p className="text-lg font-bold text-foreground">
+                      {breakdown.length}
+                    </p>
+                    {breakdown.length > 0 ? (
+                      <div className="flex items-center -space-x-1">
+                        {breakdown.slice(0, 4).map((item) => (
+                          <LanguageIcon
+                            key={item.language}
+                            language={item.language}
+                            size={16}
+                            className="rounded-sm ring-1 ring-surface"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
 
-            <p className="text-xs text-muted">
-              {bundle.relation.status === "self"
-                ? "Este é o seu perfil público. Visitantes veem projetos em Portfólio público; amigos aceitos também veem projetos marcados como Somente amigos."
-                : bundle.relation.status === "friends"
-                  ? "Vocês são amigos — você pode visualizar projetos marcados como Portfólio público e Somente amigos."
-                  : "Você está vendo apenas os projetos em Portfólio público. Adicione como amigo para liberar projetos exclusivos para amigos."}
-            </p>
+              {breakdown.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-foreground">
+                      Linguagens compartilhadas
+                    </span>
+                    <span className="text-muted">
+                      {bundle.projects.length}{" "}
+                      {bundle.projects.length === 1 ? "projeto" : "projetos"}
+                    </span>
+                  </div>
+                  <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+                    {breakdown.map((item) => (
+                      <div
+                        key={item.language}
+                        title={`${item.meta.label}: ${item.percent}%`}
+                        style={{
+                          width: `${item.percent}%`,
+                          backgroundColor: item.meta.accentHex,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <p className="mt-4 border-t border-border pt-3 text-xs text-muted">
+                {bundle.relation.status === "self"
+                  ? "Este é o seu perfil público. Visitantes veem projetos em Portfólio público; amigos aceitos também veem projetos marcados como Somente amigos."
+                  : bundle.relation.status === "friends"
+                    ? "Vocês são amigos — você pode visualizar projetos marcados como Portfólio público e Somente amigos."
+                    : "Você está vendo apenas os projetos em Portfólio público. Adicione como amigo para liberar projetos exclusivos para amigos."}
+              </p>
+            </div>
           </section>
 
           {/* Projetos visíveis do usuário */}

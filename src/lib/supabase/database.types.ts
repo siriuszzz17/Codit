@@ -136,6 +136,15 @@ export type PublicProfileRow = {
   avatar_url: string | null;
   bio: string | null;
   github_username: string | null;
+  headline: string | null;
+  location: string | null;
+  website_url: string | null;
+  linkedin_url: string | null;
+  banner_preset: ProfileBannerPreset;
+  accent_theme: ProfileAccentTheme;
+  avatar_frame: ProfileAvatarFrame;
+  octopy_companion: OctopyCompanionMood;
+  skills: string[];
   created_at: string;
   updated_at: string;
 };
@@ -147,6 +156,15 @@ export type PublicProfileInsert = {
   avatar_url?: string | null;
   bio?: string | null;
   github_username?: string | null;
+  headline?: string | null;
+  location?: string | null;
+  website_url?: string | null;
+  linkedin_url?: string | null;
+  banner_preset?: ProfileBannerPreset;
+  accent_theme?: ProfileAccentTheme;
+  avatar_frame?: ProfileAvatarFrame;
+  octopy_companion?: OctopyCompanionMood;
+  skills?: string[];
   created_at?: string;
   updated_at?: string;
 };
@@ -157,6 +175,15 @@ export type PublicProfileUpdate = {
   avatar_url?: string | null;
   bio?: string | null;
   github_username?: string | null;
+  headline?: string | null;
+  location?: string | null;
+  website_url?: string | null;
+  linkedin_url?: string | null;
+  banner_preset?: ProfileBannerPreset;
+  accent_theme?: ProfileAccentTheme;
+  avatar_frame?: ProfileAvatarFrame;
+  octopy_companion?: OctopyCompanionMood;
+  skills?: string[];
   updated_at?: string;
 };
 
