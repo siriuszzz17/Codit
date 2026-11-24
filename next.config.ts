@@ -9,6 +9,7 @@ function buildGlobalCsp(isDev: boolean): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data: https://*.supabase.co https://lh3.googleusercontent.com https://avatars.githubusercontent.com",
     "font-src 'self' data:",
+    "media-src 'self' blob:",
     `connect-src 'self' https://*.supabase.co wss://*.supabase.co${isDev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
@@ -38,7 +39,7 @@ function createSecurityHeaders(
     },
     {
       key: "Permissions-Policy",
-      value: "camera=(), microphone=(), geolocation=()",
+      value: "camera=(), microphone=(self), display-capture=(self), geolocation=()",
     },
     {
       key: "Content-Security-Policy",

@@ -3,8 +3,8 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Status** | Especificação viva (Fases 0–2 + Rede Social Comunidade Codit) |
-| **Última atualização** | `2026-11-23` |
+| **Status** | Especificação viva (Fases 0–2 + Rede Social Comunidade Codit + Mensagens & Voz) |
+| **Última atualização** | `2026-11-24` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [banco-de-dados.md](./banco-de-dados.md) |
 
 ---
@@ -116,6 +116,21 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
   - Curtidas (`project_likes`) e comentários (`project_comments`, 1–500 caracteres) exigem acesso legítimo ao projeto (`can_view_sandbox_project`).
   - Clonar um projeto de outro usuário cria uma cópia estritamente `private` vinculada ao `user_id` do usuário autenticado.
 
+### Módulo F — Mensagens Embutidas, Grupos, Voz e Compartilhamento de Tela (`RN-501` a `RN-505`)
+
+- **`RN-501` — Mensagens Diretas e Convites Exclusivos para Amigos:**
+  - Conversas diretas (`kind = 'direct'`) só podem ser iniciadas, enviadas ou usadas em chamadas de voz quando existe vínculo `'accepted'` ativo entre os dois usuários em `public.friendships` (`are_users_friends` e `can_send_chat_message`).
+  - Se a amizade for desfeita após a criação da conversa, o histórico permanece legível aos participantes, porém o envio de novas mensagens e chamadas de voz é bloqueado no banco (RLS) e na interface, e chamadas ativas na DM são encerradas automaticamente.
+  - Criação de grupos e adição de novos membros só permitem convidar usuários que sejam amigos aceitos do autor da ação.
+- **`RN-502` — Limite Máximo de 10 Pessoas por Grupo:**
+  - Todo grupo (`kind = 'group'`) exige pelo menos 2 participantes na criação (criador + 1..9 amigos) e impõe teto estrito de **10 membros ativos** (`left_at IS NULL`) validado no Zod (`createGroupConversationSchema`, `validateGroupMemberAddition`), na UI, nas RPCs `create_group_conversation` / `add_group_conversation_members` e no trigger com lock `FOR UPDATE` (`enforce_chat_member_limits`).
+- **`RN-503` — Isolamento de Conversas e Zero Acesso Anônimo:**
+  - Tabelas `chat_conversations`, `chat_conversation_members` e `chat_messages` negam qualquer privilégio a `anon` e permitem leitura/envio apenas a participantes ativos autenticados (`is_active_chat_member`), além de descartar sinais WebRTC de usuários fora da conversa.
+- **`RN-504` — Chamadas Exclusivamente de Voz (Proibido Vídeo de Câmera):**
+  - Chamadas capturam apenas áudio (`getUserMedia({ audio: ..., video: false })`); a permissão `camera=()` permanece bloqueada em `Permissions-Policy`, `android.permission.CAMERA` não é declarada no Android e faixas de vídeo recebidas/enviadas que não sejam compartilhamento de tela autorizado são descartadas.
+- **`RN-505` — Compartilhamento de Tela em Chamadas de Voz:**
+  - Participantes em dispositivos compatíveis com `getDisplayMedia` podem compartilhar tela/janela (`audio: false`), enquanto todos os participantes ativos na chamada (inclusive em dispositivos móveis sem `getDisplayMedia`) podem visualizar a transmissão ao vivo e alternar entre múltiplas telas compartilhadas.
+
 ---
 
 ## 5. Fluxos Críticos e Máquinas de Estado
@@ -157,3 +172,4 @@ stateDiagram-v2
 | :--- | :--- | :--- |
 | `2026-11-22` | Inicial | Formalização completa de glossário, RBAC, regras `RN-001` a `RN-305`, estados e casos de borda do SaaS Codit |
 | `2026-11-23` | Módulo E | Inclusão das regras `RN-401` a `RN-405` da rede social embutida (**Comunidade Codit**): `@username`, `public_profiles`, amizades, visibilidade `friends` e clonagem segura |
+| `2026-11-24` | Módulo F | Inclusão das regras `RN-501` a `RN-505` do sistema de mensagens embutido: DMs restritas a amigos, grupos até 10 pessoas, chamadas de voz sem câmera e compartilhamento de tela |

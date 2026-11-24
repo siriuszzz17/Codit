@@ -593,13 +593,22 @@ export function FriendshipsDrawer({
                             </div>
 
                             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2.5">
-                              <Link
-                                href={profileHref}
-                                onClick={onClose}
-                                className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent"
-                              >
-                                Ver perfil e projetos
-                              </Link>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Link
+                                  href={`/mensagens?dm=${encodeURIComponent(friend.id)}`}
+                                  onClick={onClose}
+                                  className="inline-flex min-h-9 items-center justify-center rounded-xl bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
+                                >
+                                  Mensagem
+                                </Link>
+                                <Link
+                                  href={profileHref}
+                                  onClick={onClose}
+                                  className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent"
+                                >
+                                  Perfil
+                                </Link>
+                              </div>
                               <FriendshipActionButton
                                 viewerId={userId}
                                 targetUserId={friend.id}

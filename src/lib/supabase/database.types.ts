@@ -60,6 +60,12 @@ export type SandboxVisibility =
 
 export type FriendshipStatus = "pending" | "accepted";
 
+export type ChatConversationKind = "direct" | "group";
+
+export type ChatMemberRole = "owner" | "member";
+
+export type ChatMessageType = "text" | "system";
+
 export type ProfileRow = {
   id: string;
   email: string;
@@ -309,6 +315,94 @@ export type SandboxProjectUpdate = {
   deleted_at?: string | null;
 };
 
+export type ChatConversationRow = {
+  id: string;
+  kind: ChatConversationKind;
+  title: string | null;
+  created_by: string;
+  direct_pair_key: string | null;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatConversationInsert = {
+  id?: string;
+  kind: ChatConversationKind;
+  title?: string | null;
+  created_by: string;
+  direct_pair_key?: string | null;
+  last_message_at?: string | null;
+  last_message_preview?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ChatConversationUpdate = {
+  title?: string | null;
+  last_message_at?: string | null;
+  last_message_preview?: string | null;
+  updated_at?: string;
+};
+
+export type ChatConversationMemberRow = {
+  conversation_id: string;
+  user_id: string;
+  role: ChatMemberRole;
+  added_by: string | null;
+  joined_at: string;
+  left_at: string | null;
+  last_read_at: string;
+  updated_at: string;
+};
+
+export type ChatConversationMemberInsert = {
+  conversation_id: string;
+  user_id: string;
+  role?: ChatMemberRole;
+  added_by?: string | null;
+  joined_at?: string;
+  left_at?: string | null;
+  last_read_at?: string;
+  updated_at?: string;
+};
+
+export type ChatConversationMemberUpdate = {
+  role?: ChatMemberRole;
+  added_by?: string | null;
+  left_at?: string | null;
+  last_read_at?: string;
+  updated_at?: string;
+};
+
+export type ChatMessageRow = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  message_type: ChatMessageType;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type ChatMessageInsert = {
+  id?: string;
+  conversation_id: string;
+  sender_id: string;
+  message_type?: ChatMessageType;
+  content: string;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
+};
+
+export type ChatMessageUpdate = {
+  deleted_at?: string | null;
+  updated_at?: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -409,6 +503,62 @@ export type Database = {
           },
         ];
       };
+      chat_conversations: {
+        Row: ChatConversationRow;
+        Insert: ChatConversationInsert;
+        Update: ChatConversationUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fk_chat_conversations_created_by";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      chat_conversation_members: {
+        Row: ChatConversationMemberRow;
+        Insert: ChatConversationMemberInsert;
+        Update: ChatConversationMemberUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fk_chat_members_conversation_id";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_conversations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_chat_members_user_id";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      chat_messages: {
+        Row: ChatMessageRow;
+        Insert: ChatMessageInsert;
+        Update: ChatMessageUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fk_chat_messages_conversation_id";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_conversations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_chat_messages_sender_id";
+            columns: ["sender_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -417,6 +567,59 @@ export type Database = {
           p_user_id: string;
         };
         Returns: number;
+      };
+      are_users_friends: {
+        Args: {
+          p_user_a: string;
+          p_user_b: string;
+        };
+        Returns: boolean;
+      };
+      can_send_chat_message: {
+        Args: {
+          p_conversation_id: string;
+        };
+        Returns: boolean;
+      };
+      get_or_create_direct_conversation: {
+        Args: {
+          p_friend_id: string;
+        };
+        Returns: string;
+      };
+      create_group_conversation: {
+        Args: {
+          p_title: string;
+          p_member_ids: string[];
+        };
+        Returns: string;
+      };
+      add_group_conversation_members: {
+        Args: {
+          p_conversation_id: string;
+          p_member_ids: string[];
+        };
+        Returns: number;
+      };
+      remove_or_leave_group_member: {
+        Args: {
+          p_conversation_id: string;
+          p_target_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      rename_group_conversation: {
+        Args: {
+          p_conversation_id: string;
+          p_title: string;
+        };
+        Returns: boolean;
+      };
+      mark_conversation_read: {
+        Args: {
+          p_conversation_id: string;
+        };
+        Returns: boolean;
       };
     };
     Enums: Record<string, never>;
