@@ -88,6 +88,32 @@ export type ChatMemberRole = "owner" | "member";
 
 export type ChatMessageType = "text" | "system";
 
+export type NotificationCategory =
+  | "message"
+  | "voice_call"
+  | "project_like"
+  | "project_comment"
+  | "friend_request"
+  | "friend_accepted"
+  | "group_invite";
+
+export type NotificationPreferencesJson = {
+  mute_all?: boolean;
+  toast_enabled?: boolean;
+  sound_enabled?: boolean;
+  browser_push_enabled?: boolean;
+  categories?: {
+    messages?: boolean;
+    voice_calls?: boolean;
+    project_likes?: boolean;
+    project_comments?: boolean;
+    friend_requests?: boolean;
+    friend_accepted?: boolean;
+    group_invites?: boolean;
+  };
+  muted_conversation_ids?: string[];
+};
+
 export type ProfileRow = {
   id: string;
   email: string;
@@ -112,6 +138,7 @@ export type ProfileRow = {
   app_theme?: AppThemeId;
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
+  notification_prefs?: NotificationPreferencesJson;
   created_at: string;
   updated_at: string;
 };
@@ -140,6 +167,7 @@ export type ProfileInsert = {
   app_theme?: AppThemeId;
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
+  notification_prefs?: NotificationPreferencesJson;
   created_at?: string;
   updated_at?: string;
 };
@@ -166,6 +194,7 @@ export type ProfileUpdate = {
   app_theme?: AppThemeId;
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
+  notification_prefs?: NotificationPreferencesJson;
   updated_at?: string;
 };
 
@@ -437,6 +466,36 @@ export type ChatMessageUpdate = {
   updated_at?: string;
 };
 
+export type NotificationRow = {
+  id: string;
+  recipient_id: string;
+  actor_id: string | null;
+  category: NotificationCategory;
+  title: string;
+  body: string | null;
+  link_href: string | null;
+  entity_key: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type NotificationInsert = {
+  id?: string;
+  recipient_id: string;
+  actor_id?: string | null;
+  category: NotificationCategory;
+  title: string;
+  body?: string | null;
+  link_href?: string | null;
+  entity_key?: string | null;
+  read_at?: string | null;
+  created_at?: string;
+};
+
+export type NotificationUpdate = {
+  read_at?: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -593,6 +652,27 @@ export type Database = {
           },
         ];
       };
+      notifications: {
+        Row: NotificationRow;
+        Insert: NotificationInsert;
+        Update: NotificationUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fk_notifications_recipient_id";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_notifications_actor_id";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -654,6 +734,14 @@ export type Database = {
           p_conversation_id: string;
         };
         Returns: boolean;
+      };
+      mark_all_notifications_read: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      clear_read_notifications: {
+        Args: Record<string, never>;
+        Returns: number;
       };
     };
     Enums: Record<string, never>;

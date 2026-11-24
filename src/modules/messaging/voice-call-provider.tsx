@@ -30,6 +30,11 @@ import {
   type VoiceCallSnapshot,
 } from "@/modules/messaging/voice-call-manager";
 import { playIncomingCallChime } from "@/modules/messaging/webrtc-media";
+import { shouldDeliverNotification } from "@/modules/notifications/notification-schemas";
+import {
+  useNotificationsOptional,
+  type ChatMessageRowNotificationInput,
+} from "@/modules/notifications/notifications-provider";
 
 export interface VoiceCallContextValue {
   activeCall: VoiceCallSnapshot | null;
@@ -57,10 +62,12 @@ const VoiceCallContext = createContext<VoiceCallContextValue | null>(null);
 export function VoiceCallProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { user, profile, isConfigured } = useAuth();
+  const notifications = useNotificationsOptional();
   const userId = user?.id ?? null;
 
   const managerRef = useRef<VoiceCallSessionManager | null>(null);
   const activeCallRef = useRef<VoiceCallSnapshot | null>(null);
+  const notificationsRef = useRef(notifications);
   const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [activeCall, setActiveCall] = useState<VoiceCallSnapshot | null>(null);
@@ -73,6 +80,10 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     activeCallRef.current = activeCall;
   }, [activeCall]);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   const leaveVoiceCall = useCallback(async () => {
     const manager = managerRef.current;
@@ -191,26 +202,62 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        setIncomingCall(notice);
-        playIncomingCallChime();
+        const notif = notificationsRef.current;
+        const delivery = notif
+          ? shouldDeliverNotification(notif.prefs, "voice_call", {
+              conversationId: notice.conversationId,
+            })
+          : {
+              allowFeed: true,
+              allowBadge: true,
+              allowToast: true,
+              allowSound: true,
+              allowBrowserPush: false,
+            };
 
-        if (incomingTimerRef.current !== null) {
-          clearTimeout(incomingTimerRef.current);
+        if (!delivery.allowFeed) {
+          return;
         }
-        incomingTimerRef.current = setTimeout(() => {
-          setIncomingCall((current) =>
-            current?.conversationId === notice.conversationId ? null : current,
-          );
-        }, 25_000);
+
+        notif?.recordIncomingVoiceCall(notice);
+
+        if (delivery.allowToast) {
+          setIncomingCall(notice);
+          if (incomingTimerRef.current !== null) {
+            clearTimeout(incomingTimerRef.current);
+          }
+          incomingTimerRef.current = setTimeout(() => {
+            setIncomingCall((current) =>
+              current?.conversationId === notice.conversationId
+                ? null
+                : current,
+            );
+          }, 25_000);
+        }
+
+        if (delivery.allowSound) {
+          playIncomingCallChime();
+        }
       })
-      .on("broadcast", { event: "message:notify" }, () => {
+      .on("broadcast", { event: "message:notify" }, (event) => {
+        const rawPayload =
+          event && typeof event === "object" && "payload" in event
+            ? event.payload
+            : event;
         emitMessagesChanged();
+        notificationsRef.current?.notifyIncomingMessage(rawPayload);
       })
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_messages" },
-        () => {
+        (payload) => {
           emitMessagesChanged();
+          const newRow = (payload?.new ?? null) as
+            | ChatMessageRowNotificationInput
+            | null;
+          if (newRow) {
+            notificationsRef.current?.notifyIncomingMessageFromRow(newRow);
+          }
         },
       )
       .subscribe();

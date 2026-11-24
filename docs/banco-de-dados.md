@@ -142,7 +142,7 @@ erDiagram
 
 > **Autenticação delegada ao Supabase Auth (`auth.users`):** credenciais de e-mail/senha, verificação de e-mail, fluxos Google OAuth 2.0 (PKCE) e tokens de sessão são gerenciados pelo esquema interno `auth` do Supabase. O esquema público (`public`) mantém a tabela `public.profiles` sincronizada 1:1 com `auth.users`.
 
-#### `public.profiles` *(Implementada na migração `20261122000001` e expandida nas `20261123000001`, `20261123000002`, `20261123000003` e `20261124000003`)*
+#### `public.profiles` *(Implementada na migração `20261122000001` e expandida nas `20261123000001`, `20261123000002`, `20261123000003`, `20261124000003` e `20261124000004`)*
 - **Propósito:** Perfil do estudante/administrador espelhado 1:1 com `auth.users(id)`, com personalização visual e dados de portfólio.
 - **Regras associadas:** `RN-001`, `RN-002`, `RN-003`, `RN-401`
 - **Triggers:**
@@ -178,6 +178,7 @@ erDiagram
 | `app_theme` | `VARCHAR(24)` | Não | `'original'` (`chk_profiles_app_theme`) | Tema global de cores do aplicativo (6 opções) |
 | `wallpaper_preset` | `VARCHAR(32)` | Não | `'original'` (`chk_profiles_wallpaper_preset`) | Papel de parede vetorial/CSS do aplicativo (8 presets leves) |
 | `wallpaper_intensity` | `VARCHAR(12)` | Não | `'balanced'` (`chk_profiles_wallpaper_intensity`) | Intensidade do papel de parede (`subtle`, `balanced`, `vivid`) |
+| `notification_prefs` | `JSONB` | Não | Objeto padrão (~160 bytes) (`chk_profiles_notification_prefs_object`) | Preferências privadas de notificações e mudo por categoria/conversa (`mute_all`, `toast_enabled`, `sound_enabled`, `browser_push_enabled`, `categories`, `muted_conversation_ids`) |
 | `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação em UTC |
 | `updated_at` | `TIMESTAMPTZ` | Não | `NOW()` | Última atualização em UTC |
 
@@ -194,6 +195,15 @@ erDiagram
 - **`public.chat_conversation_members`:** `PK (conversation_id, user_id)`, `role` (`'owner' | 'member'`), `added_by`, `joined_at`, `left_at`, `last_read_at`, `updated_at`. Trigger `trg_chat_members_enforce_limits` faz lock `FOR UPDATE` em `chat_conversations` para impedir mais de 2 ativos em DM ou mais de **10** ativos em grupo (`GROUP_MEMBER_LIMIT_EXCEEDED`); `trg_chat_members_guard_direct_update` bloqueia mutação direta de `role`/`left_at` fora das RPCs.
 - **`public.chat_messages`:** `id` (`PK`), `conversation_id`, `sender_id`, `message_type` (`'text' | 'system'`), `content` (`1..2000` chars), `created_at`, `updated_at`, `deleted_at` (soft delete imutável pelo remetente via `trg_chat_messages_guard_update`).
 - **RPCs `SECURITY DEFINER`:** `are_users_friends`, `get_or_create_direct_conversation`, `create_group_conversation`, `add_group_conversation_members`, `remove_or_leave_group_member`, `rename_group_conversation` e `mark_conversation_read`.
+
+#### `public.notifications` *(Migração `20261124000004` — Retenção Enxuta & Triggers Silenciosos)*
+- **Privilégios & RLS:** acesso **exclusivo para `authenticated`** (`REVOKE ALL` para `anon`, sem `INSERT` direto pelo cliente); policies `notifications_select_own`, `notifications_update_own` e `notifications_delete_own` filtradas por `auth.uid() = recipient_id`. Trigger `trg_notifications_guard_update` permite alterar apenas `read_at` no cliente. Publicação `supabase_realtime` habilitada.
+- **Economia de Armazenamento (`RN-603`):**
+  - Triggers (`trg_project_likes_notify`, `trg_project_comments_notify`, `trg_friendships_notify`, `trg_chat_group_invite_notify`) verificam `is_notification_category_enabled(recipient_id, pref_key)` **antes** de gravar — notificações de categorias mutadas ou com `mute_all = true` consomem **0 bytes** no banco.
+  - Índice único parcial `uq_notifications_recipient_entity_key (recipient_id, entity_key)` deduplica eventos repetidos (ex.: curtir novamente ou reenviar pedido) e `enqueue_user_notification` poda automaticamente registros excedentes além das **60 notificações mais recentes por `recipient_id`**.
+  - Mensagens de chat e chamadas WebRTC utilizam os fluxos em tempo real existentes (`chat_messages` / `codit:user-inbox:{userId}`) sem duplicação em `public.notifications`.
+- **Colunas:** `id` (`PK`), `recipient_id` (`FK -> profiles ON DELETE CASCADE`), `actor_id` (`FK -> profiles ON DELETE SET NULL`), `category` (`'message' | 'voice_call' | 'project_like' | 'project_comment' | 'friend_request' | 'friend_accepted' | 'group_invite'`), `title` (`1..140`), `body` (`<=240`), `link_href` (`<=200`, prefixo `/`), `entity_key` (`<=120`), `read_at`, `created_at`.
+- **RPCs `SECURITY DEFINER`:** `mark_all_notifications_read()` e `clear_read_notifications()`.
 
 ---
 

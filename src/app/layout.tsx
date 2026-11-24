@@ -4,10 +4,12 @@ import { TopNavbar } from "@/components/layout/top-navbar";
 import { GlobalCallOverlay } from "@/components/messaging/global-call-overlay";
 import { AppUpdateModal } from "@/components/native/app-update-modal";
 import { NativeInsetsSync } from "@/components/native/native-insets-sync";
+import { NotificationToastViewport } from "@/components/notifications/notification-toast-viewport";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { AuthProvider } from "@/modules/auth/auth-provider";
 import { VoiceCallProvider } from "@/modules/messaging/voice-call-provider";
+import { NotificationsProvider } from "@/modules/notifications/notifications-provider";
 import { AppearanceProvider } from "@/modules/theme/appearance-provider";
 import "./globals.css";
 
@@ -78,19 +80,22 @@ export default function RootLayout({
       <body className="codit-app-shell bg-background text-foreground antialiased">
         <AuthProvider>
           <AppearanceProvider>
-            <VoiceCallProvider>
-              <div className="codit-app-content flex min-h-dvh flex-col">
-                <NativeInsetsSync />
-                <ServiceWorkerRegister />
-                <TopNavbar />
-                <OfflineBanner />
-                <AppUpdateModal />
-                <GlobalCallOverlay />
-                <div className="codit-safe-x codit-mobile-nav-clearance flex-1">
-                  {children}
+            <NotificationsProvider>
+              <VoiceCallProvider>
+                <div className="codit-app-content flex min-h-dvh flex-col">
+                  <NativeInsetsSync />
+                  <ServiceWorkerRegister />
+                  <TopNavbar />
+                  <OfflineBanner />
+                  <AppUpdateModal />
+                  <NotificationToastViewport />
+                  <GlobalCallOverlay />
+                  <div className="codit-safe-x codit-mobile-nav-clearance flex-1">
+                    {children}
+                  </div>
                 </div>
-              </div>
-            </VoiceCallProvider>
+              </VoiceCallProvider>
+            </NotificationsProvider>
           </AppearanceProvider>
         </AuthProvider>
       </body>

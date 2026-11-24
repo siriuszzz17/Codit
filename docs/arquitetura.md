@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **Estado Atual** | Fase 3 e Fase 4 integradas (`@supabase/supabase-js` client-side para Auth, perfil personalizável, estúdio de projetos com 15 linguagens/ícones e sandbox `iframe` isolado + Rede Social Comunidade Codit com `@username`, amizades, feed, curtidas e comentários via RLS + Sistema de Mensagens Embutido `/mensagens` exclusivo para amigos, grupos até 10 pessoas, voz WebRTC e compartilhamento de tela sem câmera, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
+| **Estado Atual** | Fase 3 e Fase 4 integradas (`@supabase/supabase-js` client-side para Auth, perfil personalizável, estúdio de projetos com 15 linguagens/ícones e sandbox `iframe` isolado + Rede Social Comunidade Codit com `@username`, amizades, feed, curtidas e comentários via RLS + Sistema de Mensagens Embutido `/mensagens` exclusivo para amigos, grupos até 10 pessoas, voz WebRTC e compartilhamento de tela sem câmera + Sistema de Notificações com preferências de mudo, mantendo exportação estática `out/` + PWA + Tauri v2 + Capacitor 8 Android) |
 | **Última atualização** | `2026-11-24` |
 | **Guia Rápido** | [GEMINI.md](../GEMINI.md) |
 
@@ -225,7 +225,7 @@ A mesma base TypeScript/React do Codit alimenta três canais de distribuição a
 - **Segurança de segredos em clientes empacotados:** assim como no navegador Web, variáveis sensíveis (`.env`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) **nunca** entram no bundle `out/`, no binário Tauri ou no APK Android; todas as chamadas autenticadas e de IA apontarão para o backend remoto via HTTPS.
 
 ### Atualização Automática Multiplataforma (Desktop Tauri + Android Capacitor)
-- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.10"`).
+- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.11"`).
 - **Backend Rust (`src-tauri/`):** `Cargo.toml` inclui `tauri-plugin-updater = "2"` (somente alvos desktop) e `tauri-plugin-process = "2"`; `src-tauri/capabilities/default.json` concede `"updater:default"` e `"process:default"` à janela `main`; `src-tauri/src/lib.rs` ativa o plugin quando `plugins.updater.pubkey` estiver preenchida em `tauri.conf.json`.
 - **Camada Cliente Unificada:**
   - [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` via imports dinâmicos para desktop Windows.
@@ -272,8 +272,8 @@ TCC-Codit/
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
 │   ├── app/                   # App Router (/, /auth, /auth/callback, /auth/native-callback, /projetos, /comunidade, /comunidade/perfil, /conta, /offline, /api/v1/health)
-│   ├── components/            # Layout (TopNavbar, AppearanceMenu), Home (HeroWorkbench), Brand (OctopyBadge), Auth, Account (Perfil), Projects (Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit & FriendshipsDrawer), Messaging (/mensagens), PWA e Native (AppUpdateModal)
-│   ├── modules/               # Domínios auth, profiles, sandbox, social, messaging e theme (appearance-catalog/service/provider)
+│   ├── components/            # Layout (TopNavbar, AppearanceMenu), Notifications, Home (HeroWorkbench), Brand (OctopyBadge), Auth, Account (Perfil), Projects (Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit & FriendshipsDrawer), Messaging (/mensagens), PWA e Native (AppUpdateModal)
+│   ├── modules/               # Domínios auth, profiles, sandbox, social, messaging, notifications e theme (appearance-catalog/service/provider)
 │   └── lib/                   # supabase/*, navigation.ts, social-events.ts, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/
@@ -318,3 +318,7 @@ TCC-Codit/
 - **ADR-009 (Aceita — 2026-11-24):** Design System "Warm Technical Craft" ([design-system.md](./design-system.md)) + Sistema Leve de Temas e Papéis de Parede (`src/modules/theme/*`, `RN-105`):
   - **Renderização sem binários:** todos os 6 temas e 8 papéis de parede utilizam variáveis CSS e SVG inline URL-encoded em `body::before`, compatíveis com a CSP estrita de `next.config.ts` (`img-src 'self' data:`) e `src-tauri/tauri.conf.json` (`script-src 'self'`), funcionando offline e mantendo o padrão original (`original` / `system` / `balanced`).
   - **Persistência em 3 camadas (~52 bytes no banco):** preferências aplicadas instantaneamente via `localStorage`, sincronizadas em 4 colunas `VARCHAR` curtas em `public.profiles` (`20261124000003_add_app_appearance_preferences.sql`) com fallback silencioso para `user_metadata.codit_appearance` quando a migração ainda não foi aplicada.
+- **ADR-010 (Aceita — 2026-11-24):** Sistema de Notificações Embutido com Preferências Granulares de Mudo (`src/modules/notifications/*`, `RN-601` a `RN-604`):
+  - **Canal dedicado & unificação:** `NotificationsProvider` escuta `postgres_changes` no canal `codit:notifications:{userId}` (isolado do canal `codit:user-inbox:{userId}` de `VoiceCallProvider`), combinando alertas persistidos (curtidas, comentários, pedidos/aceites de amizade e convites para grupos) com mensagens não lidas e chamadas de voz WebRTC em tempo real.
+  - **Baixo peso no banco (`20261124000004_add_notifications_system.sql`):** preferências em `profiles.notification_prefs` (`JSONB` compacto), supressão de `INSERT` direto nos triggers quando a categoria/global está mutada, deduplicação por `entity_key`, teto automático de 60 registros por destinatário e histórico transitório de ligações apenas no `localStorage`.
+  - **Controles de mudo na UI:** central `NotificationsNavbarControl` no `TopNavbar` (abas `Atividade` e `Preferências e mudo`), painel reutilizável `NotificationPreferencesPanel` também acessível em `/conta`, toasts flutuantes `NotificationToastViewport` com mudo rápido, supressão automática no chat já aberto e botão por conversa no cabeçalho de `/mensagens`, mantendo compatibilidade integral com `output: "export"`.

@@ -34,8 +34,9 @@ import {
   getAccentThemeMeta,
 } from "@/modules/profiles/profile-themes";
 import { getLanguageMeta } from "@/modules/sandbox/language-catalog";
-import { formatHandle } from "@/modules/social/social-schemas";
+import { formatHandle, uuidSchema } from "@/modules/social/social-schemas";
 import {
+  getCommunityProjectById,
   listCommunityProjects,
   listUserFriendships,
   resolveRelationStatus,
@@ -92,6 +93,7 @@ export function CommunityHub() {
   const searchInputRef = useRef(searchInput);
   const feedScopeRef = useRef(feedScope);
   const feedLanguageRef = useRef(feedLanguage);
+  const handledProjectParamRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -189,6 +191,59 @@ export function CommunityHub() {
       unsubFriendships();
     };
   }, [isAuthLoading, isConfigured, userId]);
+
+  useEffect(() => {
+    if (
+      initialLoading ||
+      isAuthLoading ||
+      !isConfigured ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    const rawProjectParam = new URLSearchParams(window.location.search).get(
+      "project",
+    );
+    const parsedProject = uuidSchema.safeParse(rawProjectParam);
+    if (!parsedProject.success) {
+      return;
+    }
+
+    const projectId = parsedProject.data;
+    if (handledProjectParamRef.current === projectId) {
+      return;
+    }
+    handledProjectParamRef.current = projectId;
+
+    const existing = feedProjects.find(
+      (entry) => entry.project.id === projectId,
+    );
+    if (existing) {
+      void Promise.resolve().then(() => {
+        setSelectedProject(existing);
+      });
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    let cancelled = false;
+    void getCommunityProjectById(projectId, userId, client)
+      .then((found) => {
+        if (!cancelled && found) {
+          setSelectedProject(found);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [feedProjects, initialLoading, isAuthLoading, isConfigured, userId]);
 
   async function reloadFeed(
     nextScope: FeedScope,

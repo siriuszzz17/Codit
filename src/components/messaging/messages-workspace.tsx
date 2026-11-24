@@ -45,6 +45,7 @@ import {
   type ConversationSummary,
 } from "@/modules/messaging/messaging-service";
 import { useVoiceCall } from "@/modules/messaging/voice-call-provider";
+import { useNotificationsOptional } from "@/modules/notifications/notifications-provider";
 import {
   listUserFriendships,
   type FriendshipListItem,
@@ -187,6 +188,7 @@ export function MessagesWorkspace() {
     notifyConversationParticipants,
     clearCallError,
   } = useVoiceCall();
+  const notifications = useNotificationsOptional();
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [friends, setFriends] = useState<FriendshipListItem[]>([]);
@@ -343,6 +345,15 @@ export function MessagesWorkspace() {
       conversations.find((item) => item.conversation.id === selectedId) ?? null,
     [conversations, selectedId],
   );
+
+  useEffect(() => {
+    notifications?.setActiveViewedConversationId(
+      selectedSummary?.conversation.id ?? null,
+    );
+    return () => {
+      notifications?.setActiveViewedConversationId(null);
+    };
+  }, [notifications, selectedSummary?.conversation.id]);
 
   const loadSelectedMessages = useCallback(
     async (conversationId: string) => {
@@ -656,9 +667,22 @@ export function MessagesWorkspace() {
       const recipientIds = selectedSummary.members
         .map((item) => item.member.user_id)
         .filter((id) => id !== userId);
+      const localSenderName =
+        profile?.full_name?.trim() ||
+        (typeof user?.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name
+          : "") ||
+        "Estudante Codit";
       void notifyConversationParticipants(recipientIds, "message:notify", {
         conversationId: selectedSummary.conversation.id,
+        conversationTitle: selectedSummary.displayTitle,
+        isGroup: selectedSummary.conversation.kind === "group",
         senderId: userId,
+        senderName: localSenderName,
+        senderUsername: profile?.username ?? undefined,
+        senderAvatarUrl: profile?.avatar_url ?? null,
+        preview: trimmed.slice(0, 140),
+        sentAt: created.message.created_at,
       });
 
       await refreshWorkspace();
@@ -1081,6 +1105,9 @@ export function MessagesWorkspace() {
                     activeCall?.conversationId === item.conversation.id;
                   const peer = item.directPeer;
                   const hasUnread = item.unreadCount > 0;
+                  const isMutedConv =
+                    notifications?.isConversationMuted(item.conversation.id) ??
+                    false;
 
                   return (
                     <li key={item.conversation.id}>
@@ -1121,13 +1148,39 @@ export function MessagesWorkspace() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <p
-                              className={`truncate text-sm ${
+                              className={`flex items-center gap-1.5 truncate text-sm ${
                                 hasUnread
                                   ? "font-extrabold text-foreground"
                                   : "font-semibold text-foreground"
                               }`}
                             >
-                              {item.displayTitle}
+                              <span className="truncate">
+                                {item.displayTitle}
+                              </span>
+                              {isMutedConv ? (
+                                <span
+                                  aria-label="Conversa silenciada"
+                                  title="Notificações silenciadas"
+                                  className="inline-flex shrink-0 text-muted"
+                                >
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5" />
+                                    <path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7" />
+                                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                                    <line x1="2" x2="22" y1="2" y2="22" />
+                                  </svg>
+                                </span>
+                              ) : null}
                             </p>
                             <span
                               className={`shrink-0 text-[11px] ${
@@ -1282,6 +1335,74 @@ export function MessagesWorkspace() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1.5">
+                  {notifications ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        notifications.toggleConversationMute(
+                          selectedSummary.conversation.id,
+                        )
+                      }
+                      title={
+                        notifications.isConversationMuted(
+                          selectedSummary.conversation.id,
+                        )
+                          ? "Reativar notificações desta conversa"
+                          : "Silenciar notificações desta conversa"
+                      }
+                      aria-label={
+                        notifications.isConversationMuted(
+                          selectedSummary.conversation.id,
+                        )
+                          ? "Reativar notificações desta conversa"
+                          : "Silenciar notificações desta conversa"
+                      }
+                      className={`inline-flex min-h-9 min-w-9 items-center justify-center rounded-full border px-2.5 text-xs font-semibold transition-colors ${
+                        notifications.isConversationMuted(
+                          selectedSummary.conversation.id,
+                        )
+                          ? "border-amber-500/50 bg-amber-500/15 text-foreground"
+                          : "border-border bg-surface-muted text-muted hover:border-accent hover:text-foreground"
+                      }`}
+                    >
+                      {notifications.isConversationMuted(
+                        selectedSummary.conversation.id,
+                      ) ? (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.1"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5" />
+                          <path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7" />
+                          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                          <line x1="2" x2="22" y1="2" y2="22" />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.1"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                        </svg>
+                      )}
+                    </button>
+                  ) : null}
+
                   {activeCallInSelected ? (
                     <button
                       type="button"

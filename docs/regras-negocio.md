@@ -134,6 +134,17 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
 - **`RN-505` — Compartilhamento de Tela em Chamadas de Voz:**
   - Participantes em dispositivos compatíveis com `getDisplayMedia` podem compartilhar tela/janela (`audio: false`), enquanto todos os participantes ativos na chamada (inclusive em dispositivos móveis sem `getDisplayMedia`) podem visualizar a transmissão ao vivo e alternar entre múltiplas telas compartilhadas.
 
+### Módulo G — Notificações Unificadas & Preferências de Mudo (`RN-601` a `RN-604`)
+
+- **`RN-601` — Cobertura Multi-Eventos em Tempo Real:**
+  - O Codit notifica o usuário autenticado sobre mensagens diretas/em grupo, ligações de voz recebidas, curtidas e comentários nos seus projetos postados, pedidos de amizade, confirmações de amizade aceita e convites para grupos.
+- **`RN-602` — Controle Granular do Que Aparece ou Fica Mutado:**
+  - Cada usuário controla globalmente o modo silencioso (`muteAll`), os canais de saída (pop-ups na tela, sons de alerta e notificações do navegador quando autorizado), cada categoria individualmente e o silenciamento por conversa específica (`mutedConversationIds`), tanto no menu do sino na barra superior quanto em `/conta` e no cabeçalho de `/mensagens`.
+- **`RN-603` — Baixo Consumo de Banco de Dados:**
+  - Eventos silenciados em `profiles.notification_prefs` são ignorados ainda no trigger antes da inserção; eventos repetidos são deduplicados via `entity_key`; cada usuário mantém no máximo 60 registros históricos em `public.notifications`; e mensagens/chamadas em tempo real usam `chat_messages` e broadcasts sem duplicar linhas na tabela de notificações.
+- **`RN-604` — Isolamento de Privacidade e Imutabilidade:**
+  - Apenas o destinatário autenticado (`auth.uid() = recipient_id`) lê, marca como lida ou remove suas notificações, com zero acesso a `anon` e bloqueio via trigger de alteração em remetente, título, link ou categoria.
+
 ---
 
 ## 5. Fluxos Críticos e Máquinas de Estado
@@ -177,3 +188,4 @@ stateDiagram-v2
 | `2026-11-23` | Módulo E | Inclusão das regras `RN-401` a `RN-405` da rede social embutida (**Comunidade Codit**): `@username`, `public_profiles`, amizades, visibilidade `friends` e clonagem segura |
 | `2026-11-24` | Módulo F | Inclusão das regras `RN-501` a `RN-505` do sistema de mensagens embutido: DMs restritas a amigos, grupos até 10 pessoas, chamadas de voz sem câmera e compartilhamento de tela |
 | `2026-11-24` | Módulo B | Inclusão da `RN-105` (personalização leve de temas e papéis de parede procedurais com preservação do padrão original e aderência a `design-system.md`) |
+| `2026-11-24` | Módulo G | Inclusão das regras `RN-601` a `RN-604` do sistema de notificações unificado com mudo granular por categoria/conversa e poda automática em 60 registros/usuário |

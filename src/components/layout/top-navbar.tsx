@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { AuthHeaderControls } from "@/components/auth/auth-header-controls";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { AppearanceNavbarControl } from "@/components/layout/appearance-menu";
+import { NotificationsNavbarControl } from "@/components/notifications/notifications-bell-menu";
 import { FriendshipsDrawer } from "@/components/social/friendships-drawer";
 import {
   isNavItemActive,
@@ -24,6 +25,8 @@ import { useIsOnline } from "@/lib/use-is-online";
 import { useAuth } from "@/modules/auth/auth-provider";
 import { listUserConversations } from "@/modules/messaging/messaging-service";
 import { useVoiceCall } from "@/modules/messaging/voice-call-provider";
+import { shouldDeliverNotification } from "@/modules/notifications/notification-schemas";
+import { useNotificationsOptional } from "@/modules/notifications/notifications-provider";
 import {
   listUserFriendships,
   SocialServiceError,
@@ -137,6 +140,7 @@ export function TopNavbar() {
   const isOnline = useIsOnline();
   const { user, isLoading: isAuthLoading, isConfigured } = useAuth();
   const { activeCall } = useVoiceCall();
+  const notifications = useNotificationsOptional();
   const userId = user?.id ?? null;
 
   const [friendshipsBundle, setFriendshipsBundle] =
@@ -229,7 +233,7 @@ export function TopNavbar() {
   }, [isAuthLoading, isConfigured, userId]);
 
   useEffect(() => {
-    if (!isConfigured || isAuthLoading) {
+    if (!isConfigured || isAuthLoading || notifications) {
       return;
     }
 
@@ -277,7 +281,7 @@ export function TopNavbar() {
       unsubMessages();
       unsubFriends();
     };
-  }, [isAuthLoading, isConfigured, userId]);
+  }, [isAuthLoading, isConfigured, notifications, userId]);
 
   async function refreshFriendshipsNow() {
     if (!userId || !isConfigured) {
@@ -335,7 +339,22 @@ export function TopNavbar() {
     return null;
   }
 
-  const incomingCount = friendshipsBundle.incomingRequests.length;
+  const showFriendRequestsBadge = notifications
+    ? shouldDeliverNotification(notifications.prefs, "friend_request").allowBadge
+    : true;
+  const incomingCount = showFriendRequestsBadge
+    ? friendshipsBundle.incomingRequests.length
+    : 0;
+  const effectiveUnreadMessagesCount = notifications
+    ? notifications.unreadConversations.reduce((sum, item) => {
+        const delivery = shouldDeliverNotification(
+          notifications.prefs,
+          "message",
+          { conversationId: item.conversation.id },
+        );
+        return delivery.allowBadge ? sum + item.unreadCount : sum;
+      }, 0)
+    : unreadMessagesCount;
 
   return (
     <>
@@ -377,9 +396,11 @@ export function TopNavbar() {
                       aria-label="Chamada de voz ativa"
                       className="h-2 w-2 rounded-full bg-emerald-500"
                     />
-                  ) : isMessages && userId && unreadMessagesCount > 0 ? (
+                  ) : isMessages && userId && effectiveUnreadMessagesCount > 0 ? (
                     <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
-                      {unreadMessagesCount > 9 ? "9+" : unreadMessagesCount}
+                      {effectiveUnreadMessagesCount > 9
+                        ? "9+"
+                        : effectiveUnreadMessagesCount}
                     </span>
                   ) : null}
                 </Link>
@@ -388,6 +409,7 @@ export function TopNavbar() {
           </nav>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
+            <NotificationsNavbarControl />
             <AppearanceNavbarControl />
 
             <button
@@ -465,9 +487,11 @@ export function TopNavbar() {
                     aria-label="Chamada de voz ativa"
                     className="absolute right-2 top-1.5 h-2 w-2 rounded-full bg-emerald-500"
                   />
-                ) : isMessages && userId && unreadMessagesCount > 0 ? (
+                ) : isMessages && userId && effectiveUnreadMessagesCount > 0 ? (
                   <span className="absolute right-1.5 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-accent-foreground">
-                    {unreadMessagesCount > 9 ? "9+" : unreadMessagesCount}
+                    {effectiveUnreadMessagesCount > 9
+                      ? "9+"
+                      : effectiveUnreadMessagesCount}
                   </span>
                 ) : null}
               </Link>

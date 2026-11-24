@@ -955,6 +955,36 @@ export async function listVisibleProjectsByAuthor(
   return enrichProjectsWithSocialMeta(data ?? [], viewerId, client);
 }
 
+export async function getCommunityProjectById(
+  projectId: string,
+  viewerId: string | null,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<CommunityProjectCard | null> {
+  const validProjectId = assertValidUuid(projectId, "Identificador do projeto");
+
+  const { data, error, status } = await client
+    .from("sandbox_projects")
+    .select("*")
+    .eq("id", validProjectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw toSocialServiceError(error, {
+      status,
+      table: "sandbox_projects",
+      operation: "getCommunityProjectById",
+    });
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const enriched = await enrichProjectsWithSocialMeta([data], viewerId, client);
+  return enriched[0] ?? null;
+}
+
 export async function getPublicProfileBundle(
   target: { username?: string | null; userId?: string | null },
   viewerId: string | null,

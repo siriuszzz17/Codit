@@ -4,6 +4,7 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { AppearanceInlinePanel } from "@/components/layout/appearance-menu";
+import { NotificationPreferencesPanel } from "@/components/notifications/notification-preferences-panel";
 import { LanguageIcon } from "@/components/sandbox/language-icon";
 import type {
   OctopyCompanionMood,
@@ -62,7 +63,12 @@ interface ProfileCustomizerPanelProps {
   onSave: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }
 
-type CustomizerTab = "identity" | "style" | "skills" | "appearance";
+type CustomizerTab =
+  | "identity"
+  | "style"
+  | "skills"
+  | "appearance"
+  | "notifications";
 
 const CUSTOMIZER_TABS: ReadonlyArray<{
   id: CustomizerTab;
@@ -72,6 +78,7 @@ const CUSTOMIZER_TABS: ReadonlyArray<{
   { id: "style", label: "Estilo do Perfil" },
   { id: "skills", label: "Habilidades" },
   { id: "appearance", label: "Aparência do App" },
+  { id: "notifications", label: "Notificações" },
 ];
 
 function getGoogleAvatarFromUser(user: User): string | null {
@@ -838,6 +845,8 @@ export function ProfileCustomizerPanel({
             })}
           </div>
         </div>
+      ) : activeTab === "notifications" ? (
+        <NotificationPreferencesPanel />
       ) : (
         <AppearanceInlinePanel />
       )}
@@ -860,7 +869,7 @@ export function ProfileCustomizerPanel({
         </p>
       ) : null}
 
-      {activeTab !== "appearance" ? (
+      {activeTab !== "appearance" && activeTab !== "notifications" ? (
         <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end">
           {hasUnsavedChanges ? (
             <button

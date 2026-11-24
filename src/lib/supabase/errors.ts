@@ -4,7 +4,8 @@ export type MissingMigrationFile =
   | "20261123000001_enhance_profiles_and_projects.sql"
   | "20261123000002_add_social_network.sql"
   | "20261123000003_fix_grants_rls_and_username_cooldown.sql"
-  | "20261124000002_add_embedded_messaging.sql";
+  | "20261124000002_add_embedded_messaging.sql"
+  | "20261124000004_add_notifications_system.sql";
 
 export interface SupabaseErrorContext {
   status?: number | null;
@@ -200,6 +201,16 @@ export function detectMissingMigrationName(
 
   const { message, details, hint } = extractSupabaseErrorMeta(error);
   const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
+
+  if (
+    combinedLower.includes("notification_prefs") ||
+    combinedLower.includes("mark_all_notifications_read") ||
+    combinedLower.includes("clear_read_notifications") ||
+    combinedLower.includes("enqueue_user_notification") ||
+    /(?:^|[\s.'"])notifications(?:[\s.'"]|$)/.test(combinedLower)
+  ) {
+    return "20261124000004_add_notifications_system.sql";
+  }
 
   if (
     combinedLower.includes("chat_conversations") ||
@@ -460,6 +471,9 @@ export function mapSupabaseDatabaseError(
     const missingMigration = detectMissingMigrationName(error);
     const codeSuffix = codeUpper ? ` (código ${codeUpper})` : "";
 
+    if (missingMigration === "20261124000004_add_notifications_system.sql") {
+      return `A estrutura do sistema de notificações ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261124000004_add_notifications_system.sql no SQL Editor do projeto.`;
+    }
     if (missingMigration === "20261124000002_add_embedded_messaging.sql") {
       return `A estrutura do sistema de mensagens ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261124000002_add_embedded_messaging.sql no SQL Editor do projeto.`;
     }
