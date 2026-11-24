@@ -203,7 +203,7 @@ export function GroupMembersModal({
     >
       <div aria-hidden="true" onClick={onClose} className="fixed inset-0" />
 
-      <div className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-2xl">
+      <div className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
             <h2
@@ -276,7 +276,7 @@ export function GroupMembersModal({
           ) : null}
 
           <div className="space-y-2.5">
-            <h3 className="text-xs font-bold tracking-wide text-foreground uppercase">
+            <h3 className="text-xs font-bold text-foreground">
               Membros ({summary.activeMemberCount}/{MAX_GROUP_MEMBERS})
             </h3>
             <ul className="space-y-2">
@@ -340,7 +340,7 @@ export function GroupMembersModal({
 
           <div className="space-y-2.5 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-bold tracking-wide text-foreground uppercase">
+              <h3 className="text-xs font-bold text-foreground">
                 Adicionar amigos
               </h3>
               <span className="text-[11px] text-muted">

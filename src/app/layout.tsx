@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { TopNavbar } from "@/components/layout/top-navbar";
 import { GlobalCallOverlay } from "@/components/messaging/global-call-overlay";
 import { AppUpdateModal } from "@/components/native/app-update-modal";
@@ -7,7 +8,22 @@ import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { AuthProvider } from "@/modules/auth/auth-provider";
 import { VoiceCallProvider } from "@/modules/messaging/voice-call-provider";
+import { AppearanceProvider } from "@/modules/theme/appearance-provider";
 import "./globals.css";
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -15,7 +31,7 @@ export const metadata: Metadata = {
     template: "%s | Codit",
   },
   description:
-    "Plataforma SaaS educacional Mobile-First e PWA para aprender programação, Inteligência Artificial, Git/GitHub e carreira tech com o tutor Octopy.",
+    "Plataforma educacional e rede de estudos Mobile-First para aprender programação, criar projetos no Sandbox e colaborar com amigos.",
   applicationName: "Codit",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -40,8 +56,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#7c3aed" },
-    { media: "(prefers-color-scheme: dark)", color: "#0b0a16" },
+    { media: "(prefers-color-scheme: light)", color: "#6338f0" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0e17" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -54,20 +70,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
-      <body className="codit-app-shell flex min-h-dvh flex-col bg-background text-foreground antialiased">
+    <html
+      lang="pt-BR"
+      suppressHydrationWarning
+      className={`${plusJakarta.variable} ${jetbrainsMono.variable}`}
+    >
+      <body className="codit-app-shell bg-background text-foreground antialiased">
         <AuthProvider>
-          <VoiceCallProvider>
-            <NativeInsetsSync />
-            <ServiceWorkerRegister />
-            <TopNavbar />
-            <OfflineBanner />
-            <AppUpdateModal />
-            <GlobalCallOverlay />
-            <div className="codit-safe-x codit-mobile-nav-clearance flex-1">
-              {children}
-            </div>
-          </VoiceCallProvider>
+          <AppearanceProvider>
+            <VoiceCallProvider>
+              <div className="codit-app-content flex min-h-dvh flex-col">
+                <NativeInsetsSync />
+                <ServiceWorkerRegister />
+                <TopNavbar />
+                <OfflineBanner />
+                <AppUpdateModal />
+                <GlobalCallOverlay />
+                <div className="codit-safe-x codit-mobile-nav-clearance flex-1">
+                  {children}
+                </div>
+              </div>
+            </VoiceCallProvider>
+          </AppearanceProvider>
         </AuthProvider>
       </body>
     </html>

@@ -330,7 +330,7 @@ export function ProjectViewerModal({
         className="fixed inset-0"
       />
 
-      <div className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-border bg-surface shadow-xl sm:rounded-2xl">
+      <div className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-border bg-surface-elevated shadow-xl sm:rounded-2xl">
         <div
           aria-hidden="true"
           className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border sm:hidden"

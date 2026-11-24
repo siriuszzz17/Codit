@@ -442,9 +442,6 @@ export function ProjectsWorkspace() {
           </div>
 
           <div className="space-y-2">
-            <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-0.5 text-[11px] font-semibold text-accent-strong">
-              Área de Desenvolvimento
-            </span>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               Seu estúdio de projetos no Codit
             </h1>
@@ -517,62 +514,59 @@ export function ProjectsWorkspace() {
         </div>
       ) : null}
 
-      {/* Cabeçalho dedicado ao desenvolvimento de projetos */}
-      <section
-        aria-labelledby="studio-page-title"
-        className="space-y-5 rounded-3xl border border-border bg-surface p-5 shadow-xs sm:p-6"
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1.5">
-            <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-0.5 text-[11px] font-semibold text-accent-strong">
-              Área de Desenvolvimento
-            </span>
-            <h1
-              id="studio-page-title"
-              className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
-            >
-              Estúdio de Projetos
-            </h1>
-            <p className="max-w-2xl text-xs leading-relaxed text-muted sm:text-sm">
-              Desenvolva e edite seus códigos no Sandbox isolado, controle
-              visibilidade (privado, amigos ou público) e organize seu portfólio.
-            </p>
-          </div>
-
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
-            <button
-              type="button"
-              onClick={() => void loadProjects(userId)}
-              disabled={loadingProjects || !isOnline}
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-60 sm:text-sm"
-            >
-              {loadingProjects ? "Atualizando..." : "Atualizar"}
-            </button>
-            <button
-              type="button"
-              onClick={() => openNewProjectStudio()}
-              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"
-            >
-              <span>+ Novo projeto</span>
-            </button>
-          </div>
+      {/* Cabeçalho aberto do estúdio de projetos */}
+      <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h1
+            id="studio-page-title"
+            className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+          >
+            Projetos
+          </h1>
+          <p className="max-w-2xl text-sm text-muted">
+            Desenvolva no Sandbox isolado, defina quem pode ver (privado, amigos
+            ou público) e organize seu portfólio.
+          </p>
         </div>
 
-        {/* Métricas do Estúdio */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-2xl border border-border bg-surface-muted/45 px-3.5 py-2.5">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+          <button
+            type="button"
+            onClick={() => void loadProjects(userId)}
+            disabled={loadingProjects || !isOnline}
+            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-60 sm:text-sm"
+          >
+            {loadingProjects ? "Atualizando..." : "Atualizar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => openNewProjectStudio()}
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"
+          >
+            <span>Novo projeto</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Faixa compacta de métricas + atalhos de linguagem */}
+      <section
+        aria-labelledby="studio-page-title"
+        className="codit-panel space-y-4 p-4 shadow-xs sm:p-5"
+      >
+        <div className="grid grid-cols-2 divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface-muted/35 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">
               Total de projetos
             </p>
-            <p className="mt-0.5 text-xl font-bold text-foreground">
+            <p className="mt-0.5 text-lg font-bold text-foreground">
               {projects.length}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-border bg-surface-muted/45 px-3.5 py-2.5">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">Linguagens</p>
             <div className="mt-0.5 flex items-center gap-2">
-              <p className="text-xl font-bold text-foreground">
+              <p className="text-lg font-bold text-foreground">
                 {breakdown.length}
               </p>
               {breakdown.length > 0 ? (
@@ -581,7 +575,7 @@ export function ProjectsWorkspace() {
                     <LanguageIcon
                       key={item.language}
                       language={item.language}
-                      size={16}
+                      size={15}
                       className="rounded-sm ring-1 ring-surface"
                     />
                   ))}
@@ -590,11 +584,11 @@ export function ProjectsWorkspace() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border bg-surface-muted/45 px-3.5 py-2.5">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">
               Na Comunidade
             </p>
-            <p className="mt-0.5 text-xl font-bold text-foreground">
+            <p className="mt-0.5 text-lg font-bold text-foreground">
               {publicCount + friendsCount}
             </p>
             <p className="text-[10px] text-muted">
@@ -602,16 +596,15 @@ export function ProjectsWorkspace() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-border bg-surface-muted/45 px-3.5 py-2.5">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">Fixados</p>
-            <p className="mt-0.5 text-xl font-bold text-foreground">
+            <p className="mt-0.5 text-lg font-bold text-foreground">
               {pinnedCount}
             </p>
           </div>
         </div>
 
-        {/* Atalhos de criação rápida */}
-        <div className="space-y-2 border-t border-border pt-4">
+        <div className="space-y-2">
           <p className="text-xs font-semibold text-foreground">
             Criar rapidamente em:
           </p>

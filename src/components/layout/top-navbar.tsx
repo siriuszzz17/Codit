@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AuthHeaderControls } from "@/components/auth/auth-header-controls";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import { AppearanceNavbarControl } from "@/components/layout/appearance-menu";
 import { FriendshipsDrawer } from "@/components/social/friendships-drawer";
 import {
   isNavItemActive,
@@ -339,27 +340,20 @@ export function TopNavbar() {
   return (
     <>
       <header className="codit-safe-top codit-safe-x sticky top-0 z-40 border-b border-border/80 bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6 md:h-16">
-          {/* Identidade Codit */}
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6 md:h-[60px]">
           <Link
             href="/"
             className="flex shrink-0 items-center gap-2.5 rounded-xl focus:outline-none"
           >
-            <OctopyBadge size={36} className="shrink-0 rounded-xl shadow-xs" />
-            <div className="leading-tight">
-              <p className="text-base font-bold tracking-tight text-foreground">
-                Codit
-              </p>
-              <p className="hidden text-[11px] font-medium text-muted lg:block">
-                Estúdio &amp; Comunidade
-              </p>
-            </div>
+            <OctopyBadge size={34} className="shrink-0 rounded-xl" />
+            <span className="text-base font-bold tracking-tight text-foreground">
+              Codit
+            </span>
           </Link>
 
-          {/* Navegação principal desktop */}
           <nav
             aria-label="Navegação principal"
-            className="hidden items-center gap-1 rounded-2xl border border-border/80 bg-surface-muted/70 p-1 md:flex"
+            className="hidden items-center gap-1 md:flex"
           >
             {PRIMARY_NAV_ITEMS.map((item) => {
               const active = isNavItemActive(pathname, item.href);
@@ -370,10 +364,10 @@ export function TopNavbar() {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   title={item.description}
-                  className={`relative inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                  className={`relative inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
                     active
-                      ? "bg-surface text-accent-strong shadow-xs"
-                      : "text-muted hover:text-foreground"
+                      ? "bg-accent-soft/80 text-accent-strong"
+                      : "text-muted hover:bg-surface-muted/70 hover:text-foreground"
                   }`}
                 >
                   <NavItemIcon icon={item.icon} />
@@ -381,7 +375,7 @@ export function TopNavbar() {
                   {isMessages && activeCall ? (
                     <span
                       aria-label="Chamada de voz ativa"
-                      className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"
+                      className="h-2 w-2 rounded-full bg-emerald-500"
                     />
                   ) : isMessages && userId && unreadMessagesCount > 0 ? (
                     <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
@@ -393,8 +387,9 @@ export function TopNavbar() {
             })}
           </nav>
 
-          {/* Ações à direita: Amizades + Conta */}
           <div className="flex items-center gap-1.5 sm:gap-2">
+            <AppearanceNavbarControl />
+
             <button
               type="button"
               onClick={handleOpenDrawer}
@@ -404,12 +399,12 @@ export function TopNavbar() {
                   ? `Amizades (${incomingCount} solicitações pendentes)`
                   : "Gerenciar amizades"
               }
-              title="Amizades"
-              className="relative inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border bg-surface-muted/80 px-2.5 text-foreground transition-colors hover:border-accent hover:text-accent-strong"
+              title="Amigos"
+              className="relative inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-border bg-surface-muted/70 px-2.5 text-foreground transition-colors hover:border-accent hover:text-accent-strong"
             >
               <svg
-                width="18"
-                height="18"
+                width="17"
+                height="17"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -427,7 +422,7 @@ export function TopNavbar() {
                 Amigos
               </span>
               {userId && incomingCount > 0 ? (
-                <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground shadow-xs">
+                <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
                   {incomingCount > 9 ? "9+" : incomingCount}
                 </span>
               ) : null}
@@ -438,10 +433,9 @@ export function TopNavbar() {
         </div>
       </header>
 
-      {/* Navegação principal fixa inferior no mobile */}
       <nav
         aria-label="Navegação móvel"
-        className="codit-safe-bottom codit-safe-x fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-surface/95 backdrop-blur-md md:hidden"
+        className="codit-safe-bottom codit-safe-x fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-surface-elevated/95 backdrop-blur-md md:hidden"
       >
         <div className="grid grid-cols-5 gap-1 px-2 py-1.5">
           {PRIMARY_NAV_ITEMS.map((item) => {
@@ -452,16 +446,16 @@ export function TopNavbar() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[11px] font-semibold transition-colors ${
+                className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[11px] font-semibold transition-colors ${
                   active
-                    ? "bg-accent-soft text-accent-strong"
+                    ? "bg-accent-soft/80 text-accent-strong"
                     : "text-muted hover:text-foreground"
                 }`}
               >
                 {active ? (
                   <span
                     aria-hidden="true"
-                    className="absolute top-1 h-0.5 w-6 rounded-full bg-accent"
+                    className="absolute top-1 h-0.5 w-5 rounded-full bg-accent"
                   />
                 ) : null}
                 <NavItemIcon icon={item.icon} size={18} />
@@ -469,7 +463,7 @@ export function TopNavbar() {
                 {isMessages && activeCall ? (
                   <span
                     aria-label="Chamada de voz ativa"
-                    className="absolute right-2 top-1.5 h-2 w-2 animate-pulse rounded-full bg-emerald-500"
+                    className="absolute right-2 top-1.5 h-2 w-2 rounded-full bg-emerald-500"
                   />
                 ) : isMessages && userId && unreadMessagesCount > 0 ? (
                   <span className="absolute right-1.5 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-accent-foreground">

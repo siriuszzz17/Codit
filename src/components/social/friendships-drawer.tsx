@@ -294,7 +294,7 @@ export function FriendshipsDrawer({
     >
       <div aria-hidden="true" onClick={onClose} className="fixed inset-0" />
 
-      <aside className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface shadow-2xl md:my-4 md:mr-4 md:h-auto md:rounded-2xl md:border">
+      <aside className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl md:my-4 md:mr-4 md:h-auto md:rounded-2xl md:border">
         {/* Cabeçalho do painel */}
         <div className="flex items-start justify-between gap-3 border-b border-border px-4 pb-4 pt-[calc(1rem+var(--codit-safe-top))] sm:px-5 md:pb-5 md:pt-5">
           <div className="min-w-0 space-y-1">
@@ -630,7 +630,7 @@ export function FriendshipsDrawer({
               ) : activeTab === "requests" ? (
                 <div className="space-y-5">
                   <div className="space-y-2.5">
-                    <h3 className="text-xs font-bold tracking-wide text-foreground uppercase">
+                    <h3 className="text-xs font-bold text-foreground">
                       Pedidos recebidos ({incomingCount})
                     </h3>
                     {incomingCount === 0 ? (
@@ -708,7 +708,7 @@ export function FriendshipsDrawer({
                   </div>
 
                   <div className="space-y-2.5 border-t border-border pt-4">
-                    <h3 className="text-xs font-bold tracking-wide text-foreground uppercase">
+                    <h3 className="text-xs font-bold text-foreground">
                       Pedidos enviados ({outgoingCount})
                     </h3>
                     {outgoingCount === 0 ? (

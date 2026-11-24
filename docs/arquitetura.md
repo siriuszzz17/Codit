@@ -34,7 +34,7 @@ O **Codit** é uma plataforma SaaS educacional projetada para funcionar de forma
 | :--- | :--- | :--- |
 | **Linguagem** | TypeScript (`strict: true`) | Ponta a ponta (frontend, API routes, validação e camada de dados) |
 | **Framework Full-Stack / UI** | Next.js (App Router) + React | Renderização híbrida (RSC + Client Components interativos para Sandbox/Octopy) e exportação estática `out/` para empacotamento nativo |
-| **Estilização** | Tailwind CSS | Design system responsivo Mobile-First e suporte a tema escuro/claro |
+| **Estilização** | Tailwind CSS + Design System próprio | Layout "Warm Technical Craft" ([design-system.md](./design-system.md)), fontes `Plus Jakarta Sans` e `JetBrains Mono` via `next/font/google`, 6 temas globais e 8 papéis de parede procedurais CSS/SVG (`src/modules/theme/*`) |
 | **PWA** | Web App Manifest + Service Worker | Instalação em Android/iOS/Desktop e cache seguro de assets públicos (nunca cachear rotas autenticadas privadas no SW compartilhado) |
 | **Empacotamento Desktop (Windows)** | Tauri v2 (`com.codit.app`) | Shell nativo WebView2 sobre `out/`, com `tauri-plugin-updater` e `tauri-plugin-process` pré-configurados para atualizações via pop-up |
 | **Empacotamento Mobile (Android)** | Capacitor 8 (`com.codit.app`) | Projeto nativo Android em `android/` empacotando `out/` via `npx cap sync android` para geração de `.apk`/`.aab` |
@@ -272,8 +272,8 @@ TCC-Codit/
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
 │   ├── app/                   # App Router (/, /auth, /auth/callback, /auth/native-callback, /projetos, /comunidade, /comunidade/perfil, /conta, /offline, /api/v1/health)
-│   ├── components/            # Layout (TopNavbar), Brand (OctopyBadge), Auth, Account (Perfil), Projects (Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit & FriendshipsDrawer), PWA e Native (AppUpdateModal)
-│   ├── modules/               # Domínios auth, profiles, sandbox e social (serviços tipados + AuthProvider)
+│   ├── components/            # Layout (TopNavbar, AppearanceMenu), Home (HeroWorkbench), Brand (OctopyBadge), Auth, Account (Perfil), Projects (Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit & FriendshipsDrawer), Messaging (/mensagens), PWA e Native (AppUpdateModal)
+│   ├── modules/               # Domínios auth, profiles, sandbox, social, messaging e theme (appearance-catalog/service/provider)
 │   └── lib/                   # supabase/*, navigation.ts, social-events.ts, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/
@@ -315,3 +315,6 @@ TCC-Codit/
   - **Persistência & Realtime:** tabelas `public.chat_conversations`, `public.chat_conversation_members` e `public.chat_messages` protegidas por RLS e RPCs `SECURITY DEFINER` com `FOR UPDATE` no Supabase PostgreSQL (`20261124000002_add_embedded_messaging.sql`), sincronizadas via `supabase_realtime` (`postgres_changes` + canais efêmeros `codit:conv:{id}` e `codit:user-inbox:{userId}`).
   - **Voz & Tela WebRTC (Mesh P2P até 10 participantes):** sinalização *Perfect Negotiation* (`offer`, `answer`, `ice-candidate`, `screen-share-stopped`, `hangup`) e presença via canal `codit:call:{conversationId}` do Supabase Realtime; captura estritamente limitada a microfone (`getUserMedia({ audio: ..., video: false })`) e tela (`getDisplayMedia({ video: ..., audio: false })`), mantendo `Permissions-Policy: camera=()` bloqueada e sem permissão `CAMERA` no Android (`AndroidManifest.xml` inclui apenas `RECORD_AUDIO` e `MODIFY_AUDIO_SETTINGS`).
   - **ICE / STUN / TURN (Contingência):** padrão usa STUN público (`stun:stun.l.google.com:19302`, `stun:stun1.l.google.com:19302`, `stun:stun.cloudflare.com:3478`), com sobrecarga opcional via `NEXT_PUBLIC_WEBRTC_ICE_SERVERS_JSON` para TURN em redes com NAT simétrico restrito.
+- **ADR-009 (Aceita — 2026-11-24):** Design System "Warm Technical Craft" ([design-system.md](./design-system.md)) + Sistema Leve de Temas e Papéis de Parede (`src/modules/theme/*`, `RN-105`):
+  - **Renderização sem binários:** todos os 6 temas e 8 papéis de parede utilizam variáveis CSS e SVG inline URL-encoded em `body::before`, compatíveis com a CSP estrita de `next.config.ts` (`img-src 'self' data:`) e `src-tauri/tauri.conf.json` (`script-src 'self'`), funcionando offline e mantendo o padrão original (`original` / `system` / `balanced`).
+  - **Persistência em 3 camadas (~52 bytes no banco):** preferências aplicadas instantaneamente via `localStorage`, sincronizadas em 4 colunas `VARCHAR` curtas em `public.profiles` (`20261124000003_add_app_appearance_preferences.sql`) com fallback silencioso para `user_metadata.codit_appearance` quando a migração ainda não foi aplicada.

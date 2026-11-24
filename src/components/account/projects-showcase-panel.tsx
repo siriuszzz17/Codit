@@ -148,7 +148,7 @@ export function ProjectsShowcasePanel({
   return (
     <section
       aria-labelledby="projects-section-title"
-      className="space-y-5 rounded-3xl border border-border bg-surface p-5 shadow-xs sm:p-6"
+      className="codit-panel space-y-5 p-5 shadow-xs sm:p-6"
     >
       {/* Cabeçalho e ações */}
       {!hideTopHeader ? (
@@ -361,20 +361,13 @@ export function ProjectsShowcasePanel({
             return (
               <article
                 key={project.id}
-                className={`flex flex-col justify-between overflow-hidden rounded-2xl border bg-background/70 transition-all ${
+                className={`flex flex-col justify-between overflow-hidden rounded-2xl border bg-background/70 transition-colors ${
                   project.is_pinned
                     ? "border-amber-500/45 shadow-xs"
                     : "border-border hover:border-accent/60"
                 }`}
               >
                 <div>
-                  {/* Faixa de cor da linguagem */}
-                  <div
-                    aria-hidden="true"
-                    className="h-1.5 w-full"
-                    style={{ backgroundColor: meta.accentHex }}
-                  />
-
                   <div className="space-y-3 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -425,9 +418,9 @@ export function ProjectsShowcasePanel({
                     </div>
 
                     {/* Mini bloco de código */}
-                    <div className="overflow-hidden rounded-xl border border-border/80 bg-[#0d0b19]">
+                    <div className="codit-code-window">
                       <div className="flex items-center justify-between border-b border-white/10 px-3 py-1 text-[10px] text-slate-400">
-                        <span className="font-mono">{meta.fileName}</span>
+                        <span className="font-mono text-slate-200">{meta.fileName}</span>
                         <span>
                           {project.source_code.length.toLocaleString("pt-BR")}{" "}
                           chars

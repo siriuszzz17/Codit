@@ -1,5 +1,27 @@
 export type ProfileRole = "student" | "admin";
 
+export type AppColorMode = "system" | "light" | "dark";
+
+export type AppThemeId =
+  | "original"
+  | "ocean_circuit"
+  | "amber_terminal"
+  | "forest_syntax"
+  | "nordic_frost"
+  | "mono_graphite";
+
+export type WallpaperPresetId =
+  | "original"
+  | "blueprint_grid"
+  | "circuit_traces"
+  | "topographic_flow"
+  | "constellation_nodes"
+  | "isometric_matrix"
+  | "aurora_mesh"
+  | "minimal_paper";
+
+export type WallpaperIntensity = "subtle" | "balanced" | "vivid";
+
 export type ProfileBannerPreset =
   | "nebula"
   | "aurora"
@@ -86,6 +108,10 @@ export type ProfileRow = {
   octopy_companion: OctopyCompanionMood;
   skills: string[];
   show_email: boolean;
+  color_mode?: AppColorMode;
+  app_theme?: AppThemeId;
+  wallpaper_preset?: WallpaperPresetId;
+  wallpaper_intensity?: WallpaperIntensity;
   created_at: string;
   updated_at: string;
 };
@@ -110,6 +136,10 @@ export type ProfileInsert = {
   octopy_companion?: OctopyCompanionMood;
   skills?: string[];
   show_email?: boolean;
+  color_mode?: AppColorMode;
+  app_theme?: AppThemeId;
+  wallpaper_preset?: WallpaperPresetId;
+  wallpaper_intensity?: WallpaperIntensity;
   created_at?: string;
   updated_at?: string;
 };
@@ -132,6 +162,10 @@ export type ProfileUpdate = {
   octopy_companion?: OctopyCompanionMood;
   skills?: string[];
   show_email?: boolean;
+  color_mode?: AppColorMode;
+  app_theme?: AppThemeId;
+  wallpaper_preset?: WallpaperPresetId;
+  wallpaper_intensity?: WallpaperIntensity;
   updated_at?: string;
 };
 

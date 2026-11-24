@@ -4,14 +4,14 @@ import { OctopyBadge } from "@/components/brand/octopy-badge";
 export default function NotFoundPage() {
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-lg flex-col items-center justify-center px-4 py-8 text-center">
-      <div className="w-full space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-xs sm:p-8">
+      <div className="codit-panel w-full space-y-5 p-6 shadow-xs sm:p-8">
         <div className="flex justify-center">
-          <OctopyBadge size={56} />
+          <OctopyBadge size={54} />
         </div>
 
         <div className="space-y-2">
-          <p className="font-mono text-xs font-semibold tracking-wider text-accent-strong uppercase">
-            Erro 404
+          <p className="font-mono text-xs font-semibold text-accent-strong">
+            404
           </p>
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
             Página não encontrada
@@ -26,7 +26,7 @@ export default function NotFoundPage() {
           href="/"
           className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
         >
-          Voltar para a página inicial
+          Voltar para o início
         </Link>
       </div>
     </main>

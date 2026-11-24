@@ -215,15 +215,15 @@ export default function AuthCallbackPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col items-center justify-center px-4 pt-[calc(2.5rem+var(--codit-safe-top))] pb-[calc(2.5rem+var(--codit-safe-bottom))] text-center">
-      <div className="w-full space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-xs sm:p-8">
+      <div className="codit-panel w-full space-y-5 p-6 shadow-xs sm:p-8">
         <div className="flex justify-center">
-          <OctopyBadge size={60} decorative={false} />
+          <OctopyBadge size={56} decorative={false} />
         </div>
 
         {errorMessage ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <span className="inline-block rounded-full bg-red-500/15 px-3 py-1 text-xs font-semibold text-red-500">
+              <span className="inline-block rounded-lg bg-red-500/15 px-3 py-1 text-xs font-semibold text-red-500">
                 Falha na autenticação
               </span>
               <h1 className="text-xl font-bold text-foreground">
@@ -238,7 +238,7 @@ export default function AuthCallbackPage() {
               href="/auth"
               className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
             >
-              Voltar para a tela de login
+              Voltar para o login
             </Link>
           </div>
         ) : (
@@ -246,7 +246,7 @@ export default function AuthCallbackPage() {
             <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent" />
             <h1 className="text-lg font-bold text-foreground">{statusTitle}</h1>
             <p className="text-sm text-muted">
-              O Octopy está preparando seu perfil e seus mini-projetos no Codit.
+              O Octopy está preparando seu perfil e seus projetos no Codit.
             </p>
           </div>
         )}

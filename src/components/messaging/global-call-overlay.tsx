@@ -99,7 +99,7 @@ export function GlobalCallOverlay() {
           aria-labelledby="codit-incoming-call-title"
           className="fixed inset-x-0 top-16 z-50 mx-auto w-full max-w-md pl-[calc(0.75rem+var(--codit-safe-left))] pr-[calc(0.75rem+var(--codit-safe-right))] sm:left-auto sm:right-4 sm:top-20"
         >
-          <div className="space-y-3 rounded-2xl border border-accent/60 bg-surface p-4 shadow-2xl">
+          <div className="space-y-3 rounded-2xl border border-accent/60 bg-surface-elevated p-4 shadow-2xl">
             <div className="flex items-center gap-3">
               <UserAvatar
                 name={incomingCall.callerName}
@@ -110,7 +110,7 @@ export function GlobalCallOverlay() {
               <div className="min-w-0 flex-1">
                 <p
                   id="codit-incoming-call-title"
-                  className="text-xs font-bold text-accent-strong uppercase"
+                  className="text-xs font-bold text-accent-strong"
                 >
                   Chamada de voz recebida
                 </p>

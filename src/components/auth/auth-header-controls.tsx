@@ -7,9 +7,15 @@ import { useAuth } from "@/modules/auth/auth-provider";
 import { isAllowedAvatarPath } from "@/modules/profiles/profile-themes";
 
 function resolveDisplayLabel(
+  username: string | undefined,
   fullName: string | undefined,
   email: string | undefined,
 ): string {
+  const cleanHandle = username?.trim().replace(/^@+/, "");
+  if (cleanHandle) {
+    return `@${cleanHandle}`;
+  }
+
   const trimmedName = fullName?.trim();
   if (trimmedName) {
     const firstWord = trimmedName.split(/\s+/)[0];
@@ -47,7 +53,9 @@ export function AuthHeaderControls() {
 
   if (user) {
     const label = resolveDisplayLabel(
-      profile?.full_name ?? (user.user_metadata?.full_name as string | undefined),
+      profile?.username,
+      profile?.full_name ??
+        (user.user_metadata?.full_name as string | undefined),
       user.email,
     );
     const avatarUrl = profile?.avatar_url ?? null;
@@ -56,11 +64,11 @@ export function AuthHeaderControls() {
     const showAvatar = Boolean(avatarUrl) && failedAvatarUrl !== avatarUrl;
 
     return (
-      <div className="flex items-center gap-1.5 sm:gap-2">
+      <div className="flex items-center gap-1.5">
         <Link
           href="/conta"
-          title="Abrir Meu Perfil"
-          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-surface-muted/80 px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+          title="Abrir meu perfil"
+          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-surface-muted/70 px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
         >
           {showAvatar && avatarUrl ? (
             <Image
@@ -83,7 +91,7 @@ export function AuthHeaderControls() {
               className="inline-flex h-2 w-2 rounded-full bg-accent"
             />
           )}
-          <span className="max-w-[76px] truncate sm:max-w-28">{label}</span>
+          <span className="max-w-[82px] truncate sm:max-w-32">{label}</span>
         </Link>
         <button
           type="button"
@@ -118,7 +126,7 @@ export function AuthHeaderControls() {
   }
 
   return (
-    <div className="flex items-center gap-1.5 sm:gap-2">
+    <div className="flex items-center gap-1.5">
       <Link
         href="/auth"
         className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"

@@ -663,21 +663,16 @@ export function MessagesWorkspace() {
       : null;
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 sm:py-6">
-      {/* Cabeçalho do hub de mensagens */}
-      <section className="flex flex-col gap-3 rounded-3xl border border-border bg-surface p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground sm:text-2xl">
-              Mensagens
-            </h1>
-            <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent-strong">
-              Somente amigos · Grupos até {MAX_GROUP_MEMBERS} pessoas
-            </span>
-          </div>
-          <p className="text-xs text-muted sm:text-sm">
-            Chat privado entre amigos, grupos de até {MAX_GROUP_MEMBERS}{" "}
-            integrantes, chamadas de voz e compartilhamento de tela (sem câmera).
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:px-6 sm:py-5">
+      {/* Barra superior enxuta para priorizar conversas e voz */}
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3.5">
+        <div className="space-y-0.5">
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            Mensagens
+          </h1>
+          <p className="text-xs text-muted">
+            Conversas com amigos, grupos de até {MAX_GROUP_MEMBERS} pessoas, voz e
+            compartilhamento de tela.
           </p>
         </div>
 
@@ -685,26 +680,26 @@ export function MessagesWorkspace() {
           <button
             type="button"
             onClick={() => setNewDirectModalOpen(true)}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-3.5 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90"
+            className="inline-flex min-h-9 items-center justify-center rounded-xl bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"
           >
-            + Nova conversa
+            Nova conversa
           </button>
           <button
             type="button"
             onClick={() => setCreateGroupModalOpen(true)}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground hover:border-accent"
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground hover:border-accent"
           >
-            + Criar grupo
+            Criar grupo
           </button>
           <button
             type="button"
             onClick={() => emitOpenFriendshipsDrawer("friends")}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground hover:border-accent"
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent"
           >
             Amigos ({friends.length})
           </button>
         </div>
-      </section>
+      </header>
 
       {permissionGrantMissing ? (
         <div
@@ -760,7 +755,7 @@ export function MessagesWorkspace() {
       ) : null}
 
       {/* Área principal Master-Detail */}
-      <section className="grid min-h-[65dvh] grid-cols-1 overflow-hidden rounded-3xl border border-border bg-surface shadow-xs md:grid-cols-[320px_1fr]">
+      <section className="codit-panel grid min-h-[calc(100dvh-13.5rem)] grid-cols-1 overflow-hidden shadow-xs md:grid-cols-[310px_1fr]">
         {/* Lista de conversas */}
         <aside
           className={`flex flex-col border-b border-border md:border-r md:border-b-0 ${
@@ -935,7 +930,7 @@ export function MessagesWorkspace() {
                     onClick={() => setMobileView("list")}
                     className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface-muted px-2.5 text-xs font-semibold text-foreground md:hidden"
                   >
-                    ← Voltar
+                    Voltar
                   </button>
 
                   {selectedSummary.conversation.kind === "group" ? (
@@ -1064,8 +1059,8 @@ export function MessagesWorkspace() {
                         <div
                           className={`max-w-[85%] space-y-1 rounded-2xl px-3.5 py-2.5 sm:max-w-[72%] ${
                             isOwn
-                              ? "bg-accent text-accent-foreground"
-                              : "border border-border bg-surface-muted/65 text-foreground"
+                              ? "rounded-br-md bg-accent text-accent-foreground"
+                              : "rounded-bl-md border border-border bg-surface-muted/75 text-foreground"
                           }`}
                         >
                           {!isOwn &&
