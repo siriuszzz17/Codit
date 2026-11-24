@@ -41,6 +41,7 @@ export interface VoiceCallContextValue {
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleScreenShare: () => Promise<void>;
+  retryMicrophone: () => Promise<void>;
   acceptIncomingCall: () => Promise<void>;
   dismissIncomingCall: () => void;
   notifyConversationParticipants: (
@@ -100,11 +101,28 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
 
       await Promise.allSettled(
         targets.map(async (targetId) => {
-          const tempChannel = client.channel(`codit:user-inbox:${targetId}`);
+          const topic = `codit:user-inbox:${targetId}`;
+          const existingChannel =
+            typeof client.getChannels === "function"
+              ? client
+                  .getChannels()
+                  .find((ch) => ch.topic === `realtime:${topic}`)
+              : undefined;
+          const targetChannel = existingChannel ?? client.channel(topic);
           try {
-            await tempChannel.httpSend(event, payload);
+            await targetChannel.httpSend(event, payload);
+          } catch {
+            await targetChannel
+              .send({
+                type: "broadcast",
+                event,
+                payload,
+              })
+              .catch(() => undefined);
           } finally {
-            await client.removeChannel(tempChannel).catch(() => undefined);
+            if (!existingChannel) {
+              await client.removeChannel(targetChannel).catch(() => undefined);
+            }
           }
         }),
       );
@@ -409,6 +427,14 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const retryMicrophone = useCallback(async () => {
+    const manager = managerRef.current;
+    if (!manager) {
+      return;
+    }
+    await manager.retryMicrophone();
+  }, []);
+
   const clearCallError = useCallback(() => {
     setCallError(null);
   }, []);
@@ -424,6 +450,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleDeafen,
       toggleScreenShare,
+      retryMicrophone,
       acceptIncomingCall,
       dismissIncomingCall,
       notifyConversationParticipants,
@@ -439,6 +466,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleDeafen,
       toggleScreenShare,
+      retryMicrophone,
       acceptIncomingCall,
       dismissIncomingCall,
       notifyConversationParticipants,

@@ -4,6 +4,8 @@
 // é rejeitada e interrompida imediatamente.
 // ==============================================================================
 
+import "@/lib/codit-native-bridge";
+
 const authorizedScreenShareTracks = new WeakSet<MediaStreamTrack>();
 
 export class MediaCaptureCancelledError extends Error {
@@ -11,6 +13,14 @@ export class MediaCaptureCancelledError extends Error {
     super(message);
     this.name = "MediaCaptureCancelledError";
   }
+}
+
+export function isNativeAndroidScreenShareSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.CoditNative?.isScreenCaptureSupported === "function" &&
+    window.CoditNative.isScreenCaptureSupported() === true
+  );
 }
 
 export function canCaptureMicrophone(): boolean {
@@ -23,9 +33,10 @@ export function canCaptureMicrophone(): boolean {
 
 export function canShareScreen(): boolean {
   return (
-    typeof navigator !== "undefined" &&
-    typeof navigator.mediaDevices?.getDisplayMedia === "function" &&
-    typeof RTCPeerConnection !== "undefined"
+    typeof RTCPeerConnection !== "undefined" &&
+    ((typeof navigator !== "undefined" &&
+      typeof navigator.mediaDevices?.getDisplayMedia === "function") ||
+      isNativeAndroidScreenShareSupported())
   );
 }
 
@@ -54,6 +65,32 @@ export function stopMediaStream(
   }
 }
 
+async function requestMicrophoneStreamWithFallback(
+  mediaDevices: Pick<MediaDevices, "getUserMedia">,
+): Promise<MediaStream> {
+  try {
+    return await mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+  } catch (error) {
+    if (
+      error instanceof DOMException &&
+      (error.name === "OverconstrainedError" || error.name === "TypeError")
+    ) {
+      return await mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+    }
+    throw error;
+  }
+}
+
 export async function acquireVoiceMicrophoneStream(
   mediaDevices: Pick<MediaDevices, "getUserMedia"> | undefined =
     typeof navigator !== "undefined" ? navigator.mediaDevices : undefined,
@@ -65,14 +102,7 @@ export async function acquireVoiceMicrophoneStream(
   }
 
   try {
-    const stream = await mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-      video: false,
-    });
+    const stream = await requestMicrophoneStreamWithFallback(mediaDevices);
 
     // Defesa em profundidade (RN-504): nenhuma faixa de vídeo de câmera é permitida.
     for (const videoTrack of stream.getVideoTracks()) {
@@ -109,7 +139,7 @@ export async function acquireVoiceMicrophoneStream(
         error.name === "DevicesNotFoundError"
       ) {
         throw new Error(
-          "Nenhum microfone disponível foi encontrado neste dispositivo.",
+          "Nenhum microfone conectado neste dispositivo. Você pode ouvir os amigos normalmente.",
         );
       }
       if (
@@ -130,77 +160,303 @@ export async function acquireVoiceMicrophoneStream(
   }
 }
 
+async function acquireNativeAndroidScreenShareStream(): Promise<MediaStream> {
+  const bridge = typeof window !== "undefined" ? window.CoditNative : undefined;
+  if (
+    !bridge ||
+    typeof bridge.startScreenCapture !== "function" ||
+    typeof bridge.stopScreenCapture !== "function" ||
+    typeof bridge.getScreenFrameSeq !== "function" ||
+    typeof bridge.getScreenFrameDataUrl !== "function"
+  ) {
+    throw new Error("Ponte nativa de captura de tela indisponível.");
+  }
+
+  const startResult = await new Promise<{ width: number; height: number }>(
+    (resolve, reject) => {
+      let settled = false;
+      const timeoutId = window.setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        reject(
+          new Error(
+            "Tempo esgotado aguardando a autorização de compartilhamento de tela.",
+          ),
+        );
+      }, 45_000);
+
+      function cleanup() {
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("codit:native-screen-started", onStarted);
+        window.removeEventListener(
+          "codit:native-screen-cancelled",
+          onCancelled,
+        );
+        window.removeEventListener("codit:native-screen-error", onError);
+      }
+
+      function onStarted(event: Event) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        const detail = (event as CustomEvent<{ width?: number; height?: number }>)
+          .detail;
+        resolve({
+          width:
+            detail && typeof detail.width === "number" && detail.width > 0
+              ? detail.width
+              : 540,
+          height:
+            detail && typeof detail.height === "number" && detail.height > 0
+              ? detail.height
+              : 960,
+        });
+      }
+
+      function onCancelled() {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        reject(new MediaCaptureCancelledError());
+      }
+
+      function onError(event: Event) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        const detail = (event as CustomEvent<{ message?: string }>).detail;
+        reject(
+          new Error(
+            detail?.message ||
+              "Não foi possível iniciar a captura de tela no Android.",
+          ),
+        );
+      }
+
+      window.addEventListener("codit:native-screen-started", onStarted);
+      window.addEventListener("codit:native-screen-cancelled", onCancelled);
+      window.addEventListener("codit:native-screen-error", onError);
+
+      try {
+        bridge.startScreenCapture!();
+      } catch (err) {
+        settled = true;
+        cleanup();
+        reject(
+          err instanceof Error
+            ? err
+            : new Error("Falha ao abrir autorização de captura de tela."),
+        );
+      }
+    },
+  );
+
+  const canvas = document.createElement("canvas");
+  canvas.width = startResult.width;
+  canvas.height = startResult.height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx || typeof canvas.captureStream !== "function") {
+    bridge.stopScreenCapture();
+    throw new Error(
+      "Este WebView Android não suporta transmissão de fluxo de tela.",
+    );
+  }
+
+  ctx.fillStyle = "#0b0a16";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const stream = canvas.captureStream(12);
+  const videoTracks = stream.getVideoTracks();
+  if (videoTracks.length === 0) {
+    bridge.stopScreenCapture();
+    throw new Error("Não foi possível inicializar a faixa de tela no Android.");
+  }
+
+  let cleanedUp = false;
+  let lastSeq = -1;
+  let lastDrawAt = 0;
+  let decodingFrame = false;
+  const image = new Image();
+  let hasImage = false;
+
+  const pumpTimer = window.setInterval(() => {
+    if (cleanedUp || !bridge.getScreenFrameSeq || !bridge.getScreenFrameDataUrl) {
+      return;
+    }
+
+    const seq = bridge.getScreenFrameSeq();
+    const now = Date.now();
+
+    if (seq > 0 && seq !== lastSeq && !decodingFrame) {
+      const dataUrl = bridge.getScreenFrameDataUrl();
+      if (dataUrl) {
+        decodingFrame = true;
+        image.onload = () => {
+          decodingFrame = false;
+          if (cleanedUp || !ctx) {
+            return;
+          }
+          if (
+            image.naturalWidth > 0 &&
+            image.naturalHeight > 0 &&
+            (canvas.width !== image.naturalWidth ||
+              canvas.height !== image.naturalHeight)
+          ) {
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+          }
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+          hasImage = true;
+          lastSeq = seq;
+          lastDrawAt = Date.now();
+        };
+        image.onerror = () => {
+          decodingFrame = false;
+        };
+        image.src = dataUrl;
+      }
+      return;
+    }
+
+    // Keepalive para WebRTC continuar enviando keyframes em telas estáticas.
+    if (hasImage && now - lastDrawAt >= 480) {
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      lastDrawAt = now;
+    }
+  }, 95);
+
+  function cleanupNativeProjection(notifyNativeStop: boolean) {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    window.clearInterval(pumpTimer);
+    window.removeEventListener("codit:native-screen-stopped", onNativeStopped);
+    if (notifyNativeStop) {
+      try {
+        bridge?.stopScreenCapture?.();
+      } catch {
+        // noop
+      }
+    }
+  }
+
+  function onNativeStopped() {
+    cleanupNativeProjection(false);
+    for (const track of videoTracks) {
+      const onEndedHandler = track.onended;
+      try {
+        origStops.get(track)?.();
+      } catch {
+        // noop
+      }
+      if (typeof onEndedHandler === "function") {
+        onEndedHandler.call(track, new Event("ended"));
+      }
+    }
+  }
+
+  const origStops = new WeakMap<MediaStreamTrack, () => void>();
+  window.addEventListener("codit:native-screen-stopped", onNativeStopped);
+
+  for (const track of videoTracks) {
+    authorizedScreenShareTracks.add(track);
+    const origStop = track.stop.bind(track);
+    origStops.set(track, origStop);
+    track.stop = () => {
+      cleanupNativeProjection(true);
+      origStop();
+    };
+  }
+
+  return stream;
+}
+
 export async function acquireScreenShareStream(
   mediaDevices: Pick<MediaDevices, "getDisplayMedia"> | undefined =
     typeof navigator !== "undefined" ? navigator.mediaDevices : undefined,
 ): Promise<MediaStream> {
-  if (!mediaDevices || typeof mediaDevices.getDisplayMedia !== "function") {
-    throw new Error(
-      "O compartilhamento de tela não está disponível neste navegador ou dispositivo. Você ainda pode assistir às telas compartilhadas pelos amigos.",
-    );
-  }
+  if (mediaDevices && typeof mediaDevices.getDisplayMedia === "function") {
+    try {
+      const stream = await mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 15, max: 24 },
+        },
+        audio: false,
+      });
 
-  try {
-    const stream = await mediaDevices.getDisplayMedia({
-      video: {
-        width: { ideal: 1280, max: 1920 },
-        height: { ideal: 720, max: 1080 },
-        frameRate: { ideal: 15, max: 24 },
-      },
-      audio: false,
-    });
-
-    // Remover áudio do sistema para evitar eco cruzado; o áudio da chamada vem do microfone.
-    for (const audioTrack of stream.getAudioTracks()) {
-      try {
-        audioTrack.stop();
-      } catch {
-        // noop
-      }
-      if (typeof stream.removeTrack === "function") {
-        stream.removeTrack(audioTrack);
-      }
-    }
-
-    const videoTracks = stream.getVideoTracks();
-    if (videoTracks.length === 0) {
-      stopMediaStream(stream);
-      throw new Error("Nenhuma janela ou tela válida foi selecionada.");
-    }
-
-    for (const track of videoTracks) {
-      authorizedScreenShareTracks.add(track);
-      try {
-        if ("contentHint" in track) {
-          track.contentHint = "detail";
+      // Remover áudio do sistema para evitar eco cruzado; o áudio da chamada vem do microfone.
+      for (const audioTrack of stream.getAudioTracks()) {
+        try {
+          audioTrack.stop();
+        } catch {
+          // noop
         }
-      } catch {
-        // contentHint pode ser somente leitura em alguns navegadores.
+        if (typeof stream.removeTrack === "function") {
+          stream.removeTrack(audioTrack);
+        }
       }
-    }
 
-    return stream;
-  } catch (error) {
-    if (error instanceof DOMException) {
-      if (error.name === "AbortError" || error.name === "NotAllowedError") {
-        throw new MediaCaptureCancelledError();
+      const videoTracks = stream.getVideoTracks();
+      if (videoTracks.length === 0) {
+        stopMediaStream(stream);
+        throw new Error("Nenhuma janela ou tela válida foi selecionada.");
       }
-      if (error.name === "NotFoundError") {
-        throw new Error("Nenhuma tela disponível para compartilhamento.");
-      }
-      if (error.name === "NotReadableError") {
-        throw new Error(
-          "Não foi possível capturar a tela selecionada no sistema.",
-        );
-      }
-    }
 
-    if (error instanceof Error) {
-      throw error;
-    }
+      for (const track of videoTracks) {
+        authorizedScreenShareTracks.add(track);
+        try {
+          if ("contentHint" in track) {
+            track.contentHint = "detail";
+          }
+        } catch {
+          // contentHint pode ser somente leitura em alguns navegadores.
+        }
+      }
 
-    throw new Error("Não foi possível iniciar o compartilhamento de tela.");
+      return stream;
+    } catch (error) {
+      if (error instanceof DOMException) {
+        if (error.name === "AbortError" || error.name === "NotAllowedError") {
+          throw new MediaCaptureCancelledError();
+        }
+        if (error.name === "NotFoundError") {
+          throw new Error("Nenhuma tela disponível para compartilhamento.");
+        }
+        if (error.name === "NotReadableError") {
+          throw new Error(
+            "Não foi possível capturar a tela selecionada no sistema.",
+          );
+        }
+      }
+
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      throw new Error("Não foi possível iniciar o compartilhamento de tela.");
+    }
   }
+
+  if (isNativeAndroidScreenShareSupported()) {
+    return acquireNativeAndroidScreenShareStream();
+  }
+
+  throw new Error(
+    "Para compartilhar a tela do celular, abra o aplicativo Codit Android (.apk) ou use um navegador no computador. Você já pode assistir normalmente às telas dos seus amigos aqui!",
+  );
 }
 
 export async function applyScreenShareBitrateCap(

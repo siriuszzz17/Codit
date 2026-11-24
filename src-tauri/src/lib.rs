@@ -1,9 +1,18 @@
 #[cfg(desktop)]
 mod oauth;
 
+use tauri::webview::{PermissionKind, PermissionResponse};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_process::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .on_permission_request(|_webview, kind| match kind {
+            PermissionKind::Microphone => PermissionResponse::Allow,
+            // RN-504: câmera de vídeo permanece estritamente bloqueada no Codit.
+            PermissionKind::Camera => PermissionResponse::Deny,
+            _ => PermissionResponse::Default,
+        });
 
     #[cfg(desktop)]
     let builder = builder
