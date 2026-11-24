@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { TopNavbar } from "@/components/layout/top-navbar";
 import { AppUpdateModal } from "@/components/native/app-update-modal";
+import { NativeInsetsSync } from "@/components/native/native-insets-sync";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { AuthProvider } from "@/modules/auth/auth-provider";
@@ -54,6 +55,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className="codit-app-shell flex min-h-dvh flex-col bg-background text-foreground antialiased">
         <AuthProvider>
+          <NativeInsetsSync />
           <ServiceWorkerRegister />
           <TopNavbar />
           <OfflineBanner />

@@ -294,9 +294,9 @@ export function FriendshipsDrawer({
     >
       <div aria-hidden="true" onClick={onClose} className="fixed inset-0" />
 
-      <aside className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-surface shadow-2xl">
+      <aside className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface shadow-2xl md:my-4 md:mr-4 md:h-auto md:rounded-2xl md:border">
         {/* Cabeçalho do painel */}
-        <div className="codit-safe-top flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
+        <div className="codit-safe-top flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5 md:py-5">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span
