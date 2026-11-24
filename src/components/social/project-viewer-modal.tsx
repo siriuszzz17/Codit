@@ -392,7 +392,7 @@ export function ProjectViewerModal({
         </div>
 
         {/* Corpo rolável */}
-        <div className="codit-safe-bottom flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
+        <div className="flex-1 space-y-5 overflow-y-auto px-4 pt-4 pb-[calc(1rem+var(--codit-safe-bottom))] sm:px-5 sm:pt-5 sm:pb-[calc(1.25rem+var(--codit-safe-bottom))]">
           {project.description ? (
             <p className="text-sm leading-relaxed text-muted">
               {project.description}

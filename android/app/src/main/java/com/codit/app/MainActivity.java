@@ -17,10 +17,10 @@ import java.util.Locale;
 /**
  * Atividade principal (Capacitor) em modo edge-to-edge.
  *
- * O WebView ocupa a tela inteira, inclusive atras da barra de status. As areas
- * seguras (barra de status, notch, barra de gestos) sao entregues ao CSS pelas
- * variaveis --safe-area-inset-* (ver NativeInsetsSync no front-end), de modo que
- * nao existe faixa nativa reservada no topo (antes ela aparecia branca).
+ * Aplica AppTheme_NoActionBar antes de EdgeToEdge.enable() e super.onCreate()
+ * para evitar que a ActionBar do tema de splash seja inflada como faixa branca.
+ * As areas seguras (barra de status, notch, barra de gestos) sao entregues ao
+ * CSS pelas variaveis --safe-area-inset-* (ver NativeInsetsSync no front-end).
  */
 public class MainActivity extends BridgeActivity {
     // Mesmos valores de --background em src/app/globals.css (claro / escuro).
@@ -34,6 +34,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        setTheme(R.style.AppTheme_NoActionBar);
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         applyBackgrounds();
@@ -43,6 +44,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        EdgeToEdge.enable(this);
         applyBackgrounds();
     }
 
@@ -59,6 +61,10 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void installInsetsBridge() {
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            return;
+        }
+
         final WebView webView = getBridge().getWebView();
         webView.addJavascriptInterface(new NativeInsets(), "CoditNative");
 
@@ -82,6 +88,18 @@ public class MainActivity extends BridgeActivity {
                 insetBottom = imeVisible ? 0 : Math.round(bars.bottom / density);
 
                 pushInsetsToPage(webView);
+
+                if (imeVisible) {
+                    return new WindowInsetsCompat.Builder(insets)
+                        .setInsets(
+                            WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout(),
+                            Insets.of(bars.left, bars.top, bars.right, 0)
+                        )
+                        .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
+                        .setVisible(WindowInsetsCompat.Type.ime(), false)
+                        .build();
+                }
+
                 return insets;
             }
         );

@@ -296,7 +296,7 @@ export function FriendshipsDrawer({
 
       <aside className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface shadow-2xl md:my-4 md:mr-4 md:h-auto md:rounded-2xl md:border">
         {/* Cabeçalho do painel */}
-        <div className="codit-safe-top flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5 md:py-5">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-4 pb-4 pt-[calc(1rem+var(--codit-safe-top))] sm:px-5 md:pb-5 md:pt-5">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span
@@ -342,7 +342,7 @@ export function FriendshipsDrawer({
         </div>
 
         {/* Conteúdo rolável */}
-        <div className="codit-safe-bottom flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 pt-4 pb-[calc(1rem+var(--codit-safe-bottom))] sm:px-5 sm:pt-5 sm:pb-[calc(1.25rem+var(--codit-safe-bottom))]">
           {!userId ? (
             <div className="space-y-4 rounded-2xl border border-border bg-surface-muted/45 p-6 text-center">
               <div className="flex justify-center">

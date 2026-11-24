@@ -198,7 +198,7 @@ export function ProjectStudioModal({
     >
       <div className="flex h-dvh w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 bg-surface shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl sm:border sm:border-border">
         {/* Cabeçalho do Estúdio */}
-        <header className="codit-safe-top codit-safe-x flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/60 px-4 py-3 sm:px-6">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/60 pb-3 pt-[calc(0.75rem+var(--codit-safe-top))] pl-[calc(1rem+var(--codit-safe-left))] pr-[calc(1rem+var(--codit-safe-right))] sm:pt-3 sm:pl-[calc(1.5rem+var(--codit-safe-left))] sm:pr-[calc(1.5rem+var(--codit-safe-right))]">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <LanguageIcon language={language} size={28} />
             <div className="min-w-0">
@@ -560,7 +560,7 @@ export function ProjectStudioModal({
           </div>
 
           {/* Rodapé fixo com ação de salvar */}
-          <div className="codit-safe-bottom codit-safe-x flex shrink-0 flex-col-reverse gap-2.5 border-t border-border bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex shrink-0 flex-col-reverse gap-2.5 border-t border-border bg-surface pt-3 pb-[calc(0.75rem+var(--codit-safe-bottom))] pl-[calc(1rem+var(--codit-safe-left))] pr-[calc(1rem+var(--codit-safe-right))] sm:flex-row sm:items-center sm:justify-between sm:pl-[calc(1.5rem+var(--codit-safe-left))] sm:pr-[calc(1.5rem+var(--codit-safe-right))]">
             <p className="text-[11px] text-muted">
               Máximo de 200.000 caracteres · Isolado no seu{" "}
               <code className="font-mono">user_id</code> com lock de versão.
