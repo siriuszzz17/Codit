@@ -71,6 +71,9 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
   - Além de programação, IA e Git/GitHub, o sistema mantém checklist prático de carreira (`career_milestones`) onde o aluno acompanha progresso de currículo, GitHub, portfólio e preparação para entrevistas de forma isolada pelo seu `user_id`.
 - **`RN-104` — Experiência Mobile-First e PWA:**
   - Todas as telas principais (dashboard, leitor de lição, sandbox, mini-projetos e chat do Octopy) devem ser utilizáveis a partir de `360px` de largura e instaláveis como PWA. Ações dependentes de rede devem informar o usuário claramente quando offline.
+- **`RN-105` — Personalização Leve de Temas e Papéis de Parede (`src/modules/theme`):**
+  - O aplicativo mantém seu visual padrão original (`original`, `system`, `balanced`) por padrão e permite alternar entre temas de cores e papéis de parede vetoriais/CSS procedurais sem uploads binários, sem Base64 e sem impacto relevante no banco de dados (apenas 4 chaves curtas em `public.profiles`, vinculadas ao `user_id` autenticado via `assertAuthenticatedUserMatches` e RLS, com fallback local em `localStorage`).
+  - Todas as interfaces devem seguir o padrão visual documentado em [design-system.md](./design-system.md) (equilíbrio entre área técnica e fluidez de rede social).
 
 ### Módulo C — Sandbox e Mini-Projetos (`RN-201` a `RN-205`)
 
@@ -173,3 +176,4 @@ stateDiagram-v2
 | `2026-11-22` | Inicial | Formalização completa de glossário, RBAC, regras `RN-001` a `RN-305`, estados e casos de borda do SaaS Codit |
 | `2026-11-23` | Módulo E | Inclusão das regras `RN-401` a `RN-405` da rede social embutida (**Comunidade Codit**): `@username`, `public_profiles`, amizades, visibilidade `friends` e clonagem segura |
 | `2026-11-24` | Módulo F | Inclusão das regras `RN-501` a `RN-505` do sistema de mensagens embutido: DMs restritas a amigos, grupos até 10 pessoas, chamadas de voz sem câmera e compartilhamento de tela |
+| `2026-11-24` | Módulo B | Inclusão da `RN-105` (personalização leve de temas e papéis de parede procedurais com preservação do padrão original e aderência a `design-system.md`) |

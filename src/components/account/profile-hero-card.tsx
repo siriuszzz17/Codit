@@ -327,9 +327,9 @@ export function ProfileHeroCard({
           ) : null}
         </div>
 
-        {/* Métricas e Distribuição de Linguagens */}
-        <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
-          <div className="rounded-2xl border border-border bg-surface-muted/50 px-3.5 py-2.5">
+        {/* Métricas integradas e Distribuição de Linguagens */}
+        <div className="mt-5 grid grid-cols-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-muted/35 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">
               Projetos salvos
             </p>
@@ -337,7 +337,7 @@ export function ProfileHeroCard({
               {projects.length}
             </p>
           </div>
-          <div className="rounded-2xl border border-border bg-surface-muted/50 px-3.5 py-2.5">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">
               Linguagens usadas
             </p>
@@ -359,7 +359,7 @@ export function ProfileHeroCard({
               ) : null}
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-surface-muted/50 px-3.5 py-2.5">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">
               Portfólio público
             </p>
@@ -367,7 +367,7 @@ export function ProfileHeroCard({
               {publicCount}
             </p>
           </div>
-          <div className="rounded-2xl border border-border bg-surface-muted/50 px-3.5 py-2.5">
+          <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">Fixados</p>
             <p className="mt-0.5 text-lg font-bold text-foreground">
               {pinnedCount}

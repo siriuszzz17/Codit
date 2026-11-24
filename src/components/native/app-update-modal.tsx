@@ -167,11 +167,11 @@ export function AppUpdateModal() {
       aria-describedby="codit-update-description"
       className="codit-safe-modal fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs sm:items-center"
     >
-      <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-xl sm:p-6">
+      <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-surface-elevated p-5 shadow-xl sm:p-6">
         <div className="flex items-start gap-3">
           <OctopyBadge size={40} className="shrink-0 rounded-xl shadow-xs" />
           <div className="min-w-0 flex-1 space-y-1">
-            <span className="inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent-strong">
+            <span className="inline-block rounded-lg bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent-strong">
               Atualização disponível
             </span>
             <h2

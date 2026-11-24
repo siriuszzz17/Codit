@@ -183,7 +183,6 @@ export function AuthScreen() {
         clearTimeout(mobileFinishTimerRef.current);
       }
 
-      // Aguarda janela curta para que `appUrlOpen` entregue o deep link antes de destravar.
       mobileFinishTimerRef.current = setTimeout(() => {
         if (!cancelled) {
           setExternalAuthPlatform(null);
@@ -444,120 +443,79 @@ export function AuthScreen() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-10">
-      <main className="grid flex-1 items-center gap-6 lg:grid-cols-[1.05fr_1fr] lg:gap-8">
-        {/* Painel de identidade Codit + Mascote Octopy */}
+      <main className="grid flex-1 items-start gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:gap-12">
+        {/* Identidade acolhedora à esquerda (sem caixa pesada) */}
         <section
           aria-labelledby="octopy-welcome-title"
-          className="order-2 flex flex-col justify-between gap-6 rounded-2xl border border-border bg-surface p-5 shadow-xs sm:p-7 lg:order-1"
+          className="order-2 space-y-6 py-2 lg:order-1"
         >
-          <div className="space-y-5">
-            <div className="flex items-center gap-4">
-              <OctopyBadge
-                size={64}
-                variant="happy"
-                decorative={false}
-                className="shrink-0 rounded-2xl shadow-sm"
-              />
-              <div>
-                <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent-strong">
-                  Tutor &amp; Mascote Octopy
-                </span>
-                <h1
-                  id="octopy-welcome-title"
-                  className="mt-1.5 text-xl font-bold tracking-tight text-foreground sm:text-2xl"
-                >
-                  {mode === "login"
-                    ? "Que bom ter você de volta!"
-                    : "Comece sua jornada tech hoje"}
-                </h1>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-surface-muted/80 p-4 text-sm leading-relaxed text-foreground">
-              {mode === "login" ? (
-                <p>
-                  &ldquo;Oi! Eu sou o{" "}
-                  <strong className="font-semibold text-accent-strong">
-                    Octopy
-                  </strong>
-                  . Entre na sua conta para retomar suas lições, atualizar seu
-                  perfil e continuar seus mini-projetos no Sandbox.&rdquo;
-                </p>
-              ) : (
-                <p>
-                  &ldquo;Oi! Eu sou o{" "}
-                  <strong className="font-semibold text-accent-strong">
-                    Octopy
-                  </strong>
-                  . Com sua conta gratuita no Codit, cada desafio resolvido e
-                  cada mini-projeto ficam salvos com segurança só para
-                  você.&rdquo;
-                </p>
-              )}
-            </div>
-
-            <ul className="space-y-2.5 text-sm text-muted">
-              <li className="flex items-start gap-2.5">
-                <span
-                  aria-hidden="true"
-                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent"
-                />
-                <span>
-                  Trilhas de Programação, IA, Git/GitHub e Carreira Tech em{" "}
-                  <strong className="font-medium text-foreground">pt-BR</strong>
-                </span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span
-                  aria-hidden="true"
-                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent"
-                />
-                <span>
-                  Mini-projetos privados na nuvem com controle de versão por
-                  dispositivo
-                </span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span
-                  aria-hidden="true"
-                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent"
-                />
-                <span>
-                  Acesso contínuo entre Navegador/PWA, Windows e Android
-                </span>
-              </li>
-            </ul>
-          </div>
-
-          <p className="border-t border-border pt-4 text-xs text-muted">
-            Seus dados de perfil e projetos são isolados pelo seu identificador
-            único com políticas Row-Level Security (RLS).
-          </p>
-        </section>
-
-        {/* Painel do formulário */}
-        <section
-          aria-label="Autenticação do aluno"
-          className="order-1 rounded-2xl border border-border bg-surface p-5 shadow-xs sm:p-7 lg:order-2"
-        >
-          <div className="mb-4 flex items-center gap-3 border-b border-border pb-4 lg:hidden">
+          <div className="flex items-center gap-4">
             <OctopyBadge
-              size={44}
+              size={60}
               variant="happy"
               decorative={false}
-              className="shrink-0 rounded-xl shadow-xs"
+              className="shrink-0 rounded-2xl shadow-sm"
             />
-            <div className="min-w-0">
-              <span className="inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent-strong">
-                Codit · Tutor Octopy
-              </span>
-              <h2 className="mt-0.5 text-base font-bold tracking-tight text-foreground">
+            <div>
+              <h1
+                id="octopy-welcome-title"
+                className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+              >
                 {mode === "login"
-                  ? "Entrar no Codit"
-                  : "Criar conta no Codit"}
-              </h2>
+                  ? "Que bom ter você de volta."
+                  : "Crie sua conta gratuita."}
+              </h1>
+              <p className="mt-1 text-sm text-muted">
+                Estúdio prático, comunidade e conversas no mesmo espaço.
+              </p>
             </div>
           </div>
+
+          <p className="max-w-[54ch] border-l-2 border-accent/50 pl-4 text-sm leading-relaxed text-foreground/90">
+            {mode === "login"
+              ? "Entre para continuar seus mini-projetos no Sandbox, responder amigos na Comunidade e personalizar seu perfil."
+              : "Com uma conta no Codit, seus códigos, temas e conexões com colegas ficam sincronizados entre navegador, desktop e celular."}
+          </p>
+
+          <ul className="space-y-2.5 text-sm text-muted">
+            <li className="flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+              />
+              <span>
+                Estúdio com 15 linguagens e execução HTML/CSS/JS isolada no
+                cliente
+              </span>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+              />
+              <span>
+                Perfil público personalizável com{" "}
+                <code className="font-mono text-foreground">@usuário</code> e
+                amizades bilaterais
+              </span>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+              />
+              <span>
+                Mensagens privadas, grupos de estudo e chamadas de voz com tela
+              </span>
+            </li>
+          </ul>
+        </section>
+
+        {/* Formulário limpo */}
+        <section
+          aria-label="Autenticação do aluno"
+          className="codit-panel order-1 p-5 shadow-xs sm:p-7 lg:order-2"
+        >
           {!isConfigured ? (
             <div
               role="status"
@@ -573,8 +531,8 @@ export function AuthScreen() {
                 <code className="font-mono text-foreground">
                   NEXT_PUBLIC_SUPABASE_ANON_KEY
                 </code>{" "}
-                no arquivo <code className="font-mono">.env.local</code> para
-                ativar o login e o banco de dados.
+                em <code className="font-mono">.env.local</code> para ativar o
+                login.
               </p>
             </div>
           ) : null}
@@ -600,7 +558,7 @@ export function AuthScreen() {
 
           {isLoading ? (
             <div className="space-y-4 py-8 text-center">
-              <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-border border-t-accent" />
+              <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent" />
               <p className="text-sm text-muted">
                 Verificando sua sessão no Codit...
               </p>
@@ -608,14 +566,14 @@ export function AuthScreen() {
           ) : user ? (
             <div className="space-y-5 py-2">
               <div className="space-y-1.5">
-                <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent-strong">
+                <span className="inline-flex items-center rounded-lg bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-strong">
                   Sessão ativa
                 </span>
                 <h2 className="text-xl font-bold text-foreground">
                   Olá, {profile?.full_name || user.email}
                 </h2>
                 <p className="text-sm text-muted">
-                  Você já está autenticado como{" "}
+                  Autenticado como{" "}
                   <span className="font-medium text-foreground">
                     {user.email}
                   </span>
@@ -632,18 +590,18 @@ export function AuthScreen() {
                 </p>
               ) : null}
 
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-2.5 sm:flex-row">
                 <Link
                   href="/projetos"
                   className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
                 >
-                  Abrir Meus Projetos
+                  Abrir projetos
                 </Link>
                 <Link
                   href="/conta"
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-accent"
                 >
-                  Meu Perfil
+                  Meu perfil
                 </Link>
                 <button
                   type="button"
@@ -651,19 +609,16 @@ export function AuthScreen() {
                   disabled={effectiveAction === "signout"}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {effectiveAction === "signout"
-                    ? "Saindo..."
-                    : "Sair"}
+                  {effectiveAction === "signout" ? "Saindo..." : "Sair"}
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-5">
-              {/* Alternador Entrar / Criar Conta */}
               <div
                 role="tablist"
                 aria-label="Alternar entre entrar e criar conta"
-                className="grid grid-cols-2 gap-1.5 rounded-xl border border-border bg-surface-muted p-1"
+                className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface-muted p-1"
               >
                 <button
                   type="button"
@@ -693,19 +648,6 @@ export function AuthScreen() {
                 </button>
               </div>
 
-              <div className="space-y-1">
-                <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
-                  {mode === "login"
-                    ? "Acesse sua conta Codit"
-                    : "Crie sua conta no Codit"}
-                </h2>
-                <p className="text-xs text-muted sm:text-sm">
-                  {mode === "login"
-                    ? "Use Google ou seu e-mail e senha cadastrados."
-                    : "Cadastro rápido e gratuito para salvar seu progresso."}
-                </p>
-              </div>
-
               {isWaitingExternalOAuth ? (
                 <div
                   role="status"
@@ -715,9 +657,8 @@ export function AuthScreen() {
                     Aguardando conclusão no navegador...
                   </p>
                   <p className="text-muted">
-                    Finalize o login com Google na janela do navegador aberta.
-                    Assim que concluir, você voltará automaticamente para o
-                    aplicativo Codit.
+                    Conclua o acesso com Google na janela aberta. Assim que
+                    finalizar, o retorno para o Codit acontece automaticamente.
                   </p>
                   <button
                     type="button"
@@ -729,7 +670,6 @@ export function AuthScreen() {
                 </div>
               ) : null}
 
-              {/* Botão Google OAuth */}
               <button
                 type="button"
                 onClick={() => void handleGoogleLogin()}
@@ -746,9 +686,9 @@ export function AuthScreen() {
                 </span>
               </button>
 
-              <div className="relative flex items-center py-1">
+              <div className="relative flex items-center py-0.5">
                 <div className="grow border-t border-border" />
-                <span className="mx-3 shrink-0 text-xs font-medium text-muted">
+                <span className="mx-3 shrink-0 text-xs text-muted">
                   ou use seu e-mail
                 </span>
                 <div className="grow border-t border-border" />
@@ -799,7 +739,7 @@ export function AuthScreen() {
                         htmlFor="codit-auth-username"
                         className="block text-xs font-semibold text-foreground"
                       >
-                        @usuário no Codit (opcional)
+                        @usuário na Comunidade (opcional)
                       </label>
                       <div className="flex min-h-11 items-center rounded-xl border border-border bg-background px-3.5 focus-within:border-accent">
                         <span
@@ -830,8 +770,8 @@ export function AuthScreen() {
                           id="codit-auth-username-hint"
                           className="text-[11px] text-muted"
                         >
-                          Se deixar em branco, criaremos um @usuário automático
-                          para você na Comunidade.
+                          Se deixar em branco, criamos um @usuário automático
+                          para você.
                         </p>
                       ) : (
                         <p
@@ -1051,11 +991,10 @@ export function AuthScreen() {
                     </p>
                     <ul className="list-disc space-y-1 pl-4 text-muted">
                       <li>
-                        Verifique a caixa de entrada, Spam / Lixo Eletrônico e a
-                        aba Promoções.
+                        Verifique a caixa de entrada, Spam e a aba Promoções.
                       </li>
                       <li>
-                        O link pode demorar até alguns instantes para chegar.
+                        O link pode levar alguns instantes para chegar.
                       </li>
                     </ul>
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
@@ -1115,7 +1054,7 @@ export function AuthScreen() {
                       ? "Entrando..."
                       : "Criando conta..."
                     : mode === "login"
-                      ? "Entrar no Codit"
+                      ? "Entrar"
                       : "Criar conta gratuita"}
                 </button>
               </form>
@@ -1129,7 +1068,7 @@ export function AuthScreen() {
                       onClick={() => switchMode("signup")}
                       className="font-semibold text-accent-strong hover:underline"
                     >
-                      Criar conta agora
+                      Criar conta
                     </button>
                   </>
                 ) : (
@@ -1140,7 +1079,7 @@ export function AuthScreen() {
                       onClick={() => switchMode("login")}
                       className="font-semibold text-accent-strong hover:underline"
                     >
-                      Fazer login
+                      Entrar agora
                     </button>
                   </>
                 )}

@@ -395,92 +395,123 @@ export function CommunityHub() {
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
-      {/* Hero da Comunidade + Busca por @ */}
-      <section className="space-y-5 rounded-3xl border border-border bg-surface p-5 shadow-xs sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-1.5">
-            <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-0.5 text-[11px] font-semibold text-accent-strong">
-              Comunidade Codit
-            </span>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Descubra projetos e conecte-se por @
-            </h1>
-            <p className="max-w-2xl text-xs leading-relaxed text-muted sm:text-sm">
-              Explore mini-projetos da comunidade, interaja com curtidas e
-              comentários, clone ideias para seu estúdio e encontre colegas pelo{" "}
-              <code className="font-mono">@usuário</code>.
-            </p>
-          </div>
+      {/* Cabeçalho aberto e social */}
+      <header className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            Comunidade
+          </h1>
+          <p className="max-w-[60ch] text-sm text-muted">
+            Explore projetos da turma, curta, comente, clone para estudar e
+            encontre colegas pelo <code className="font-mono text-foreground">@usuário</code>.
+          </p>
+        </div>
 
+        <div className="flex flex-wrap items-center gap-2">
           {userId && profile?.username ? (
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-surface-muted/60 p-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2">
               <UserAvatar
                 name={profile.full_name}
                 username={profile.username}
                 avatarUrl={profile.avatar_url}
                 size="sm"
               />
-              <div className="min-w-0 text-xs">
-                <p className="text-[11px] text-muted">Seu @público</p>
-                <p className="truncate font-mono font-bold text-accent-strong">
+              <div className="min-w-0 pr-1 text-xs">
+                <p className="truncate font-mono font-semibold text-accent-strong">
                   {ownHandle}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => void handleCopyOwnHandle()}
-                  className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-accent"
-                >
-                  {copiedOwnHandle ? "Copiado!" : "Copiar @"}
-                </button>
-                <Link
-                  href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
-                  className="inline-flex min-h-9 items-center justify-center rounded-xl bg-accent px-3 py-1 text-[11px] font-semibold text-accent-foreground hover:opacity-90"
-                >
-                  Ver perfil
-                </Link>
-                <button
-                  type="button"
-                  onClick={() =>
-                    emitOpenFriendshipsDrawer(
-                      incomingCount > 0 ? "requests" : "friends",
-                    )
-                  }
-                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-accent"
-                >
-                  <span>Amigos ({friendshipsBundle.friends.length})</span>
-                  {incomingCount > 0 ? (
-                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
-                      +{incomingCount}
-                    </span>
-                  ) : null}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopyOwnHandle()}
+                className="inline-flex min-h-8 items-center justify-center rounded-lg border border-border bg-surface-muted px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-accent"
+              >
+                {copiedOwnHandle ? "Copiado" : "Copiar @"}
+              </button>
+              <Link
+                href={`/comunidade/perfil?u=${encodeURIComponent(profile.username)}`}
+                className="inline-flex min-h-8 items-center justify-center rounded-lg border border-border bg-surface-muted px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-accent"
+              >
+                Meu perfil
+              </Link>
+              <button
+                type="button"
+                onClick={() =>
+                  emitOpenFriendshipsDrawer(
+                    incomingCount > 0 ? "requests" : "friends",
+                  )
+                }
+                className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-strong hover:opacity-90"
+              >
+                <span>Amigos ({friendshipsBundle.friends.length})</span>
+                {incomingCount > 0 ? (
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
+                    +{incomingCount}
+                  </span>
+                ) : null}
+              </button>
             </div>
           ) : null}
-        </div>
 
-        <form
-          onSubmit={handleSearchSubmit}
-          className="flex flex-col gap-2 sm:flex-row"
-        >
-          <label htmlFor="codit-community-search" className="sr-only">
-            Pesquisar pessoas por @usuário ou nome
-          </label>
-          <input
-            id="codit-community-search"
-            type="search"
-            value={searchInput}
-            onChange={(event) => handleSearchChange(event.target.value)}
-            placeholder="Pesquisar pessoas por @usuário ou nome (ex.: @octopy)..."
-            className="min-h-11 flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
-          />
-          <div className="flex gap-2">
+          <Link
+            href="/projetos"
+            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+          >
+            Publicar projeto
+          </Link>
+        </div>
+      </header>
+
+      {/* Barra unificada de busca + alternância Feed / Pessoas */}
+      <section aria-label="Descoberta e filtros" className="space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <nav
+            aria-label="Seções da comunidade"
+            className="grid w-full grid-cols-2 gap-1 rounded-xl border border-border bg-surface p-1 sm:max-w-sm"
+          >
+            <button
+              type="button"
+              onClick={() => setActiveTab("feed")}
+              className={`min-h-9 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors sm:text-sm ${
+                activeTab === "feed"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              Projetos ({feedProjects.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("people")}
+              className={`min-h-9 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors sm:text-sm ${
+                activeTab === "people"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              Pessoas ({peopleResults.length})
+            </button>
+          </nav>
+
+          <form
+            onSubmit={handleSearchSubmit}
+            className="flex flex-1 gap-2 lg:max-w-md"
+          >
+            <label htmlFor="codit-community-search" className="sr-only">
+              Pesquisar pessoas por @usuário ou nome
+            </label>
+            <input
+              id="codit-community-search"
+              type="search"
+              value={searchInput}
+              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Buscar colega por @usuário ou nome..."
+              className="min-h-10 flex-1 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+            />
             <button
               type="submit"
               disabled={!isConfigured || !isOnline}
-              className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
               Buscar @
             </button>
@@ -491,164 +522,105 @@ export function CommunityHub() {
                   setSearchInput("");
                   void runPeopleSearch("");
                 }}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2.5 text-sm font-medium text-foreground hover:border-accent"
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3 py-2 text-xs font-medium text-muted hover:text-foreground"
               >
                 Limpar
               </button>
             ) : null}
+          </form>
+        </div>
+
+        {!isConfigured ? (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-foreground"
+          >
+            <p className="font-semibold">Configuração do Supabase pendente</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted sm:text-sm">
+              Configure{" "}
+              <code className="font-mono text-foreground">
+                NEXT_PUBLIC_SUPABASE_URL
+              </code>{" "}
+              e{" "}
+              <code className="font-mono text-foreground">
+                NEXT_PUBLIC_SUPABASE_ANON_KEY
+              </code>{" "}
+              em <code className="font-mono">.env.local</code> para carregar
+              perfis e projetos da Comunidade.
+            </p>
           </div>
-        </form>
+        ) : null}
+
+        {permissionGrantMissing ? (
+          <div
+            role="alert"
+            className="space-y-2 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-4 text-xs leading-relaxed text-foreground sm:text-sm"
+          >
+            <p className="font-bold">
+              Permissão de acesso às tabelas pendente no Supabase (código 42501)
+            </p>
+            <p className="text-muted">
+              Execute o arquivo{" "}
+              <code className="font-mono text-foreground">
+                supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql
+              </code>{" "}
+              no <strong>SQL Editor</strong> do painel Supabase e recarregue.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void reloadFriendshipsAndFeed();
+                void runPeopleSearch(searchInput);
+              }}
+              disabled={!isConfigured || !isOnline}
+              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        ) : null}
+
+        {migrationMissing ? (
+          <div
+            role="alert"
+            className="space-y-1.5 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-4 text-xs leading-relaxed text-foreground sm:text-sm"
+          >
+            <p className="font-bold">
+              Migração da rede social pendente no Supabase
+            </p>
+            <p className="text-muted">
+              Execute{" "}
+              <code className="font-mono text-foreground">
+                supabase/migrations/20261123000002_add_social_network.sql
+              </code>{" "}
+              no <strong>SQL Editor</strong> do painel Supabase.
+            </p>
+          </div>
+        ) : null}
+
+        {socialError && !migrationMissing && !permissionGrantMissing ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs font-medium text-foreground sm:text-sm"
+          >
+            <p className="min-w-0 flex-1">{socialError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                void reloadFriendshipsAndFeed();
+                void runPeopleSearch(searchInput);
+              }}
+              disabled={!isConfigured || !isOnline}
+              className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        ) : null}
       </section>
 
-      {!isConfigured ? (
-        <div
-          role="status"
-          className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 text-sm text-foreground"
-        >
-          <p className="font-semibold">Configuração do Supabase pendente</p>
-          <p className="mt-1 text-xs leading-relaxed text-muted sm:text-sm">
-            Configure{" "}
-            <code className="font-mono text-foreground">
-              NEXT_PUBLIC_SUPABASE_URL
-            </code>{" "}
-            e{" "}
-            <code className="font-mono text-foreground">
-              NEXT_PUBLIC_SUPABASE_ANON_KEY
-            </code>{" "}
-            em <code className="font-mono">.env.local</code> para carregar
-            perfis e projetos da Comunidade.
-          </p>
-        </div>
-      ) : null}
-
-      {permissionGrantMissing ? (
-        <div
-          role="alert"
-          className="space-y-2.5 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-5 text-xs leading-relaxed text-foreground sm:text-sm"
-        >
-          <p className="font-bold">
-            Permissão de acesso às tabelas pendente no Supabase (código 42501)
-          </p>
-          <p className="text-muted">
-            As políticas RLS estão ativas, mas faltam os privilégios{" "}
-            <code className="font-mono text-foreground">
-              GRANT SELECT / INSERT / UPDATE / DELETE
-            </code>{" "}
-            nas tabelas sociais para os papéis{" "}
-            <code className="font-mono text-foreground">anon</code> e{" "}
-            <code className="font-mono text-foreground">authenticated</code>.
-          </p>
-          <p className="text-muted">
-            Execute o arquivo{" "}
-            <code className="font-mono text-foreground">
-              supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql
-            </code>{" "}
-            no <strong>SQL Editor</strong> do painel Supabase e recarregue.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              void reloadFriendshipsAndFeed();
-              void runPeopleSearch(searchInput);
-            }}
-            disabled={!isConfigured || !isOnline}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
-          >
-            Tentar novamente
-          </button>
-        </div>
-      ) : null}
-
-      {migrationMissing ? (
-        <div
-          role="alert"
-          className="space-y-2 rounded-2xl border border-amber-500/45 bg-amber-500/10 p-5 text-xs leading-relaxed text-foreground sm:text-sm"
-        >
-          <p className="font-bold">
-            Migração da rede social pendente no Supabase
-          </p>
-          <p className="text-muted">
-            As tabelas ou colunas sociais (
-            <code className="font-mono text-foreground">public_profiles</code>,{" "}
-            <code className="font-mono text-foreground">friendships</code>,{" "}
-            <code className="font-mono text-foreground">project_likes</code>,{" "}
-            <code className="font-mono text-foreground">project_comments</code>{" "}
-            e <code className="font-mono text-foreground">profiles.username</code>
-            ) ainda não foram aplicadas neste projeto Supabase.
-          </p>
-          <p className="text-muted">
-            Execute o arquivo{" "}
-            <code className="font-mono text-foreground">
-              supabase/migrations/20261123000002_add_social_network.sql
-            </code>{" "}
-            no <strong>SQL Editor</strong> do painel Supabase e recarregue esta
-            página.
-          </p>
-        </div>
-      ) : null}
-
-      {socialError && !migrationMissing && !permissionGrantMissing ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs font-medium text-foreground sm:text-sm"
-        >
-          <p className="min-w-0 flex-1">{socialError}</p>
-          <button
-            type="button"
-            onClick={() => {
-              void reloadFriendshipsAndFeed();
-              void runPeopleSearch(searchInput);
-            }}
-            disabled={!isConfigured || !isOnline}
-            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
-          >
-            Tentar novamente
-          </button>
-        </div>
-      ) : null}
-
-      {/* Abas focadas exclusivamente em Comunidade */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <nav
-          aria-label="Seções da comunidade"
-          className="grid w-full grid-cols-2 gap-1.5 rounded-2xl border border-border bg-surface p-1.5 sm:max-w-md"
-        >
-          <button
-            type="button"
-            onClick={() => setActiveTab("feed")}
-            className={`min-h-10 rounded-xl px-4 py-2 text-xs font-semibold transition-colors sm:text-sm ${
-              activeTab === "feed"
-                ? "bg-accent text-accent-foreground shadow-xs"
-                : "text-muted hover:bg-surface-muted hover:text-foreground"
-            }`}
-          >
-            Feed de Projetos ({feedProjects.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("people")}
-            className={`min-h-10 rounded-xl px-4 py-2 text-xs font-semibold transition-colors sm:text-sm ${
-              activeTab === "people"
-                ? "bg-accent text-accent-foreground shadow-xs"
-                : "text-muted hover:bg-surface-muted hover:text-foreground"
-            }`}
-          >
-            Explorar Pessoas ({peopleResults.length})
-          </button>
-        </nav>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/projetos"
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
-          >
-            + Publicar meu projeto
-          </Link>
-        </div>
-      </div>
-
       {initialLoading || isAuthLoading ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-border bg-surface py-12 text-center">
+        <div className="codit-panel flex flex-col items-center justify-center gap-3 py-14 text-center">
           <div className="h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent" />
           <p className="text-sm text-muted">
             Carregando perfis e projetos da Comunidade...
@@ -656,35 +628,34 @@ export function CommunityHub() {
         </div>
       ) : activeTab === "feed" ? (
         <section aria-label="Feed de mini-projetos" className="space-y-4">
-          {/* Barra de filtros do feed */}
-          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => handleFeedScopeChange("all")}
-                className={`min-h-10 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors ${
+                className={`min-h-9 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
                   feedScope === "all"
                     ? "bg-accent-soft text-accent-strong"
-                    : "border border-border bg-surface-muted text-muted hover:text-foreground"
+                    : "border border-border bg-surface text-muted hover:text-foreground"
                 }`}
               >
-                Todos visíveis
+                Todos
               </button>
               <button
                 type="button"
                 onClick={() => handleFeedScopeChange("friends")}
                 disabled={!userId}
-                className={`min-h-10 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`min-h-9 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   feedScope === "friends"
                     ? "bg-accent-soft text-accent-strong"
-                    : "border border-border bg-surface-muted text-muted hover:text-foreground"
+                    : "border border-border bg-surface text-muted hover:text-foreground"
                 }`}
               >
                 Somente amigos
               </button>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-wrap items-center gap-2">
               <label htmlFor="codit-feed-language" className="sr-only">
                 Filtrar por linguagem
               </label>
@@ -696,7 +667,7 @@ export function CommunityHub() {
                     event.target.value as SandboxLanguage | "all",
                   )
                 }
-                className="min-h-10 rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-foreground focus:border-accent focus:outline-none"
+                className="min-h-9 rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground focus:border-accent focus:outline-none"
               >
                 <option value="all">Todas as linguagens</option>
                 {Object.entries(SANDBOX_LANGUAGE_LABELS).map(
@@ -716,15 +687,15 @@ export function CommunityHub() {
                 type="search"
                 value={feedTextFilter}
                 onChange={(event) => setFeedTextFilter(event.target.value)}
-                placeholder="Filtrar feed por título ou @..."
-                className="min-h-10 rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                placeholder="Filtrar feed..."
+                className="min-h-9 w-full rounded-xl border border-border bg-surface px-3 py-1.5 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:w-48"
               />
 
               <button
                 type="button"
                 onClick={() => void reloadFeed(feedScope, feedLanguage)}
                 disabled={feedLoading || !isConfigured || !isOnline}
-                className="min-h-10 rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
+                className="min-h-9 rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-60"
               >
                 {feedLoading ? "Atualizando..." : "Atualizar"}
               </button>
@@ -732,23 +703,23 @@ export function CommunityHub() {
           </div>
 
           {filteredFeedProjects.length === 0 ? (
-            <div className="space-y-2 rounded-3xl border border-dashed border-border bg-surface p-8 text-center">
+            <div className="codit-panel space-y-2 border-dashed p-8 text-center">
               <p className="text-sm font-semibold text-foreground">
                 {feedScope === "friends"
                   ? "Nenhum projeto de amigos para exibir ainda."
-                  : "Nenhum mini-projeto encontrado com os filtros atuais."}
+                  : "Nenhum projeto encontrado com os filtros atuais."}
               </p>
               <p className="text-xs text-muted">
                 {feedScope === "friends"
-                  ? "Adicione colegas na aba Explorar Pessoas ou no ícone de Amizades no topo para ver projetos exclusivos."
-                  : "Publique um mini-projeto na página Projetos com visibilidade Portfólio público ou Somente amigos."}
+                  ? "Adicione colegas na aba Pessoas ou pelo botão Amigos no topo."
+                  : "Publique um projeto com visibilidade Portfólio público ou Somente amigos."}
               </p>
               <div className="pt-2">
                 <Link
                   href="/projetos"
                   className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90"
                 >
-                  Ir para Projetos
+                  Abrir meus projetos
                 </Link>
               </div>
             </div>
@@ -763,62 +734,14 @@ export function CommunityHub() {
                 return (
                   <article
                     key={item.project.id}
-                    className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-surface shadow-xs transition-colors hover:border-accent/60"
+                    className="codit-panel-interactive flex flex-col justify-between p-5"
                   >
-                    <div>
-                      <div
-                        aria-hidden="true"
-                        className="h-1.5 w-full"
-                        style={{ backgroundColor: meta.accentHex }}
-                      />
-
-                      <div className="space-y-3 p-5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <LanguageBadge
-                            language={item.project.primary_language}
-                            size="xs"
-                          />
-                          <span className="rounded-lg border border-border bg-surface-muted px-2 py-0.5 text-[11px] text-muted">
-                            {SANDBOX_VISIBILITY_LABELS[item.project.visibility]}
-                          </span>
-                        </div>
-
-                        <div>
-                          <h2 className="text-base font-bold text-foreground">
-                            {item.project.title}
-                          </h2>
-                          {item.project.description ? (
-                            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">
-                              {item.project.description}
-                            </p>
-                          ) : null}
-                        </div>
-
-                        <div className="overflow-hidden rounded-xl border border-border/80 bg-[#0d0b19]">
-                          <div className="flex items-center justify-between border-b border-white/10 px-3 py-1 text-[10px] text-slate-400">
-                            <span className="font-mono">{meta.fileName}</span>
-                            <span>
-                              {item.project.source_code.length.toLocaleString(
-                                "pt-BR",
-                              )}{" "}
-                              chars
-                            </span>
-                          </div>
-                          <pre className="max-h-24 overflow-hidden px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-200">
-                            <code>
-                              {item.project.source_code ||
-                                "// Projeto sem código"}
-                            </code>
-                          </pre>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 border-t border-border bg-surface-muted/25 px-5 py-4">
-                      <div className="flex items-center justify-between gap-2">
+                    <div className="space-y-3.5">
+                      {/* Pessoa primeiro */}
+                      <div className="flex items-start justify-between gap-2">
                         <Link
                           href={authorHref}
-                          className="flex min-w-0 items-center gap-2 text-xs hover:underline"
+                          className="flex min-w-0 items-center gap-2.5 text-xs hover:underline"
                         >
                           <UserAvatar
                             name={item.author?.full_name ?? "Estudante Codit"}
@@ -830,7 +753,7 @@ export function CommunityHub() {
                             <p className="truncate font-semibold text-foreground">
                               {item.author?.full_name ?? "Estudante Codit"}
                             </p>
-                            <p className="truncate font-mono text-[11px] text-accent-strong">
+                            <p className="truncate font-mono text-[11px] text-muted">
                               {item.author?.username
                                 ? `@${item.author.username}`
                                 : formatDatePtBr(item.project.updated_at)}
@@ -838,20 +761,56 @@ export function CommunityHub() {
                           </div>
                         </Link>
 
-                        <div className="flex shrink-0 items-center gap-3 text-xs text-muted">
-                          <span>
-                            {item.likedByViewer ? "♥" : "♡"} {item.likesCount}
-                          </span>
-                          <span>💬 {item.commentsCount}</span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <LanguageBadge
+                            language={item.project.primary_language}
+                            size="xs"
+                          />
                         </div>
+                      </div>
+
+                      <div>
+                        <h2 className="text-base font-bold text-foreground">
+                          {item.project.title}
+                        </h2>
+                        {item.project.description ? (
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">
+                            {item.project.description}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="codit-code-window">
+                        <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5 text-[10px] text-slate-400">
+                          <span className="font-mono text-slate-200">
+                            {meta.fileName}
+                          </span>
+                          <span>
+                            {SANDBOX_VISIBILITY_LABELS[item.project.visibility]}
+                          </span>
+                        </div>
+                        <pre className="max-h-24 overflow-hidden px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-200">
+                          <code>
+                            {item.project.source_code || "// Projeto sem código"}
+                          </code>
+                        </pre>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+                      <div className="flex items-center gap-3 text-xs text-muted">
+                        <span>
+                          {item.likedByViewer ? "♥" : "♡"} {item.likesCount}
+                        </span>
+                        <span>{item.commentsCount} comentários</span>
                       </div>
 
                       <button
                         type="button"
                         onClick={() => setSelectedProject(item)}
-                        className="inline-flex min-h-10 w-full items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                        className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
                       >
-                        Visualizar código e interagir
+                        Ver projeto
                       </button>
                     </div>
                   </article>
@@ -879,13 +838,13 @@ export function CommunityHub() {
           </div>
 
           {peopleResults.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-border bg-surface p-8 text-center">
+            <div className="codit-panel border-dashed p-8 text-center">
               <p className="text-sm font-semibold text-foreground">
                 Nenhuma pessoa encontrada.
               </p>
               <p className="mt-1 text-xs text-muted">
-                Tente buscar por outro <code className="font-mono">@usuário</code>{" "}
-                ou nome completo.
+                Tente buscar por outro{" "}
+                <code className="font-mono">@usuário</code> ou nome completo.
               </p>
             </div>
           ) : (
@@ -902,81 +861,73 @@ export function CommunityHub() {
                 return (
                   <article
                     key={person.id}
-                    className="flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-surface shadow-xs transition-colors hover:border-accent/60"
+                    className="codit-panel-interactive flex flex-col justify-between p-5"
                   >
-                    <div>
-                      <div
-                        aria-hidden="true"
-                        className="h-1.5 w-full"
-                        style={{ backgroundColor: accentTheme.swatchHex }}
-                      />
-
-                      <div className="space-y-3 p-5">
-                        <div className="flex items-start gap-3">
-                          <UserAvatar
-                            name={person.full_name}
-                            username={person.username}
-                            avatarUrl={person.avatar_url}
-                            size="md"
-                          />
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <Link
-                              href={profileHref}
-                              className="block truncate text-sm font-bold text-foreground hover:underline sm:text-base"
-                            >
-                              {person.full_name}
-                            </Link>
-                            <p className="truncate font-mono text-xs font-semibold text-accent-strong">
-                              @{person.username}
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3">
+                        <UserAvatar
+                          name={person.full_name}
+                          username={person.username}
+                          avatarUrl={person.avatar_url}
+                          size="md"
+                        />
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <Link
+                            href={profileHref}
+                            className="block truncate text-sm font-bold text-foreground hover:underline sm:text-base"
+                          >
+                            {person.full_name}
+                          </Link>
+                          <p className="truncate font-mono text-xs font-semibold text-accent-strong">
+                            @{person.username}
+                          </p>
+                          {person.headline ? (
+                            <p className="truncate text-xs font-medium text-foreground/85">
+                              {person.headline}
                             </p>
-                            {person.headline ? (
-                              <p className="truncate text-xs font-medium text-foreground/85">
-                                {person.headline}
-                              </p>
-                            ) : null}
-                            {person.bio ? (
-                              <p className="line-clamp-2 text-xs leading-relaxed text-muted">
-                                {person.bio}
-                              </p>
-                            ) : null}
-                          </div>
+                          ) : null}
+                          {person.bio ? (
+                            <p className="line-clamp-2 pt-0.5 text-xs leading-relaxed text-muted">
+                              {person.bio}
+                            </p>
+                          ) : null}
                         </div>
-
-                        {person.skills.length > 0 ? (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {person.skills.slice(0, 4).map((skill) => {
-                              const matchedLang = findLanguageForSkill(skill);
-                              return (
-                                <span
-                                  key={skill}
-                                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[11px] font-medium text-foreground ${accentTheme.borderClass} ${accentTheme.softBgClass}`}
-                                >
-                                  {matchedLang ? (
-                                    <LanguageIcon
-                                      language={matchedLang}
-                                      size={12}
-                                    />
-                                  ) : null}
-                                  <span>{skill}</span>
-                                </span>
-                              );
-                            })}
-                            {person.skills.length > 4 ? (
-                              <span className="text-[11px] font-medium text-muted">
-                                +{person.skills.length - 4}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
                       </div>
+
+                      {person.skills.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {person.skills.slice(0, 4).map((skill) => {
+                            const matchedLang = findLanguageForSkill(skill);
+                            return (
+                              <span
+                                key={skill}
+                                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[11px] font-medium text-foreground ${accentTheme.borderClass} ${accentTheme.softBgClass}`}
+                              >
+                                {matchedLang ? (
+                                  <LanguageIcon
+                                    language={matchedLang}
+                                    size={12}
+                                  />
+                                ) : null}
+                                <span>{skill}</span>
+                              </span>
+                            );
+                          })}
+                          {person.skills.length > 4 ? (
+                            <span className="text-[11px] font-medium text-muted">
+                              +{person.skills.length - 4}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-muted/25 px-5 py-3">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                       <Link
                         href={profileHref}
-                        className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                        className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent"
                       >
-                        Ver perfil e projetos
+                        Ver perfil
                       </Link>
                       <FriendshipActionButton
                         viewerId={userId}

@@ -301,21 +301,20 @@ export function AccountWorkspace() {
         isEditingPreview={profileDraftOverride !== null}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 shadow-xs sm:px-5">
+      <div className="codit-panel flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 shadow-xs sm:px-5">
         <div className="space-y-0.5">
           <p className="text-xs font-semibold text-foreground sm:text-sm">
-            Desenvolvimento de código em espaço dedicado
+            Estúdio de código em espaço dedicado
           </p>
           <p className="text-xs text-muted">
-            Crie, edite e execute seus mini-projetos na aba exclusiva de
-            Projetos.
+            Crie, edite e execute seus projetos na aba exclusiva de Projetos.
           </p>
         </div>
         <Link
           href="/projetos"
           className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition-colors hover:border-accent"
         >
-          Ir para Estúdio de Projetos ({projects.length}) →
+          Abrir projetos ({projects.length})
         </Link>
       </div>
 

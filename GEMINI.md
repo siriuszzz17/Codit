@@ -1,6 +1,6 @@
 # GEMINI.md — Guia Rápido e Constituição do Projeto Codit
 
-> **Estado atual:** Fases 2–4 integradas + **Sistema de Mensagens Embutido (`/mensagens`)** — Next.js (App Router + exportação estática `out/`), TypeScript `strict`, Tailwind CSS, Supabase Auth + RLS, Comunidade Codit (`@username`, amizades, feed), Estúdio 15 linguagens + Sandbox `iframe` isolado, e **Sistema de Mensagens entre amigos, grupos de até 10 pessoas, chamadas de voz WebRTC e compartilhamento de tela (sem vídeo de câmera)**, além de PWA, Tauri v2 e Capacitor 8 Android. **Pendente:** catálogo curricular, Python Pyodide Web Worker e tutor Octopy.
+> **Estado atual:** UI Remake (`Warm Technical Craft`) + Sistema Leve de Papéis de Parede/Temas (`src/modules/theme/`) + Fases 2–4 & Sistema de Mensagens Embutido (`/mensagens`) — Next.js (App Router + exportação estática `out/`), TypeScript `strict`, Tailwind CSS, Supabase Auth + RLS, Comunidade Codit (`@username`, amizades, feed), Estúdio 15 linguagens + Sandbox `iframe` isolado, e **Sistema de Mensagens entre amigos, grupos de até 10 pessoas, chamadas de voz WebRTC e compartilhamento de tela (sem vídeo de câmera)**, além de PWA, Tauri v2 e Capacitor 8 Android. **Pendente:** catálogo curricular, Python Pyodide Web Worker e tutor Octopy.
 
 ## 1. Visão Geral e Stack Alvo (Planejada)
 - **Produto:** **Codit** — plataforma SaaS educacional Web Responsiva Mobile-First + PWA instalável, para ensinar programação (básico ao avançado), Inteligência Artificial, Git/GitHub, boas práticas e preparação para carreira tech (portfólio e entrevistas).
@@ -27,13 +27,19 @@
   - Commits no padrão **Conventional Commits** (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`).
 - **Aplicação:** `npm run dev` · `npm run lint` · `npm run typecheck` · `npm run test` · `npm run build` · `npm run tauri:dev` · `npm run tauri:build` · `npm run android:sync` · `npm run android:open` · `migrate` `[Pendente — após fechamento de DEC-001]` (ver [docs/arquitetura.md](./docs/arquitetura.md)).
 
-## 5. Índice da Documentação (`docs/`)
+## 5. Diretrizes Permanentes de UI & Design System
+- **Estética Oficial ("Warm Technical Craft"):** equilibrar precisão técnica nas áreas de código (`/projetos`, Sandbox) com leveza e intuição nas áreas sociais (`/comunidade`, `/mensagens`, `/conta`). Consultar obrigatoriamente [docs/design-system.md](./docs/design-system.md) antes de criar ou alterar telas.
+- **Regras de Composição:** preferir cabeçalhos de página abertos (evitar embrulhar títulos em cartões fechados), separar formulários longos em abas curtas, omitir rótulos `eyebrow` em caixa alta e setas `→` em botões/links, e preservar o padrão `pt-BR` ativo e direto.
+- **Temas e Papéis de Parede Leves:** toda customização visual global do app usa camadas CSS/SVG inline em `src/modules/theme/*` e 4 identificadores curtos em `public.profiles` (proibido salvar imagens/uploads pesados ou Base64 no banco).
+
+## 6. Índice da Documentação (`docs/`)
 
 | Documento | Conteúdo |
 | :--- | :--- |
+| [docs/design-system.md](./docs/design-system.md) | Padrão visual permanente, 3 zonas de peso, tipografia, regras anti-clichê e sistema de temas/papéis de parede |
 | [docs/arquitetura.md](./docs/arquitetura.md) | Stack alvo, PWA, Sandbox (client-side + Judge0/Piston), proxy Octopy, Google OAuth, `/api/v1` e ADRs |
 | [docs/banco-de-dados.md](./docs/banco-de-dados.md) | Modelagem PostgreSQL, isolamento `user_id` + RLS, DER, dicionário de dados, índices e LGPD |
 | [docs/regras-negocio.md](./docs/regras-negocio.md) | Glossário, RBAC, catálogo `RN-XXX`, fluxos do Octopy/Sandbox e casos de borda |
-| [docs/status.md](./docs/status.md) | Estado real (fase inicial sem código), roadmap, decisões em aberto (`DEC-XXX`) e changelog |
+| [docs/status.md](./docs/status.md) | Estado real, roadmap, decisões em aberto (`DEC-XXX`) e changelog |
 
 > **Sincronização obrigatória:** Toda entrega técnica que altere arquitetura, schema, regra de negócio ou progresso deve atualizar o respectivo documento em `docs/` no mesmo fluxo.

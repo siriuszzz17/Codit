@@ -34,7 +34,7 @@ O **Codit** é uma plataforma SaaS educacional projetada para funcionar de forma
 | :--- | :--- | :--- |
 | **Linguagem** | TypeScript (`strict: true`) | Ponta a ponta (frontend, API routes, validação e camada de dados) |
 | **Framework Full-Stack / UI** | Next.js (App Router) + React | Renderização híbrida (RSC + Client Components interativos para Sandbox/Octopy) e exportação estática `out/` para empacotamento nativo |
-| **Estilização** | Tailwind CSS | Design system responsivo Mobile-First e suporte a tema escuro/claro |
+| **Estilização** | Tailwind CSS + Design System próprio | Layout "Warm Technical Craft" ([design-system.md](./design-system.md)), fontes `Plus Jakarta Sans` e `JetBrains Mono` via `next/font/google`, 6 temas globais e 8 papéis de parede procedurais CSS/SVG (`src/modules/theme/*`) |
 | **PWA** | Web App Manifest + Service Worker | Instalação em Android/iOS/Desktop e cache seguro de assets públicos (nunca cachear rotas autenticadas privadas no SW compartilhado) |
 | **Empacotamento Desktop (Windows)** | Tauri v2 (`com.codit.app`) | Shell nativo WebView2 sobre `out/`, com `tauri-plugin-updater` e `tauri-plugin-process` pré-configurados para atualizações via pop-up |
 | **Empacotamento Mobile (Android)** | Capacitor 8 (`com.codit.app`) | Projeto nativo Android em `android/` empacotando `out/` via `npx cap sync android` para geração de `.apk`/`.aab` |
@@ -225,7 +225,7 @@ A mesma base TypeScript/React do Codit alimenta três canais de distribuição a
 - **Segurança de segredos em clientes empacotados:** assim como no navegador Web, variáveis sensíveis (`.env`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) **nunca** entram no bundle `out/`, no binário Tauri ou no APK Android; todas as chamadas autenticadas e de IA apontarão para o backend remoto via HTTPS.
 
 ### Atualização Automática Multiplataforma (Desktop Tauri + Android Capacitor)
-- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.9"`).
+- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.10"`).
 - **Backend Rust (`src-tauri/`):** `Cargo.toml` inclui `tauri-plugin-updater = "2"` (somente alvos desktop) e `tauri-plugin-process = "2"`; `src-tauri/capabilities/default.json` concede `"updater:default"` e `"process:default"` à janela `main`; `src-tauri/src/lib.rs` ativa o plugin quando `plugins.updater.pubkey` estiver preenchida em `tauri.conf.json`.
 - **Camada Cliente Unificada:**
   - [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` via imports dinâmicos para desktop Windows.
@@ -272,8 +272,8 @@ TCC-Codit/
 │   └── sw.js                  # Service Worker seguro (nunca cacheia /api/*)
 ├── src/
 │   ├── app/                   # App Router (/, /auth, /auth/callback, /auth/native-callback, /projetos, /comunidade, /comunidade/perfil, /conta, /offline, /api/v1/health)
-│   ├── components/            # Layout (TopNavbar), Brand (OctopyBadge), Auth, Account (Perfil), Projects (Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit & FriendshipsDrawer), PWA e Native (AppUpdateModal)
-│   ├── modules/               # Domínios auth, profiles, sandbox e social (serviços tipados + AuthProvider)
+│   ├── components/            # Layout (TopNavbar, AppearanceMenu), Home (HeroWorkbench), Brand (OctopyBadge), Auth, Account (Perfil), Projects (Estúdio), Sandbox (LanguageIcon, SandboxPreview), Social (Comunidade Codit & FriendshipsDrawer), Messaging (/mensagens), PWA e Native (AppUpdateModal)
+│   ├── modules/               # Domínios auth, profiles, sandbox, social, messaging e theme (appearance-catalog/service/provider)
 │   └── lib/                   # supabase/*, navigation.ts, social-events.ts, native-oauth.ts, env.ts, problem-details.ts, logger.ts, updaters, use-is-online.ts
 └── tests/
     ├── mocks/
@@ -315,3 +315,6 @@ TCC-Codit/
   - **Persistência & Realtime:** tabelas `public.chat_conversations`, `public.chat_conversation_members` e `public.chat_messages` protegidas por RLS e RPCs `SECURITY DEFINER` com `FOR UPDATE` no Supabase PostgreSQL (`20261124000002_add_embedded_messaging.sql`), sincronizadas via `supabase_realtime` (`postgres_changes` + canais efêmeros `codit:conv:{id}` e `codit:user-inbox:{userId}`).
   - **Voz & Tela WebRTC (Mesh P2P até 10 participantes):** sinalização *Perfect Negotiation* (`offer`, `answer`, `ice-candidate`, `screen-share-stopped`, `hangup`) e presença via canal `codit:call:{conversationId}` do Supabase Realtime; captura estritamente limitada a microfone (`getUserMedia({ audio: ..., video: false })` com modo escuta resiliente caso o dispositivo não possua microfone) e tela (`getDisplayMedia({ video: ..., audio: false })` na Web/Desktop e serviço em primeiro plano [ScreenCaptureService.java](../android/app/src/main/java/com/codit/app/ScreenCaptureService.java) via `MediaProjection` + `VirtualDisplay` + `<canvas>.captureStream()` ponteado por `window.CoditNative` no Android `.apk`), mantendo `Permissions-Policy: camera=()` bloqueada e sem permissão `CAMERA` no Android (`AndroidManifest.xml` inclui apenas `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PROJECTION`).
   - **ICE / STUN / TURN (Contingência):** padrão usa STUN público (`stun:stun.l.google.com:19302`, `stun:stun1.l.google.com:19302`, `stun:stun.cloudflare.com:3478`), com sobrecarga opcional via `NEXT_PUBLIC_WEBRTC_ICE_SERVERS_JSON` para TURN em redes com NAT simétrico restrito.
+- **ADR-009 (Aceita — 2026-11-24):** Design System "Warm Technical Craft" ([design-system.md](./design-system.md)) + Sistema Leve de Temas e Papéis de Parede (`src/modules/theme/*`, `RN-105`):
+  - **Renderização sem binários:** todos os 6 temas e 8 papéis de parede utilizam variáveis CSS e SVG inline URL-encoded em `body::before`, compatíveis com a CSP estrita de `next.config.ts` (`img-src 'self' data:`) e `src-tauri/tauri.conf.json` (`script-src 'self'`), funcionando offline e mantendo o padrão original (`original` / `system` / `balanced`).
+  - **Persistência em 3 camadas (~52 bytes no banco):** preferências aplicadas instantaneamente via `localStorage`, sincronizadas em 4 colunas `VARCHAR` curtas em `public.profiles` (`20261124000003_add_app_appearance_preferences.sql`) com fallback silencioso para `user_metadata.codit_appearance` quando a migração ainda não foi aplicada.

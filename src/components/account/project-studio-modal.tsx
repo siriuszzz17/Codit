@@ -89,6 +89,14 @@ export function ProjectStudioModal({
   const [liveUrl, setLiveUrl] = useState(editingProject?.live_url ?? "");
   const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
   const [confirmTemplateSwap, setConfirmTemplateSwap] = useState(false);
+  const [showOptionalDetails, setShowOptionalDetails] = useState(
+    Boolean(
+      editingProject?.description ||
+        (editingProject?.tags && editingProject.tags.length > 0) ||
+        editingProject?.repository_url ||
+        editingProject?.live_url,
+    ),
+  );
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const meta = getLanguageMeta(language);
@@ -196,7 +204,7 @@ export function ProjectStudioModal({
       aria-labelledby="studio-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-0 backdrop-blur-xs sm:p-4"
     >
-      <div className="flex h-dvh w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 bg-surface shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl sm:border sm:border-border">
+      <div className="flex h-dvh w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 bg-surface-elevated shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border sm:border-border">
         {/* Cabeçalho do Estúdio */}
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/60 pb-3 pt-[calc(0.75rem+var(--codit-safe-top))] pl-[calc(1rem+var(--codit-safe-left))] pr-[calc(1rem+var(--codit-safe-right))] sm:pt-3 sm:pl-[calc(1.5rem+var(--codit-safe-left))] sm:pr-[calc(1.5rem+var(--codit-safe-right))]">
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -267,7 +275,7 @@ export function ProjectStudioModal({
                 </div>
               </div>
 
-              {/* Metadados do projeto */}
+              {/* Metadados essenciais + Visibilidade */}
               <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <label
@@ -289,31 +297,10 @@ export function ProjectStudioModal({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label
-                    htmlFor="codit-studio-description"
-                    className="block text-xs font-semibold text-foreground"
-                  >
-                    Descrição curta (opcional)
-                  </label>
-                  <input
-                    id="codit-studio-description"
-                    type="text"
-                    maxLength={500}
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="O que este projeto faz e o que você praticou?"
-                    className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2 text-base text-foreground focus:border-accent focus:outline-none sm:text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.2fr_1fr]">
-                {/* Visibilidade + Fixar */}
-                <div className="space-y-1.5">
                   <span className="block text-xs font-semibold text-foreground">
-                    Visibilidade &amp; Destaque
+                    Visibilidade e destaque
                   </span>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {VISIBILITY_OPTIONS.map((option) => {
                       const selected = visibility === option.id;
                       return (
@@ -343,102 +330,147 @@ export function ProjectStudioModal({
                           : "border-border bg-surface-muted/50 text-muted hover:border-accent/60 hover:text-foreground"
                       }`}
                     >
-                      {isPinned ? "★ Fixado no topo" : "☆ Fixar projeto"}
+                      {isPinned ? "★ Fixado" : "☆ Fixar"}
                     </button>
                   </div>
-                </div>
-
-                {/* Tags */}
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="codit-studio-tag-input"
-                    className="block text-xs font-semibold text-foreground"
-                  >
-                    Tags ({tags.length}/6)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      id="codit-studio-tag-input"
-                      type="text"
-                      maxLength={24}
-                      value={tagInput}
-                      onChange={(event) => setTagInput(event.target.value)}
-                      onKeyDown={handleTagKeyDown}
-                      placeholder="ex.: frontend, algoritmo"
-                      className="min-h-9 flex-1 rounded-xl border border-border bg-background px-3 py-1.5 text-base text-foreground focus:border-accent focus:outline-none sm:text-xs"
-                    />
-                    <button
-                      type="button"
-                      disabled={!tagInput.trim() || tags.length >= 6}
-                      onClick={() => addTag(tagInput)}
-                      className="min-h-9 rounded-xl border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-50"
-                    >
-                      + Tag
-                    </button>
-                  </div>
-                  {tags.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-foreground"
-                        >
-                          <span>#{tag}</span>
-                          <button
-                            type="button"
-                            aria-label={`Remover tag ${tag}`}
-                            onClick={() =>
-                              setTags((current) =>
-                                current.filter((item) => item !== tag),
-                              )
-                            }
-                            className="text-muted hover:text-foreground"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
                 </div>
               </div>
 
-              {/* Links externos opcionais */}
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="codit-studio-repo"
-                    className="block text-xs font-semibold text-foreground"
-                  >
-                    Link do repositório GitHub (opcional)
-                  </label>
-                  <input
-                    id="codit-studio-repo"
-                    type="url"
-                    maxLength={300}
-                    value={repositoryUrl}
-                    onChange={(event) => setRepositoryUrl(event.target.value)}
-                    placeholder="https://github.com/usuario/projeto"
-                    className="min-h-10 w-full rounded-xl border border-border bg-background px-3.5 py-2 text-base text-foreground focus:border-accent focus:outline-none sm:text-xs"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="codit-studio-live"
-                    className="block text-xs font-semibold text-foreground"
-                  >
-                    Link da demo / deploy (opcional)
-                  </label>
-                  <input
-                    id="codit-studio-live"
-                    type="url"
-                    maxLength={300}
-                    value={liveUrl}
-                    onChange={(event) => setLiveUrl(event.target.value)}
-                    placeholder="https://meu-projeto.vercel.app"
-                    className="min-h-10 w-full rounded-xl border border-border bg-background px-3.5 py-2 text-base text-foreground focus:border-accent focus:outline-none sm:text-xs"
-                  />
-                </div>
+              {/* Detalhes opcionais recolhíveis para priorizar código + preview */}
+              <div className="rounded-2xl border border-border bg-surface-muted/35">
+                <button
+                  type="button"
+                  onClick={() => setShowOptionalDetails((current) => !current)}
+                  aria-expanded={showOptionalDetails}
+                  className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-xs font-semibold text-foreground"
+                >
+                  <span>
+                    Detalhes e links opcionais (descrição, tags, GitHub e demo)
+                  </span>
+                  <span className="text-muted">
+                    {showOptionalDetails ? "Ocultar" : "Expandir"}
+                  </span>
+                </button>
+
+                {showOptionalDetails ? (
+                  <div className="space-y-3.5 border-t border-border p-4">
+                    <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="codit-studio-description"
+                          className="block text-xs font-semibold text-foreground"
+                        >
+                          Descrição curta (opcional)
+                        </label>
+                        <input
+                          id="codit-studio-description"
+                          type="text"
+                          maxLength={500}
+                          value={description}
+                          onChange={(event) =>
+                            setDescription(event.target.value)
+                          }
+                          placeholder="O que este projeto faz e o que você praticou?"
+                          className="min-h-10 w-full rounded-xl border border-border bg-background px-3.5 py-2 text-base text-foreground focus:border-accent focus:outline-none sm:text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="codit-studio-tag-input"
+                          className="block text-xs font-semibold text-foreground"
+                        >
+                          Tags ({tags.length}/6)
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            id="codit-studio-tag-input"
+                            type="text"
+                            maxLength={24}
+                            value={tagInput}
+                            onChange={(event) =>
+                              setTagInput(event.target.value)
+                            }
+                            onKeyDown={handleTagKeyDown}
+                            placeholder="ex.: frontend, algoritmo"
+                            className="min-h-10 flex-1 rounded-xl border border-border bg-background px-3 py-1.5 text-base text-foreground focus:border-accent focus:outline-none sm:text-xs"
+                          />
+                          <button
+                            type="button"
+                            disabled={!tagInput.trim() || tags.length >= 6}
+                            onClick={() => addTag(tagInput)}
+                            className="min-h-10 rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent disabled:opacity-50"
+                          >
+                            + Tag
+                          </button>
+                        </div>
+                        {tags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-foreground"
+                              >
+                                <span>#{tag}</span>
+                                <button
+                                  type="button"
+                                  aria-label={`Remover tag ${tag}`}
+                                  onClick={() =>
+                                    setTags((current) =>
+                                      current.filter((item) => item !== tag),
+                                    )
+                                  }
+                                  className="text-muted hover:text-foreground"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="codit-studio-repo"
+                          className="block text-xs font-semibold text-foreground"
+                        >
+                          Link do repositório GitHub (opcional)
+                        </label>
+                        <input
+                          id="codit-studio-repo"
+                          type="url"
+                          maxLength={300}
+                          value={repositoryUrl}
+                          onChange={(event) =>
+                            setRepositoryUrl(event.target.value)
+                          }
+                          placeholder="https://github.com/usuario/projeto"
+                          className="min-h-10 w-full rounded-xl border border-border bg-background px-3.5 py-2 text-base text-foreground focus:border-accent focus:outline-none sm:text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="codit-studio-live"
+                          className="block text-xs font-semibold text-foreground"
+                        >
+                          Link da demo / deploy (opcional)
+                        </label>
+                        <input
+                          id="codit-studio-live"
+                          type="url"
+                          maxLength={300}
+                          value={liveUrl}
+                          onChange={(event) => setLiveUrl(event.target.value)}
+                          placeholder="https://meu-projeto.vercel.app"
+                          className="min-h-10 w-full rounded-xl border border-border bg-background px-3.5 py-2 text-base text-foreground focus:border-accent focus:outline-none sm:text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {/* Alternador mobile Editor / Preview */}

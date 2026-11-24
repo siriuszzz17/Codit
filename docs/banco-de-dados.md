@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql), [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql), [20261123000003_fix_grants_rls_and_username_cooldown.sql](../supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql), [20261124000001_sync_public_profile_customization.sql](../supabase/migrations/20261124000001_sync_public_profile_customization.sql) e [20261124000002_add_embedded_messaging.sql](../supabase/migrations/20261124000002_add_embedded_messaging.sql)) |
+| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql), [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql), [20261123000003_fix_grants_rls_and_username_cooldown.sql](../supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql), [20261124000001_sync_public_profile_customization.sql](../supabase/migrations/20261124000001_sync_public_profile_customization.sql), [20261124000002_add_embedded_messaging.sql](../supabase/migrations/20261124000002_add_embedded_messaging.sql) e [20261124000003_add_app_appearance_preferences.sql](../supabase/migrations/20261124000003_add_app_appearance_preferences.sql)) |
 | **Última atualização** | `2026-11-24` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
@@ -142,7 +142,7 @@ erDiagram
 
 > **Autenticação delegada ao Supabase Auth (`auth.users`):** credenciais de e-mail/senha, verificação de e-mail, fluxos Google OAuth 2.0 (PKCE) e tokens de sessão são gerenciados pelo esquema interno `auth` do Supabase. O esquema público (`public`) mantém a tabela `public.profiles` sincronizada 1:1 com `auth.users`.
 
-#### `public.profiles` *(Implementada na migração `20261122000001` e expandida nas `20261123000001`, `20261123000002` e `20261123000003`)*
+#### `public.profiles` *(Implementada na migração `20261122000001` e expandida nas `20261123000001`, `20261123000002`, `20261123000003` e `20261124000003`)*
 - **Propósito:** Perfil do estudante/administrador espelhado 1:1 com `auth.users(id)`, com personalização visual e dados de portfólio.
 - **Regras associadas:** `RN-001`, `RN-002`, `RN-003`, `RN-401`
 - **Triggers:**
@@ -174,6 +174,10 @@ erDiagram
 | `octopy_companion` | `VARCHAR(20)` | Não | `'coding'` (`chk_profiles_octopy_companion`) | Humor/variante do mascote Octopy no perfil |
 | `skills` | `TEXT[]` | Não | `'{}'` (`chk_profiles_skills_limit`, máx. 12) | Lista de habilidades e tecnologias |
 | `show_email` | `BOOLEAN` | Não | `FALSE` | Define se o e-mail aparece no cartão de perfil |
+| `color_mode` | `VARCHAR(12)` | Não | `'system'` (`chk_profiles_color_mode`) | Modo de iluminação do aplicativo (`system`, `light`, `dark`) |
+| `app_theme` | `VARCHAR(24)` | Não | `'original'` (`chk_profiles_app_theme`) | Tema global de cores do aplicativo (6 opções) |
+| `wallpaper_preset` | `VARCHAR(32)` | Não | `'original'` (`chk_profiles_wallpaper_preset`) | Papel de parede vetorial/CSS do aplicativo (8 presets leves) |
+| `wallpaper_intensity` | `VARCHAR(12)` | Não | `'balanced'` (`chk_profiles_wallpaper_intensity`) | Intensidade do papel de parede (`subtle`, `balanced`, `vivid`) |
 | `created_at` | `TIMESTAMPTZ` | Não | `NOW()` | Criação em UTC |
 | `updated_at` | `TIMESTAMPTZ` | Não | `NOW()` | Última atualização em UTC |
 

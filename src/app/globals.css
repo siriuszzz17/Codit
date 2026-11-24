@@ -1,20 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8f7fc;
-  --foreground: #141224;
-  --surface: #ffffff;
-  --surface-muted: #f0edfb;
-  --border: #dfd9f3;
-  --muted: #565171;
-  --accent: #7c3aed;
-  --accent-strong: #6d28d9;
-  --accent-soft: #ede9fe;
+  --background: #f4f6fb;
+  --foreground: #111625;
+  --surface-solid: #ffffff;
+  --surface-elevated-solid: #ffffff;
+  --surface-muted: #ebeef7;
+  --surface-alpha: 94%;
+  --surface: color-mix(in srgb, var(--surface-solid) var(--surface-alpha), transparent);
+  --surface-elevated: color-mix(in srgb, var(--surface-elevated-solid) 97%, transparent);
+  --border: #d8dfee;
+  --muted: #525b76;
+  --accent: #6338f0;
+  --accent-strong: #4e24d6;
+  --accent-soft: #eae5ff;
   --accent-foreground: #ffffff;
-  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
-    sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular,
-    Menlo, Monaco, Consolas, monospace;
+  --signal: #0d9488;
+  --wp-stroke: rgba(20, 26, 46, 0.08);
+  --wp-stroke-strong: rgba(99, 56, 240, 0.14);
+  --wp-opacity: 0.72;
+  --font-sans: var(--font-jakarta), "Plus Jakarta Sans", "Segoe UI", system-ui,
+    -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "Cascadia Code",
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --safe-area-inset-top: 0px;
   --safe-area-inset-right: 0px;
   --safe-area-inset-bottom: 0px;
@@ -37,25 +45,292 @@
   );
 }
 
+/* Modo escuro automático quando colorMode = "system" */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0a16;
-    --foreground: #f4f2ff;
-    --surface: #141228;
-    --surface-muted: #1b1836;
-    --border: #2c2752;
-    --muted: #b8b2d8;
-    --accent: #8b5cf6;
-    --accent-strong: #a78bfa;
-    --accent-soft: #231b46;
-    --accent-foreground: #0b0a16;
+  :root:not([data-color-mode="light"]) {
+    --background: #0a0e17;
+    --foreground: #ecf1fb;
+    --surface-solid: #111726;
+    --surface-elevated-solid: #161e31;
+    --surface-muted: #1a2338;
+    --border: #232e48;
+    --muted: #93a0c0;
+    --accent: #8b6bff;
+    --accent-strong: #b49eff;
+    --accent-soft: #211c44;
+    --accent-foreground: #0a0e17;
+    --signal: #2dd4bf;
+    --wp-stroke: rgba(226, 232, 240, 0.08);
+    --wp-stroke-strong: rgba(139, 107, 255, 0.18);
   }
+}
+
+/* Modo escuro forçado pelo usuário */
+:root[data-color-mode="dark"] {
+  --background: #0a0e17;
+  --foreground: #ecf1fb;
+  --surface-solid: #111726;
+  --surface-elevated-solid: #161e31;
+  --surface-muted: #1a2338;
+  --border: #232e48;
+  --muted: #93a0c0;
+  --accent: #8b6bff;
+  --accent-strong: #b49eff;
+  --accent-soft: #211c44;
+  --accent-foreground: #0a0e17;
+  --signal: #2dd4bf;
+  --wp-stroke: rgba(226, 232, 240, 0.08);
+  --wp-stroke-strong: rgba(139, 107, 255, 0.18);
+}
+
+/* --- 6 Temas de Cores Globais --- */
+:root[data-ui-theme="ocean_circuit"] {
+  --background: #f1f6fa;
+  --surface-muted: #e5eef5;
+  --border: #cddce9;
+  --accent: #0284c7;
+  --accent-strong: #0369a1;
+  --accent-soft: #e0f2fe;
+  --accent-foreground: #ffffff;
+  --signal: #06b6d4;
+  --wp-stroke-strong: rgba(2, 132, 199, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="ocean_circuit"]:not([data-color-mode="light"]) {
+    --background: #07111c;
+    --surface-solid: #0d1a29;
+    --surface-elevated-solid: #122235;
+    --surface-muted: #15283d;
+    --border: #1e3752;
+    --muted: #8ea9c4;
+    --accent: #38bdf8;
+    --accent-strong: #7dd3fc;
+    --accent-soft: #0c2b45;
+    --accent-foreground: #06131f;
+    --signal: #22d3ee;
+    --wp-stroke-strong: rgba(56, 189, 248, 0.18);
+  }
+}
+
+:root[data-ui-theme="ocean_circuit"][data-color-mode="dark"] {
+  --background: #07111c;
+  --surface-solid: #0d1a29;
+  --surface-elevated-solid: #122235;
+  --surface-muted: #15283d;
+  --border: #1e3752;
+  --muted: #8ea9c4;
+  --accent: #38bdf8;
+  --accent-strong: #7dd3fc;
+  --accent-soft: #0c2b45;
+  --accent-foreground: #06131f;
+  --signal: #22d3ee;
+  --wp-stroke-strong: rgba(56, 189, 248, 0.18);
+}
+
+:root[data-ui-theme="amber_terminal"] {
+  --background: #f8f5ef;
+  --surface-solid: #fffdf9;
+  --surface-elevated-solid: #ffffff;
+  --surface-muted: #efe9de;
+  --border: #e1d7c6;
+  --muted: #685e4d;
+  --accent: #d97706;
+  --accent-strong: #b45309;
+  --accent-soft: #fef3c7;
+  --accent-foreground: #ffffff;
+  --signal: #ea580c;
+  --wp-stroke-strong: rgba(217, 119, 6, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="amber_terminal"]:not([data-color-mode="light"]) {
+    --background: #12100d;
+    --surface-solid: #1b1813;
+    --surface-elevated-solid: #231f18;
+    --surface-muted: #28231b;
+    --border: #3a3226;
+    --muted: #b8ab96;
+    --accent: #f59e0b;
+    --accent-strong: #fbbf24;
+    --accent-soft: #36270e;
+    --accent-foreground: #141008;
+    --signal: #fb923c;
+    --wp-stroke-strong: rgba(245, 158, 11, 0.18);
+  }
+}
+
+:root[data-ui-theme="amber_terminal"][data-color-mode="dark"] {
+  --background: #12100d;
+  --surface-solid: #1b1813;
+  --surface-elevated-solid: #231f18;
+  --surface-muted: #28231b;
+  --border: #3a3226;
+  --muted: #b8ab96;
+  --accent: #f59e0b;
+  --accent-strong: #fbbf24;
+  --accent-soft: #36270e;
+  --accent-foreground: #141008;
+  --signal: #fb923c;
+  --wp-stroke-strong: rgba(245, 158, 11, 0.18);
+}
+
+:root[data-ui-theme="forest_syntax"] {
+  --background: #f2f7f4;
+  --surface-muted: #e5efe9;
+  --border: #cde0d5;
+  --muted: #4b6356;
+  --accent: #059669;
+  --accent-strong: #047857;
+  --accent-soft: #d1fae5;
+  --accent-foreground: #ffffff;
+  --signal: #10b981;
+  --wp-stroke-strong: rgba(5, 150, 105, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="forest_syntax"]:not([data-color-mode="light"]) {
+    --background: #08130f;
+    --surface-solid: #0f1f19;
+    --surface-elevated-solid: #142820;
+    --surface-muted: #172e25;
+    --border: #234235;
+    --muted: #8eb3a2;
+    --accent: #34d399;
+    --accent-strong: #6ee7b7;
+    --accent-soft: #103628;
+    --accent-foreground: #05140e;
+    --signal: #2dd4bf;
+    --wp-stroke-strong: rgba(52, 211, 153, 0.18);
+  }
+}
+
+:root[data-ui-theme="forest_syntax"][data-color-mode="dark"] {
+  --background: #08130f;
+  --surface-solid: #0f1f19;
+  --surface-elevated-solid: #142820;
+  --surface-muted: #172e25;
+  --border: #234235;
+  --muted: #8eb3a2;
+  --accent: #34d399;
+  --accent-strong: #6ee7b7;
+  --accent-soft: #103628;
+  --accent-foreground: #05140e;
+  --signal: #2dd4bf;
+  --wp-stroke-strong: rgba(52, 211, 153, 0.18);
+}
+
+:root[data-ui-theme="nordic_frost"] {
+  --background: #f3f6fc;
+  --surface-muted: #e7edf8;
+  --border: #d2dcef;
+  --muted: #525f7a;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: #dbeafe;
+  --accent-foreground: #ffffff;
+  --signal: #0ea5e9;
+  --wp-stroke-strong: rgba(37, 99, 235, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="nordic_frost"]:not([data-color-mode="light"]) {
+    --background: #0b101b;
+    --surface-solid: #121928;
+    --surface-elevated-solid: #182135;
+    --surface-muted: #1c273d;
+    --border: #273552;
+    --muted: #9aa9c9;
+    --accent: #60a5fa;
+    --accent-strong: #93c5fd;
+    --accent-soft: #172a4f;
+    --accent-foreground: #081121;
+    --signal: #38bdf8;
+    --wp-stroke-strong: rgba(96, 165, 250, 0.18);
+  }
+}
+
+:root[data-ui-theme="nordic_frost"][data-color-mode="dark"] {
+  --background: #0b101b;
+  --surface-solid: #121928;
+  --surface-elevated-solid: #182135;
+  --surface-muted: #1c273d;
+  --border: #273552;
+  --muted: #9aa9c9;
+  --accent: #60a5fa;
+  --accent-strong: #93c5fd;
+  --accent-soft: #172a4f;
+  --accent-foreground: #081121;
+  --signal: #38bdf8;
+  --wp-stroke-strong: rgba(96, 165, 250, 0.18);
+}
+
+:root[data-ui-theme="mono_graphite"] {
+  --background: #f4f5f7;
+  --surface-muted: #e8eaef;
+  --border: #d5d9e2;
+  --muted: #565c6b;
+  --accent: #2d3446;
+  --accent-strong: #171c28;
+  --accent-soft: #e3e6ee;
+  --accent-foreground: #ffffff;
+  --signal: #4b5563;
+  --wp-stroke-strong: rgba(45, 52, 70, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-theme="mono_graphite"]:not([data-color-mode="light"]) {
+    --background: #0c0d10;
+    --surface-solid: #15171c;
+    --surface-elevated-solid: #1c1f26;
+    --surface-muted: #20242c;
+    --border: #2d323e;
+    --muted: #9ca3b4;
+    --accent: #e2e8f0;
+    --accent-strong: #f8fafc;
+    --accent-soft: #262b36;
+    --accent-foreground: #0c0d10;
+    --signal: #cbd5e1;
+    --wp-stroke-strong: rgba(226, 232, 240, 0.18);
+  }
+}
+
+:root[data-ui-theme="mono_graphite"][data-color-mode="dark"] {
+  --background: #0c0d10;
+  --surface-solid: #15171c;
+  --surface-elevated-solid: #1c1f26;
+  --surface-muted: #20242c;
+  --border: #2d323e;
+  --muted: #9ca3b4;
+  --accent: #e2e8f0;
+  --accent-strong: #f8fafc;
+  --accent-soft: #262b36;
+  --accent-foreground: #0c0d10;
+  --signal: #cbd5e1;
+  --wp-stroke-strong: rgba(226, 232, 240, 0.18);
+}
+
+/* Intensidades do papel de parede e transparência segura das superfícies */
+:root[data-wallpaper-intensity="subtle"] {
+  --wp-opacity: 0.42;
+  --surface-alpha: 97%;
+}
+
+:root[data-wallpaper-intensity="balanced"] {
+  --wp-opacity: 0.72;
+  --surface-alpha: 93%;
+}
+
+:root[data-wallpaper-intensity="vivid"] {
+  --wp-opacity: 1;
+  --surface-alpha: 86%;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
   --color-surface-muted: var(--surface-muted);
   --color-border: var(--border);
   --color-muted: var(--muted);
@@ -63,6 +338,7 @@
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
   --color-accent-foreground: var(--accent-foreground);
+  --color-signal: var(--signal);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 }
@@ -80,12 +356,215 @@ body {
   scroll-behavior: smooth;
 }
 
+/* Camada fixa zero-binário para papéis de parede */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--wp-opacity);
+  background-image:
+    radial-gradient(
+      920px 440px at 50% -110px,
+      color-mix(in srgb, var(--accent) 13%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      640px 360px at 90% 8%,
+      color-mix(in srgb, var(--signal) 7%, transparent),
+      transparent 70%
+    );
+  background-repeat: no-repeat;
+}
+
+/* Presets de papel de parede aplicados em :root[data-wallpaper] */
+:root[data-wallpaper="blueprint_grid"] body::before {
+  background-image:
+    radial-gradient(
+      760px 380px at 85% 0%,
+      color-mix(in srgb, var(--accent) 11%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(to right, var(--wp-stroke-strong) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--wp-stroke-strong) 1px, transparent 1px),
+    linear-gradient(to right, var(--wp-stroke) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--wp-stroke) 1px, transparent 1px);
+  background-size: 100% 100%, 96px 96px, 96px 96px, 24px 24px, 24px 24px;
+  background-repeat: no-repeat, repeat, repeat, repeat, repeat;
+}
+
+:root[data-wallpaper="circuit_traces"] body::before {
+  background-image:
+    radial-gradient(
+      780px 380px at 15% 0%,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 70%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%2364748b' stroke-opacity='0.14' stroke-width='1.15'%3E%3Cpath d='M0 24h34l12 12h28l12-12h34'/%3E%3Cpath d='M24 0v28l14 14v36l-14 14v28'/%3E%3Cpath d='M92 0v32l-16 16v24l16 16v32'/%3E%3Ccircle cx='34' cy='24' r='2.3' fill='%2364748b' fill-opacity='0.16'/%3E%3Ccircle cx='74' cy='36' r='2.3'/%3E%3Ccircle cx='38' cy='78' r='2.3'/%3E%3Ccircle cx='76' cy='72' r='2.3' fill='%2364748b' fill-opacity='0.16'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 100% 100%, 160px 160px;
+  background-repeat: no-repeat, repeat;
+}
+
+:root[data-wallpaper="topographic_flow"] body::before {
+  background-image:
+    radial-gradient(
+      800px 400px at 80% 10%,
+      color-mix(in srgb, var(--signal) 10%, transparent),
+      transparent 72%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%2364748b' stroke-opacity='0.14' stroke-width='1.2'%3E%3Cpath d='M-20 45C30 15 80 75 130 45s90-25 110 0'/%3E%3Cpath d='M-20 95C40 65 75 125 135 95s75-25 105 5'/%3E%3Cpath d='M-20 145C35 120 90 175 145 145s65-20 95 10'/%3E%3Cpath d='M-20 195C30 175 85 220 140 195s70-20 100 5'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 100% 100%, 240px 240px;
+  background-repeat: no-repeat, repeat;
+}
+
+:root[data-wallpaper="constellation_nodes"] body::before {
+  background-image:
+    radial-gradient(
+      820px 420px at 50% -80px,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 72%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg stroke='%2364748b' stroke-opacity='0.13' stroke-width='1'%3E%3Cpath d='M22 28L76 52L126 24M76 52L58 118L132 106M126 24L132 106M22 28L58 118' fill='none'/%3E%3C/g%3E%3Cg fill='%2364748b' fill-opacity='0.22'%3E%3Ccircle cx='22' cy='28' r='2.2'/%3E%3Ccircle cx='76' cy='52' r='2.6'/%3E%3Ccircle cx='126' cy='24' r='2'/%3E%3Ccircle cx='58' cy='118' r='2.4'/%3E%3Ccircle cx='132' cy='106' r='2.1'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 100% 100%, 200px 200px;
+  background-repeat: no-repeat, repeat;
+}
+
+:root[data-wallpaper="isometric_matrix"] body::before {
+  background-image:
+    radial-gradient(
+      760px 400px at 20% 0%,
+      color-mix(in srgb, var(--accent) 10%, transparent),
+      transparent 72%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='110.85' viewBox='0 0 64 110.85'%3E%3Cg fill='none' stroke='%2364748b' stroke-opacity='0.12' stroke-width='1'%3E%3Cpath d='M32 0L64 18.47V55.42L32 73.9L0 55.42V18.47Z'/%3E%3Cpath d='M0 55.42L32 73.9L64 55.42M32 73.9V110.85'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 100% 100%, 84px 145px;
+  background-repeat: no-repeat, repeat;
+}
+
+:root[data-wallpaper="aurora_mesh"] body::before {
+  background-image:
+    radial-gradient(
+      720px 420px at 14% 8%,
+      color-mix(in srgb, var(--accent) 18%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      680px 400px at 88% 18%,
+      color-mix(in srgb, var(--signal) 15%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      760px 440px at 52% 96%,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 72%
+    );
+  background-repeat: no-repeat;
+}
+
+:root[data-wallpaper="minimal_paper"] body::before {
+  background-image: none;
+  opacity: 0;
+}
+
+/* Miniaturas do seletor de papel de parede */
+.codit-wp-preview-original {
+  background-image:
+    radial-gradient(
+      circle at 50% 0%,
+      color-mix(in srgb, var(--accent) 28%, transparent),
+      transparent 75%
+    );
+}
+
+.codit-wp-preview-blueprint {
+  background-image:
+    linear-gradient(to right, var(--wp-stroke-strong) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--wp-stroke-strong) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+.codit-wp-preview-circuit {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%2364748b' stroke-opacity='0.34' stroke-width='2'%3E%3Cpath d='M0 24h34l12 12h28l12-12h34'/%3E%3Cpath d='M24 0v28l14 14v36l-14 14v28'/%3E%3Ccircle cx='34' cy='24' r='4' fill='%2364748b' fill-opacity='0.35'/%3E%3Ccircle cx='74' cy='36' r='4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 46px 46px;
+}
+
+.codit-wp-preview-topographic {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%2364748b' stroke-opacity='0.32' stroke-width='2.4'%3E%3Cpath d='M-20 45C30 15 80 75 130 45s90-25 110 0'/%3E%3Cpath d='M-20 115C40 85 75 145 135 115s75-25 105 5'/%3E%3Cpath d='M-20 185C35 160 90 215 145 185s65-20 95 10'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 88px 88px;
+}
+
+.codit-wp-preview-constellation {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 160 160'%3E%3Cg stroke='%2364748b' stroke-opacity='0.3' stroke-width='1.8'%3E%3Cpath d='M22 28L76 52L126 24M76 52L58 118L132 106' fill='none'/%3E%3C/g%3E%3Cg fill='%2364748b' fill-opacity='0.45'%3E%3Ccircle cx='22' cy='28' r='4'/%3E%3Ccircle cx='76' cy='52' r='4.5'/%3E%3Ccircle cx='126' cy='24' r='3.5'/%3E%3Ccircle cx='58' cy='118' r='4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 72px 72px;
+}
+
+.codit-wp-preview-isometric {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='62' viewBox='0 0 64 110.85'%3E%3Cg fill='none' stroke='%2364748b' stroke-opacity='0.3' stroke-width='1.8'%3E%3Cpath d='M32 0L64 18.47V55.42L32 73.9L0 55.42V18.47Z'/%3E%3Cpath d='M0 55.42L32 73.9L64 55.42M32 73.9V110.85'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 32px 55px;
+}
+
+.codit-wp-preview-aurora {
+  background-image:
+    radial-gradient(
+      circle at 20% 25%,
+      color-mix(in srgb, var(--accent) 34%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      circle at 82% 75%,
+      color-mix(in srgb, var(--signal) 30%, transparent),
+      transparent 65%
+    );
+}
+
+.codit-wp-preview-minimal {
+  background-image: none;
+}
+
 button,
 a,
 input,
 select,
 textarea {
   touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.codit-app-content {
+  position: relative;
+  z-index: 1;
+}
+
+.codit-panel {
+  border-radius: 1.25rem;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  backdrop-filter: blur(8px);
+}
+
+.codit-panel-interactive {
+  border-radius: 1.25rem;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  backdrop-filter: blur(8px);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.codit-panel-interactive:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.codit-code-window {
+  overflow: hidden;
+  border-radius: 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background-color: #0d111c;
+  color: #e2e8f0;
 }
 
 .codit-safe-top {
@@ -128,12 +607,7 @@ textarea {
 }
 
 .codit-app-shell {
-  background-image:
-    radial-gradient(
-      900px 420px at 50% -120px,
-      color-mix(in srgb, var(--accent) 12%, transparent),
-      transparent 72%
-    );
+  min-height: 100dvh;
 }
 
 .codit-pattern-dots {
@@ -149,4 +623,15 @@ textarea {
     linear-gradient(to right, rgba(255, 255, 255, 0.09) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
   background-size: 20px 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

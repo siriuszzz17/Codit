@@ -3,6 +3,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import { AppearanceInlinePanel } from "@/components/layout/appearance-menu";
 import { LanguageIcon } from "@/components/sandbox/language-icon";
 import type {
   OctopyCompanionMood,
@@ -61,6 +62,18 @@ interface ProfileCustomizerPanelProps {
   onSave: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }
 
+type CustomizerTab = "identity" | "style" | "skills" | "appearance";
+
+const CUSTOMIZER_TABS: ReadonlyArray<{
+  id: CustomizerTab;
+  label: string;
+}> = [
+  { id: "identity", label: "Identidade & Bio" },
+  { id: "style", label: "Estilo do Perfil" },
+  { id: "skills", label: "Habilidades" },
+  { id: "appearance", label: "Aparência do App" },
+];
+
 function getGoogleAvatarFromUser(user: User): string | null {
   const metadata = user.user_metadata ?? {};
   const raw =
@@ -97,6 +110,7 @@ export function ProfileCustomizerPanel({
   onDiscard,
   onSave,
 }: ProfileCustomizerPanelProps) {
+  const [activeTab, setActiveTab] = useState<CustomizerTab>("identity");
   const [skillInput, setSkillInput] = useState("");
   const googleAvatarUrl = getGoogleAvatarFromUser(user);
   const trimmedGithub = draft.githubUsername.trim().replace(/^@+/, "");
@@ -163,312 +177,55 @@ export function ProfileCustomizerPanel({
   return (
     <form
       onSubmit={(event) => void onSave(event)}
-      className="space-y-6 rounded-3xl border border-border bg-surface p-5 shadow-xs sm:p-6"
+      className="codit-panel space-y-6 p-5 shadow-xs sm:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
         <div>
           <h2 className="text-lg font-bold text-foreground sm:text-xl">
-            Personalizar Perfil
+            Personalizar perfil e aplicativo
           </h2>
           <p className="text-xs text-muted sm:text-sm">
-            Veja suas mudanças em tempo real no cartão acima e salve quando
-            ficar do seu jeito.
+            Veja suas mudanças em tempo real no cartão acima ou ajuste o tema e
+            papel de parede do aplicativo.
           </p>
         </div>
 
         {hasUnsavedChanges ? (
-          <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-300">
+          <span className="inline-flex items-center rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-300">
             Alterações não salvas
           </span>
         ) : null}
       </div>
 
-      {/* 1. Capa, Tema de Destaque, Moldura e Octopy */}
-      <div className="space-y-5">
-        <div className="space-y-2.5">
-          <h3 className="text-sm font-bold text-foreground">
-            1. Capa do perfil
-          </h3>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {PROFILE_BANNER_IDS.map((bannerId) => {
-              const banner = PROFILE_BANNERS[bannerId];
-              const selected = draft.bannerPreset === bannerId;
-              return (
-                <button
-                  key={bannerId}
-                  type="button"
-                  onClick={() =>
-                    onChangeDraft((current) => ({
-                      ...current,
-                      bannerPreset: bannerId,
-                    }))
-                  }
-                  className={`group overflow-hidden rounded-2xl border text-left transition-all ${
-                    selected
-                      ? "border-accent ring-2 ring-accent/35"
-                      : "border-border hover:border-accent/60"
-                  }`}
-                >
-                  <div
-                    className={`relative h-14 w-full ${banner.gradientClass}`}
-                  >
-                    <div
-                      aria-hidden="true"
-                      className={`absolute inset-0 opacity-80 ${banner.patternClass}`}
-                    />
-                    {selected ? (
-                      <span className="absolute right-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">
-                        Ativa
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="bg-surface-muted/40 px-3 py-2">
-                    <p className="text-xs font-bold text-foreground">
-                      {banner.label}
-                    </p>
-                    <p className="text-[11px] text-muted">
-                      {banner.description}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <div className="space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">
-              2. Cor de destaque
-            </h3>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {PROFILE_ACCENT_IDS.map((themeId) => {
-                const theme = PROFILE_ACCENT_THEMES[themeId];
-                const selected = draft.accentTheme === themeId;
-                return (
-                  <button
-                    key={themeId}
-                    type="button"
-                    onClick={() =>
-                      onChangeDraft((current) => ({
-                        ...current,
-                        accentTheme: themeId,
-                      }))
-                    }
-                    className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-all ${
-                      selected
-                        ? "border-accent bg-accent-soft/40 text-foreground ring-2 ring-accent/30"
-                        : "border-border bg-surface-muted/40 text-muted hover:border-accent/60 hover:text-foreground"
-                    }`}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="h-4 w-4 shrink-0 rounded-full border border-white/30 shadow-xs"
-                      style={{ backgroundColor: theme.swatchHex }}
-                    />
-                    <span className="truncate">{theme.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">
-              3. Moldura do avatar
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {PROFILE_AVATAR_FRAME_IDS.map((frameId) => {
-                const frame = PROFILE_AVATAR_FRAMES[frameId];
-                const selected = draft.avatarFrame === frameId;
-                return (
-                  <button
-                    key={frameId}
-                    type="button"
-                    onClick={() =>
-                      onChangeDraft((current) => ({
-                        ...current,
-                        avatarFrame: frameId,
-                      }))
-                    }
-                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-                      selected
-                        ? "border-accent bg-accent text-accent-foreground"
-                        : "border-border bg-surface-muted/50 text-foreground hover:border-accent/60"
-                    }`}
-                  >
-                    {frame.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2.5">
-          <h3 className="text-sm font-bold text-foreground">
-            4. Humor do companheiro Octopy
-          </h3>
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            {OCTOPY_COMPANION_IDS.map((moodId) => {
-              const mood = OCTOPY_COMPANION_OPTIONS[moodId];
-              const selected = draft.octopyCompanion === moodId;
-              return (
-                <button
-                  key={moodId}
-                  type="button"
-                  onClick={() =>
-                    onChangeDraft((current) => ({
-                      ...current,
-                      octopyCompanion: moodId,
-                    }))
-                  }
-                  className={`flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition-all ${
-                    selected
-                      ? "border-accent bg-accent-soft/45 ring-2 ring-accent/30"
-                      : "border-border bg-surface-muted/40 hover:border-accent/60"
-                  }`}
-                >
-                  <OctopyBadge
-                    size={36}
-                    variant={moodId}
-                    className="shrink-0 rounded-xl"
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-bold text-foreground">
-                      {mood.label}
-                    </p>
-                    <p className="truncate text-[11px] text-muted">
-                      {mood.tagline}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* 5. Avatar */}
-      <div className="space-y-3 border-t border-border pt-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-foreground">
-              5. Foto ou Avatar
-            </h3>
-            <p className="text-xs text-muted">
-              Escolha um avatar pixel-art do Octopy, importe do GitHub/Google ou
-              informe uma URL HTTPS.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {googleAvatarUrl ? (
-              <button
-                type="button"
-                onClick={() =>
-                  onChangeDraft((current) => ({
-                    ...current,
-                    avatarUrl: googleAvatarUrl,
-                  }))
-                }
-                className="rounded-xl border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
-              >
-                Usar foto do Google
-              </button>
-            ) : null}
-
-            {trimmedGithub ? (
-              <button
-                type="button"
-                onClick={() =>
-                  onChangeDraft((current) => ({
-                    ...current,
-                    avatarUrl: `https://avatars.githubusercontent.com/${encodeURIComponent(trimmedGithub)}`,
-                  }))
-                }
-                className="rounded-xl border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
-              >
-                Usar foto do GitHub
-              </button>
-            ) : null}
-
+      {/* Navegação por abas curtas */}
+      <div
+        role="tablist"
+        aria-label="Seções de personalização"
+        className="codit-no-scrollbar flex gap-1.5 overflow-x-auto rounded-2xl border border-border bg-surface-muted/60 p-1"
+      >
+        {CUSTOMIZER_TABS.map((tab) => {
+          const active = activeTab === tab.id;
+          return (
             <button
+              key={tab.id}
               type="button"
-              onClick={() =>
-                onChangeDraft((current) => ({
-                  ...current,
-                  avatarUrl: "",
-                }))
-              }
-              className="rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveTab(tab.id)}
+              className={`min-h-10 shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors sm:flex-1 ${
+                active
+                  ? "bg-surface text-foreground shadow-xs"
+                  : "text-muted hover:text-foreground"
+              }`}
             >
-              Usar iniciais
+              {tab.label}
+              {tab.id === "skills" ? ` (${draft.skills.length}/12)` : ""}
             </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          {CURATED_AVATAR_PRESETS.map((preset) => {
-            const selected = draft.avatarUrl === preset.src;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() =>
-                  onChangeDraft((current) => ({
-                    ...current,
-                    avatarUrl: preset.src,
-                  }))
-                }
-                className={`flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition-all ${
-                  selected
-                    ? "border-accent bg-accent-soft/45 ring-2 ring-accent/30"
-                    : "border-border bg-surface-muted/40 hover:border-accent/60"
-                }`}
-              >
-                <OctopyBadge
-                  size={36}
-                  variant={preset.variant}
-                  className="shrink-0 rounded-xl"
-                />
-                <span className="text-xs font-semibold text-foreground">
-                  {preset.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="space-y-1.5">
-          <label
-            htmlFor="codit-profile-avatar-url"
-            className="block text-xs font-semibold text-foreground"
-          >
-            URL personalizada da imagem (opcional)
-          </label>
-          <input
-            id="codit-profile-avatar-url"
-            type="text"
-            value={draft.avatarUrl}
-            onChange={(event) =>
-              onChangeDraft((current) => ({
-                ...current,
-                avatarUrl: event.target.value,
-              }))
-            }
-            placeholder="https://... ou selecione um avatar acima"
-            className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
-          />
-        </div>
+          );
+        })}
       </div>
 
-      {/* 6. Identidade e Links */}
-      <div className="space-y-4 border-t border-border pt-5">
-        <h3 className="text-sm font-bold text-foreground">
-          6. Identidade, Bio &amp; Links
-        </h3>
-
+      {activeTab === "identity" ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label
@@ -554,9 +311,8 @@ export function ProfileCustomizerPanel({
               </p>
             ) : (
               <p className="text-[11px] text-muted">
-                Alteração de @usuário liberada (3–30 caracteres: letras
-                minúsculas, números, ponto ou sublinhado). Após salvar um novo
-                @, a próxima mudança será liberada em 30 dias.
+                Alteração de @usuário liberada (3–30 caracteres). Após salvar um
+                novo @, a próxima mudança será liberada em 30 dias.
               </p>
             )}
           </div>
@@ -653,7 +409,7 @@ export function ProfileCustomizerPanel({
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 sm:col-span-2">
             <label
               htmlFor="codit-profile-website"
               className="block text-xs font-semibold text-foreground"
@@ -699,7 +455,7 @@ export function ProfileCustomizerPanel({
                   bio: event.target.value,
                 }))
               }
-              placeholder="Conte o que você está construindo, suas trilhas favoritas e objetivos na área tech..."
+              placeholder="Conte o que você está construindo, suas áreas favoritas e objetivos..."
               className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
             />
           </div>
@@ -721,93 +477,370 @@ export function ProfileCustomizerPanel({
             </label>
           </div>
         </div>
-      </div>
-
-      {/* 7. Habilidades */}
-      <div className="space-y-3 border-t border-border pt-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
+      ) : activeTab === "style" ? (
+        <div className="space-y-6">
+          <div className="space-y-2.5">
             <h3 className="text-sm font-bold text-foreground">
-              7. Habilidades &amp; Tecnologias ({draft.skills.length}/12)
+              Capa do perfil
             </h3>
-            <p className="text-xs text-muted">
-              Tecnologias reconhecidas ganham automaticamente o ícone da
-              linguagem no seu perfil.
-            </p>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {PROFILE_BANNER_IDS.map((bannerId) => {
+                const banner = PROFILE_BANNERS[bannerId];
+                const selected = draft.bannerPreset === bannerId;
+                return (
+                  <button
+                    key={bannerId}
+                    type="button"
+                    onClick={() =>
+                      onChangeDraft((current) => ({
+                        ...current,
+                        bannerPreset: bannerId,
+                      }))
+                    }
+                    className={`group overflow-hidden rounded-2xl border text-left transition-all ${
+                      selected
+                        ? "border-accent ring-2 ring-accent/35"
+                        : "border-border hover:border-accent/60"
+                    }`}
+                  >
+                    <div
+                      className={`relative h-14 w-full ${banner.gradientClass}`}
+                    >
+                      <div
+                        aria-hidden="true"
+                        className={`absolute inset-0 opacity-80 ${banner.patternClass}`}
+                      />
+                      {selected ? (
+                        <span className="absolute right-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">
+                          Ativa
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="bg-surface-muted/40 px-3 py-2">
+                      <p className="text-xs font-bold text-foreground">
+                        {banner.label}
+                      </p>
+                      <p className="text-[11px] text-muted">
+                        {banner.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        {draft.skills.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {draft.skills.map((skill) => {
-              const lang = findLanguageForSkill(skill);
-              return (
-                <span
-                  key={skill}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent-soft/50 px-2.5 py-1 text-xs font-semibold text-foreground"
-                >
-                  {lang ? <LanguageIcon language={lang} size={14} /> : null}
-                  <span>{skill}</span>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div className="space-y-2.5">
+              <h3 className="text-sm font-bold text-foreground">
+                Cor de destaque
+              </h3>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {PROFILE_ACCENT_IDS.map((themeId) => {
+                  const theme = PROFILE_ACCENT_THEMES[themeId];
+                  const selected = draft.accentTheme === themeId;
+                  return (
+                    <button
+                      key={themeId}
+                      type="button"
+                      onClick={() =>
+                        onChangeDraft((current) => ({
+                          ...current,
+                          accentTheme: themeId,
+                        }))
+                      }
+                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-all ${
+                        selected
+                          ? "border-accent bg-accent-soft/40 text-foreground ring-2 ring-accent/30"
+                          : "border-border bg-surface-muted/40 text-muted hover:border-accent/60 hover:text-foreground"
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 rounded-full border border-white/30 shadow-xs"
+                        style={{ backgroundColor: theme.swatchHex }}
+                      />
+                      <span className="truncate">{theme.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <h3 className="text-sm font-bold text-foreground">
+                Moldura do avatar
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {PROFILE_AVATAR_FRAME_IDS.map((frameId) => {
+                  const frame = PROFILE_AVATAR_FRAMES[frameId];
+                  const selected = draft.avatarFrame === frameId;
+                  return (
+                    <button
+                      key={frameId}
+                      type="button"
+                      onClick={() =>
+                        onChangeDraft((current) => ({
+                          ...current,
+                          avatarFrame: frameId,
+                        }))
+                      }
+                      className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                        selected
+                          ? "border-accent bg-accent text-accent-foreground"
+                          : "border-border bg-surface-muted/50 text-foreground hover:border-accent/60"
+                      }`}
+                    >
+                      {frame.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            <h3 className="text-sm font-bold text-foreground">
+              Humor do companheiro Octopy
+            </h3>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {OCTOPY_COMPANION_IDS.map((moodId) => {
+                const mood = OCTOPY_COMPANION_OPTIONS[moodId];
+                const selected = draft.octopyCompanion === moodId;
+                return (
+                  <button
+                    key={moodId}
+                    type="button"
+                    onClick={() =>
+                      onChangeDraft((current) => ({
+                        ...current,
+                        octopyCompanion: moodId,
+                      }))
+                    }
+                    className={`flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition-all ${
+                      selected
+                        ? "border-accent bg-accent-soft/45 ring-2 ring-accent/30"
+                        : "border-border bg-surface-muted/40 hover:border-accent/60"
+                    }`}
+                  >
+                    <OctopyBadge
+                      size={36}
+                      variant={moodId}
+                      className="shrink-0 rounded-xl"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-foreground">
+                        {mood.label}
+                      </p>
+                      <p className="truncate text-[11px] text-muted">
+                        {mood.tagline}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-3 border-t border-border pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">
+                  Foto ou avatar
+                </h3>
+                <p className="text-xs text-muted">
+                  Escolha um avatar pixel-art do Octopy, importe do
+                  GitHub/Google ou informe uma URL HTTPS.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {googleAvatarUrl ? (
                   <button
                     type="button"
-                    aria-label={`Remover habilidade ${skill}`}
-                    onClick={() => removeSkill(skill)}
-                    className="ml-1 rounded-full px-1 text-muted transition-colors hover:bg-black/10 hover:text-foreground dark:hover:bg-white/10"
+                    onClick={() =>
+                      onChangeDraft((current) => ({
+                        ...current,
+                        avatarUrl: googleAvatarUrl,
+                      }))
+                    }
+                    className="rounded-xl border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
                   >
-                    ×
+                    Usar foto do Google
                   </button>
-                </span>
+                ) : null}
+
+                {trimmedGithub ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChangeDraft((current) => ({
+                        ...current,
+                        avatarUrl: `https://avatars.githubusercontent.com/${encodeURIComponent(trimmedGithub)}`,
+                      }))
+                    }
+                    className="rounded-xl border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+                  >
+                    Usar foto do GitHub
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeDraft((current) => ({
+                      ...current,
+                      avatarUrl: "",
+                    }))
+                  }
+                  className="rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-foreground"
+                >
+                  Usar iniciais
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {CURATED_AVATAR_PRESETS.map((preset) => {
+                const selected = draft.avatarUrl === preset.src;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() =>
+                      onChangeDraft((current) => ({
+                        ...current,
+                        avatarUrl: preset.src,
+                      }))
+                    }
+                    className={`flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition-all ${
+                      selected
+                        ? "border-accent bg-accent-soft/45 ring-2 ring-accent/30"
+                        : "border-border bg-surface-muted/40 hover:border-accent/60"
+                    }`}
+                  >
+                    <OctopyBadge
+                      size={36}
+                      variant={preset.variant}
+                      className="shrink-0 rounded-xl"
+                    />
+                    <span className="text-xs font-semibold text-foreground">
+                      {preset.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="codit-profile-avatar-url"
+                className="block text-xs font-semibold text-foreground"
+              >
+                URL personalizada da imagem (opcional)
+              </label>
+              <input
+                id="codit-profile-avatar-url"
+                type="text"
+                value={draft.avatarUrl}
+                onChange={(event) =>
+                  onChangeDraft((current) => ({
+                    ...current,
+                    avatarUrl: event.target.value,
+                  }))
+                }
+                placeholder="https://... ou selecione um avatar acima"
+                className="min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+      ) : activeTab === "skills" ? (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-bold text-foreground">
+              Habilidades &amp; Tecnologias ({draft.skills.length}/12)
+            </h3>
+            <p className="text-xs text-muted">
+              Tecnologias reconhecidas recebem automaticamente o ícone da
+              linguagem no seu perfil público.
+            </p>
+          </div>
+
+          {draft.skills.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {draft.skills.map((skill) => {
+                const lang = findLanguageForSkill(skill);
+                return (
+                  <span
+                    key={skill}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent-soft/50 px-2.5 py-1 text-xs font-semibold text-foreground"
+                  >
+                    {lang ? <LanguageIcon language={lang} size={14} /> : null}
+                    <span>{skill}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remover habilidade ${skill}`}
+                      onClick={() => removeSkill(skill)}
+                      className="ml-1 rounded-full px-1 text-muted transition-colors hover:bg-black/10 hover:text-foreground dark:hover:bg-white/10"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="text"
+              maxLength={32}
+              value={skillInput}
+              onChange={(event) => setSkillInput(event.target.value)}
+              onKeyDown={handleSkillKeyDown}
+              placeholder="Adicionar habilidade (ex.: Python, React, Docker)..."
+              className="min-h-10 flex-1 rounded-xl border border-border bg-background px-3.5 py-2 text-sm text-foreground focus:border-accent focus:outline-none"
+            />
+            <button
+              type="button"
+              disabled={!skillInput.trim() || draft.skills.length >= 12}
+              onClick={() => addSkill(skillInput)}
+              className="min-h-10 rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-50"
+            >
+              Adicionar
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {SUGGESTED_PROFILE_SKILLS.map((item) => {
+              const active = draft.skills.some(
+                (skill) => skill.toLowerCase() === item.label.toLowerCase(),
+              );
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => toggleSuggestedSkill(item.label)}
+                  disabled={!active && draft.skills.length >= 12}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    active
+                      ? "border-accent bg-accent text-accent-foreground"
+                      : "border-border bg-surface-muted/50 text-muted hover:border-accent/60 hover:text-foreground disabled:opacity-45"
+                  }`}
+                >
+                  {item.language ? (
+                    <LanguageIcon language={item.language} size={13} />
+                  ) : null}
+                  <span>{item.label}</span>
+                </button>
               );
             })}
           </div>
-        ) : null}
-
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            type="text"
-            maxLength={32}
-            value={skillInput}
-            onChange={(event) => setSkillInput(event.target.value)}
-            onKeyDown={handleSkillKeyDown}
-            placeholder="Adicionar habilidade (ex.: Python, React, Docker)..."
-            className="min-h-10 flex-1 rounded-xl border border-border bg-background px-3.5 py-2 text-sm text-foreground focus:border-accent focus:outline-none"
-          />
-          <button
-            type="button"
-            disabled={!skillInput.trim() || draft.skills.length >= 12}
-            onClick={() => addSkill(skillInput)}
-            className="min-h-10 rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-50"
-          >
-            Adicionar
-          </button>
         </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {SUGGESTED_PROFILE_SKILLS.map((item) => {
-            const active = draft.skills.some(
-              (skill) => skill.toLowerCase() === item.label.toLowerCase(),
-            );
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => toggleSuggestedSkill(item.label)}
-                disabled={!active && draft.skills.length >= 12}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  active
-                    ? "border-accent bg-accent text-accent-foreground"
-                    : "border-border bg-surface-muted/50 text-muted hover:border-accent/60 hover:text-foreground disabled:opacity-45"
-                }`}
-              >
-                {item.language ? (
-                  <LanguageIcon language={item.language} size={13} />
-                ) : null}
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      ) : (
+        <AppearanceInlinePanel />
+      )}
 
       {error ? (
         <p
@@ -827,26 +860,28 @@ export function ProfileCustomizerPanel({
         </p>
       ) : null}
 
-      <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end">
-        {hasUnsavedChanges ? (
-          <button
-            type="button"
-            onClick={onDiscard}
-            disabled={isSaving}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-60"
-          >
-            Descartar alterações
-          </button>
-        ) : null}
+      {activeTab !== "appearance" ? (
+        <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end">
+          {hasUnsavedChanges ? (
+            <button
+              type="button"
+              onClick={onDiscard}
+              disabled={isSaving}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-muted px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-60"
+            >
+              Descartar alterações
+            </button>
+          ) : null}
 
-        <button
-          type="submit"
-          disabled={isSaving || !isOnline}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isSaving ? "Salvando personalizações..." : "Salvar personalizações"}
-        </button>
-      </div>
+          <button
+            type="submit"
+            disabled={isSaving || !isOnline}
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSaving ? "Salvando alterações..." : "Salvar alterações"}
+          </button>
+        </div>
+      ) : null}
     </form>
   );
 }

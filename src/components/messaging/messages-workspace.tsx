@@ -1709,7 +1709,7 @@ export function MessagesWorkspace() {
             className="fixed inset-0"
           />
 
-          <div className="relative z-10 flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-2xl">
+          <div className="relative z-10 flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-border bg-surface-elevated shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
               <div>
                 <h2

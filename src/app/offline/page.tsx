@@ -5,22 +5,21 @@ import { ReloadButton } from "@/components/pwa/reload-button";
 export default function OfflinePage() {
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-lg flex-col items-center justify-center px-4 py-8 text-center">
-      <div className="w-full space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-xs sm:p-8">
+      <div className="codit-panel w-full space-y-5 p-6 shadow-xs sm:p-8">
         <div className="flex justify-center">
-          <OctopyBadge size={64} decorative={false} />
+          <OctopyBadge size={60} decorative={false} />
         </div>
 
         <div className="space-y-2">
-          <span className="inline-block rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-accent-strong">
-            Modo offline
+          <span className="inline-block rounded-lg bg-surface-muted px-2.5 py-1 text-xs font-semibold text-accent-strong">
+            Sem conexão
           </span>
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-            Você está sem conexão no momento
+            Você está offline no momento
           </h1>
           <p className="text-sm leading-relaxed text-muted">
-            O aplicativo Codit continua disponível no seu dispositivo, mas
-            recursos que dependem do servidor precisam de acesso à internet para
-            sincronizar.
+            O aplicativo continua disponível no dispositivo, mas recursos que
+            dependem do servidor aguardam conexão com a internet.
           </p>
         </div>
 
