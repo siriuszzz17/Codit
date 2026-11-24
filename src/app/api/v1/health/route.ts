@@ -14,7 +14,7 @@ export async function GET(): Promise<NextResponse<HealthCheckPayload>> {
     {
       status: "ok",
       service: "codit",
-      version: "0.1.8",
+      version: "0.1.9",
       timestamp: new Date().toISOString(),
     },
     {
