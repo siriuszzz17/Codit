@@ -3,10 +3,12 @@ import type { CoditSupabaseClient } from "@/lib/supabase/client";
 import {
   isPolitePeer,
   VoiceCallSessionManager,
+  type VoiceCallSnapshot,
 } from "@/modules/messaging/voice-call-manager";
 import {
   acquireScreenShareStream,
   acquireVoiceMicrophoneStream,
+  canShareScreen,
   isAuthorizedScreenShareTrack,
   stopMediaStream,
 } from "@/modules/messaging/webrtc-media";
@@ -83,6 +85,96 @@ describe("webrtc-media & voice-call-manager", () => {
 
     stopMediaStream(acquired);
     expect(screenTrack.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("detects Android native screen capture bridge when getDisplayMedia is absent (RN-505)", () => {
+    vi.stubGlobal("RTCPeerConnection", vi.fn());
+    vi.stubGlobal("navigator", { mediaDevices: {} });
+    vi.stubGlobal("window", {
+      CoditNative: {
+        getInsets: () => "0,0,0,0",
+        isScreenCaptureSupported: () => true,
+      },
+    });
+
+    try {
+      expect(canShareScreen()).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps call active in listen-only mode when microphone is missing/denied and recovers via retryMicrophone", async () => {
+    const convId = "11111111-1111-4111-8111-111111111111";
+    const userA = "22222222-2222-4222-8222-222222222222";
+    const userB = "33333333-3333-4333-8333-333333333333";
+
+    const getUserMedia = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("No mic", "NotFoundError"))
+      .mockResolvedValueOnce(createFakeStream([createFakeTrack("audio")]));
+
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    vi.stubGlobal("RTCPeerConnection", vi.fn());
+
+    const channelStub = {
+      on: vi.fn().mockReturnThis(),
+      subscribe: vi.fn((cb?: (status: string) => void) => {
+        cb?.("SUBSCRIBED");
+        return channelStub;
+      }),
+      track: vi.fn().mockResolvedValue("ok"),
+      untrack: vi.fn().mockResolvedValue("ok"),
+      presenceState: vi.fn().mockReturnValue({}),
+      send: vi.fn().mockResolvedValue("ok"),
+    };
+
+    const client = {
+      channel: vi.fn().mockReturnValue(channelStub),
+      removeChannel: vi.fn().mockResolvedValue("ok"),
+    } as unknown as CoditSupabaseClient;
+
+    try {
+      const snapshots: VoiceCallSnapshot[] = [];
+      const manager = new VoiceCallSessionManager({
+        client,
+        conversationId: convId,
+        conversationTitle: "Bruno",
+        isGroup: false,
+        localUser: {
+          userId: userA,
+          username: "ana",
+          fullName: "Ana",
+          avatarUrl: null,
+        },
+        allowedMemberIds: [userA, userB],
+        onStateChange: (snapshot) => snapshots.push(snapshot),
+      });
+
+      await manager.start();
+
+      const afterStart = snapshots[snapshots.length - 1];
+      expect(afterStart?.status).toBe("connected");
+      expect(afterStart?.hasMicrophone).toBe(false);
+      expect(afterStart?.isMuted).toBe(true);
+      expect(afterStart?.micWarning).toContain("Nenhum microfone conectado");
+      expect(client.channel).toHaveBeenCalledWith(
+        `codit:call:${convId}`,
+        expect.any(Object),
+      );
+
+      const retried = await manager.retryMicrophone();
+      expect(retried).toBe(true);
+
+      const afterRetry = snapshots[snapshots.length - 1];
+      expect(afterRetry?.hasMicrophone).toBe(true);
+      expect(afterRetry?.isMuted).toBe(false);
+      expect(afterRetry?.micWarning).toBeNull();
+
+      await manager.leaveCall();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("deterministically resolves polite peer polarity", () => {

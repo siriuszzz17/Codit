@@ -1,17 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-
-interface CoditNativeBridge {
-  getInsets(): string;
-}
-
-declare global {
-  interface Window {
-    /** Injetado por `MainActivity` (Android/Capacitor). Ausente na Web, PWA e Tauri. */
-    CoditNative?: CoditNativeBridge;
-  }
-}
+import "@/lib/codit-native-bridge";
 
 const INSET_PROPERTIES = [
   "--safe-area-inset-top",

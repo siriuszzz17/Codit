@@ -1,26 +1,35 @@
 package com.codit.app;
 
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
 import java.util.Locale;
+import org.json.JSONObject;
 
 /**
  * Atividade principal (Capacitor) em modo edge-to-edge.
  *
  * Aplica AppTheme_NoActionBar antes de EdgeToEdge.enable() e super.onCreate()
  * para evitar que a ActionBar do tema de splash seja inflada como faixa branca.
- * As areas seguras (barra de status, notch, barra de gestos) sao entregues ao
- * CSS pelas variaveis --safe-area-inset-* (ver NativeInsetsSync no front-end).
+ * Também expõe a ponte nativa `window.CoditNative` para safe-area CSS e
+ * projeção nativa de tela no Android (RN-505).
  */
 public class MainActivity extends BridgeActivity {
     // Mesmos valores de --background em src/app/globals.css (claro / escuro).
@@ -32,13 +41,51 @@ public class MainActivity extends BridgeActivity {
     private volatile int insetBottom = 0;
     private volatile int insetLeft = 0;
 
+    private final ActivityResultLauncher<Intent> screenCaptureLauncher =
+        registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            this::handleScreenCaptureResult
+        );
+
+    private final ScreenCaptureService.Listener screenCaptureListener =
+        new ScreenCaptureService.Listener() {
+            @Override
+            public void onStarted(int width, int height) {
+                dispatchWindowEvent(
+                    "codit:native-screen-started",
+                    String.format(Locale.US, "{\"width\":%d,\"height\":%d}", width, height)
+                );
+            }
+
+            @Override
+            public void onStopped() {
+                dispatchWindowEvent("codit:native-screen-stopped", "null");
+            }
+
+            @Override
+            public void onError(String message) {
+                String safeJson = JSONObject.quote(message != null ? message : "Erro no compartilhamento de tela.");
+                dispatchWindowEvent(
+                    "codit:native-screen-error",
+                    String.format(Locale.US, "{\"message\":%s}", safeJson)
+                );
+            }
+        };
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         setTheme(R.style.AppTheme_NoActionBar);
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         applyBackgrounds();
-        installInsetsBridge();
+        ScreenCaptureService.setListener(screenCaptureListener);
+        installNativeBridge();
+    }
+
+    @Override
+    public void onDestroy() {
+        ScreenCaptureService.setListener(null);
+        super.onDestroy();
     }
 
     @Override
@@ -60,13 +107,13 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void installInsetsBridge() {
+    private void installNativeBridge() {
         if (getBridge() == null || getBridge().getWebView() == null) {
             return;
         }
 
         final WebView webView = getBridge().getWebView();
-        webView.addJavascriptInterface(new NativeInsets(), "CoditNative");
+        webView.addJavascriptInterface(new CoditNativeBridge(), "CoditNative");
 
         final View decor = getWindow().getDecorView();
         ViewCompat.setOnApplyWindowInsetsListener(
@@ -106,6 +153,33 @@ public class MainActivity extends BridgeActivity {
         ViewCompat.requestApplyInsets(decor);
     }
 
+    private void handleScreenCaptureResult(ActivityResult result) {
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+            dispatchWindowEvent("codit:native-screen-cancelled", "null");
+            return;
+        }
+
+        Intent serviceIntent = new Intent(this, ScreenCaptureService.class);
+        serviceIntent.setAction(ScreenCaptureService.ACTION_START);
+        serviceIntent.putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.getResultCode());
+        serviceIntent.putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.getData());
+        ContextCompat.startForegroundService(this, serviceIntent);
+    }
+
+    private void dispatchWindowEvent(final String eventName, final String detailJsonLiteral) {
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            return;
+        }
+        final WebView webView = getBridge().getWebView();
+        final String script = String.format(
+            Locale.US,
+            "try{window.dispatchEvent(new CustomEvent(%s,{detail:%s}));}catch(e){}",
+            JSONObject.quote(eventName),
+            detailJsonLiteral
+        );
+        webView.post(() -> webView.evaluateJavascript(script, null));
+    }
+
     private void pushInsetsToPage(final WebView webView) {
         final String script = String.format(
             Locale.US,
@@ -122,12 +196,62 @@ public class MainActivity extends BridgeActivity {
         webView.post(() -> webView.evaluateJavascript(script, null));
     }
 
-    /** Ponte consultada pelo front-end (window.CoditNative.getInsets()). */
-    private final class NativeInsets {
+    /** Ponte consultada pelo front-end (`window.CoditNative`). */
+    private final class CoditNativeBridge {
 
         @JavascriptInterface
         public String getInsets() {
             return String.format(Locale.US, "%d,%d,%d,%d", insetTop, insetRight, insetBottom, insetLeft);
+        }
+
+        @JavascriptInterface
+        public boolean isScreenCaptureSupported() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public void startScreenCapture() {
+            runOnUiThread(() -> {
+                MediaProjectionManager manager =
+                    (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                if (manager == null) {
+                    dispatchWindowEvent(
+                        "codit:native-screen-error",
+                        "{\"message\":\"Projeção de tela indisponível neste dispositivo.\"}"
+                    );
+                    return;
+                }
+                screenCaptureLauncher.launch(manager.createScreenCaptureIntent());
+            });
+        }
+
+        @JavascriptInterface
+        public void stopScreenCapture() {
+            runOnUiThread(() -> {
+                Intent stopIntent = new Intent(MainActivity.this, ScreenCaptureService.class);
+                stopIntent.setAction(ScreenCaptureService.ACTION_STOP);
+                startService(stopIntent);
+            });
+        }
+
+        @JavascriptInterface
+        public long getScreenFrameSeq() {
+            return ScreenCaptureService.getLatestFrameSeq();
+        }
+
+        @JavascriptInterface
+        public String getScreenFrameDataUrl() {
+            return ScreenCaptureService.getLatestFrameDataUrl();
+        }
+
+        @JavascriptInterface
+        public String getScreenDimensions() {
+            int width = ScreenCaptureService.getCaptureWidth();
+            int height = ScreenCaptureService.getCaptureHeight();
+            if (width <= 0 || height <= 0) {
+                return "";
+            }
+            return String.format(Locale.US, "%dx%d", width, height);
         }
     }
 }

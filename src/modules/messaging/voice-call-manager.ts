@@ -41,6 +41,8 @@ export interface VoiceCallSnapshot {
   remoteAudioStreams: Map<string, MediaStream>;
   remoteScreenStreams: Map<string, MediaStream>;
   localScreenStream: MediaStream | null;
+  hasMicrophone: boolean;
+  micWarning: string | null;
   isMuted: boolean;
   isDeafened: boolean;
   isScreenSharing: boolean;
@@ -57,6 +59,7 @@ interface PeerConnectionEntry {
   polite: boolean;
   pendingCandidates: RTCIceCandidateInit[];
   audioSender: RTCRtpSender | null;
+  audioTransceiver: RTCRtpTransceiver | null;
   screenSender: RTCRtpSender | null;
   remoteAudioStream: MediaStream | null;
   remoteVideoStream: MediaStream | null;
@@ -105,6 +108,8 @@ export class VoiceCallSessionManager {
   private localScreenStream: MediaStream | null = null;
   private stopVoiceMonitor: () => void = () => {};
   private status: "connecting" | "connected" = "connecting";
+  private hasMicrophone = false;
+  private micWarning: string | null = null;
   private isMuted = false;
   private isDeafened = false;
   private isScreenSharing = false;
@@ -183,6 +188,8 @@ export class VoiceCallSessionManager {
       remoteAudioStreams,
       remoteScreenStreams,
       localScreenStream: this.localScreenStream,
+      hasMicrophone: this.hasMicrophone,
+      micWarning: this.micWarning,
       isMuted: this.isMuted,
       isDeafened: this.isDeafened,
       isScreenSharing: this.isScreenSharing,
@@ -200,24 +207,43 @@ export class VoiceCallSessionManager {
   async start(): Promise<void> {
     this.emit();
 
-    const micStream = await acquireVoiceMicrophoneStream();
-    if (this.disposed) {
-      stopMediaStream(micStream);
-      return;
+    // Capturar microfone sem derrubar a chamada caso falhe (ex.: desktop sem microfone ou permissão negada -> modo escuta).
+    try {
+      const micStream = await acquireVoiceMicrophoneStream();
+      if (this.disposed) {
+        stopMediaStream(micStream);
+        return;
+      }
+
+      this.localAudioStream = micStream;
+      this.hasMicrophone = true;
+      this.micWarning = null;
+      this.isMuted = false;
+      this.stopVoiceMonitor = createVoiceActivityMonitor(
+        micStream,
+        (speaking) => {
+          if (speaking && !this.isMuted) {
+            this.speakingUserIds.add(this.localUser.userId);
+          } else {
+            this.speakingUserIds.delete(this.localUser.userId);
+          }
+          this.emit();
+        },
+      );
+    } catch (micErr) {
+      if (this.disposed) {
+        return;
+      }
+      this.localAudioStream = null;
+      this.hasMicrophone = false;
+      this.isMuted = true;
+      this.micWarning =
+        micErr instanceof Error
+          ? micErr.message
+          : "Microfone indisponível. Você entrou em modo escuta.";
     }
 
-    this.localAudioStream = micStream;
-    this.stopVoiceMonitor = createVoiceActivityMonitor(
-      micStream,
-      (speaking) => {
-        if (speaking && !this.isMuted) {
-          this.speakingUserIds.add(this.localUser.userId);
-        } else {
-          this.speakingUserIds.delete(this.localUser.userId);
-        }
-        this.emit();
-      },
-    );
+    this.emit();
 
     const channel = this.client.channel(`codit:call:${this.conversationId}`, {
       config: {
@@ -254,6 +280,71 @@ export class VoiceCallSessionManager {
           this.emit();
         }
       });
+  }
+
+  async retryMicrophone(): Promise<boolean> {
+    if (this.disposed) {
+      return false;
+    }
+
+    try {
+      const micStream = await acquireVoiceMicrophoneStream();
+      if (this.disposed) {
+        stopMediaStream(micStream);
+        return false;
+      }
+
+      this.stopVoiceMonitor();
+      stopMediaStream(this.localAudioStream);
+
+      this.localAudioStream = micStream;
+      this.hasMicrophone = true;
+      this.micWarning = null;
+      this.isMuted = false;
+      this.stopVoiceMonitor = createVoiceActivityMonitor(
+        micStream,
+        (speaking) => {
+          if (speaking && !this.isMuted) {
+            this.speakingUserIds.add(this.localUser.userId);
+          } else {
+            this.speakingUserIds.delete(this.localUser.userId);
+          }
+          this.emit();
+        },
+      );
+
+      const audioTrack = micStream.getAudioTracks()[0];
+      if (audioTrack) {
+        for (const entry of this.peers.values()) {
+          try {
+            if (entry.audioSender) {
+              await entry.audioSender.replaceTrack(audioTrack);
+            } else if (entry.audioTransceiver) {
+              entry.audioTransceiver.direction = "sendrecv";
+              await entry.audioTransceiver.sender.replaceTrack(audioTrack);
+              entry.audioSender = entry.audioTransceiver.sender;
+              await this.renegotiatePeer(entry);
+            } else {
+              entry.audioSender = entry.pc.addTrack(audioTrack, micStream);
+              await this.renegotiatePeer(entry);
+            }
+          } catch {
+            // Segue para os demais participantes.
+          }
+        }
+      }
+
+      await this.publishPresence();
+      this.emit();
+      return true;
+    } catch (err) {
+      this.micWarning =
+        err instanceof Error
+          ? err.message
+          : "Não foi possível ativar o microfone.";
+      this.emit();
+      return false;
+    }
   }
 
   private async publishPresence(): Promise<void> {
@@ -415,6 +506,7 @@ export class VoiceCallSessionManager {
       ),
       pendingCandidates: [],
       audioSender: null,
+      audioTransceiver: null,
       screenSender: null,
       remoteAudioStream: null,
       remoteVideoStream: null,
@@ -425,6 +517,11 @@ export class VoiceCallSessionManager {
     const localAudioTrack = this.localAudioStream?.getAudioTracks()[0];
     if (localAudioTrack && this.localAudioStream) {
       entry.audioSender = pc.addTrack(localAudioTrack, this.localAudioStream);
+    } else if (typeof pc.addTransceiver === "function") {
+      // Modo escuta sem microfone: negocia recebimento de áudio dos amigos.
+      entry.audioTransceiver = pc.addTransceiver("audio", {
+        direction: "recvonly",
+      });
     }
 
     const localScreenTrack = this.localScreenStream?.getVideoTracks()[0];
@@ -441,32 +538,7 @@ export class VoiceCallSessionManager {
     }
 
     pc.onnegotiationneeded = async () => {
-      if (this.disposed || pc.signalingState === "closed") {
-        return;
-      }
-
-      try {
-        entry.makingOffer = true;
-        await pc.setLocalDescription();
-        if (pc.localDescription && pc.localDescription.type === "offer") {
-          await this.sendSignal({
-            conversationId: this.conversationId,
-            fromUserId: this.localUser.userId,
-            toUserId: remoteUserId,
-            fromSessionId: this.localSessionId,
-            toSessionId: remoteSessionId,
-            kind: "offer",
-            sdp: {
-              type: "offer",
-              sdp: pc.localDescription.sdp,
-            },
-          });
-        }
-      } catch {
-        // Erros transitórios de negociação são reavaliados no próximo ciclo.
-      } finally {
-        entry.makingOffer = false;
-      }
+      await this.renegotiatePeer(entry);
     };
 
     pc.onicecandidate = (event) => {
@@ -657,6 +729,41 @@ export class VoiceCallSessionManager {
     }
   }
 
+  private async renegotiatePeer(entry: PeerConnectionEntry): Promise<void> {
+    const { pc, remoteUserId, remoteSessionId } = entry;
+    if (
+      this.disposed ||
+      pc.signalingState === "closed" ||
+      pc.signalingState !== "stable" ||
+      entry.makingOffer
+    ) {
+      return;
+    }
+
+    try {
+      entry.makingOffer = true;
+      await pc.setLocalDescription();
+      if (pc.localDescription && pc.localDescription.type === "offer") {
+        await this.sendSignal({
+          conversationId: this.conversationId,
+          fromUserId: this.localUser.userId,
+          toUserId: remoteUserId,
+          fromSessionId: this.localSessionId,
+          toSessionId: remoteSessionId,
+          kind: "offer",
+          sdp: {
+            type: "offer",
+            sdp: pc.localDescription.sdp,
+          },
+        });
+      }
+    } catch {
+      // Erros transitórios de negociação são reavaliados no próximo ciclo.
+    } finally {
+      entry.makingOffer = false;
+    }
+  }
+
   private async sendSignal(signal: CallSignalEnvelope): Promise<void> {
     if (!this.channel || this.disposed) {
       return;
@@ -674,6 +781,12 @@ export class VoiceCallSessionManager {
   }
 
   toggleMute(): boolean {
+    if (!this.hasMicrophone) {
+      this.isMuted = true;
+      void this.retryMicrophone();
+      return true;
+    }
+
     this.isMuted = !this.isMuted;
     if (this.localAudioStream) {
       for (const track of this.localAudioStream.getAudioTracks()) {
@@ -740,6 +853,7 @@ export class VoiceCallSessionManager {
             await entry.screenSender.replaceTrack(screenTrack);
           } else {
             entry.screenSender = entry.pc.addTrack(screenTrack, screenStream);
+            await this.renegotiatePeer(entry);
           }
           await applyScreenShareBitrateCap(entry.screenSender);
         } catch {
@@ -777,6 +891,7 @@ export class VoiceCallSessionManager {
       if (entry.screenSender) {
         try {
           entry.pc.removeTrack(entry.screenSender);
+          await this.renegotiatePeer(entry);
         } catch {
           // noop
         }
