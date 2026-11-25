@@ -55,6 +55,7 @@ export interface VoiceCallSnapshot {
   isMuted: boolean;
   isDeafened: boolean;
   isCameraEnabled: boolean;
+  cameraFacingMode: "user" | "environment";
   isScreenSharing: boolean;
   startedAt: number;
   error: string | null;
@@ -132,6 +133,7 @@ export class VoiceCallSessionManager {
   private isMuted = false;
   private isDeafened = false;
   private isCameraEnabled = false;
+  private cameraFacingMode: "user" | "environment" = "user";
   private isScreenSharing = false;
   private disposed = false;
   private error: string | null = null;
@@ -234,6 +236,7 @@ export class VoiceCallSessionManager {
       isMuted: this.isMuted,
       isDeafened: this.isDeafened,
       isCameraEnabled: this.isCameraEnabled,
+      cameraFacingMode: this.cameraFacingMode,
       isScreenSharing: this.isScreenSharing,
       startedAt: this.startedAt,
       error: this.error,
@@ -999,7 +1002,9 @@ export class VoiceCallSessionManager {
     return this.isDeafened;
   }
 
-  async startCamera(facingMode: "user" | "environment" = "user"): Promise<boolean> {
+  async startCamera(
+    facingMode: "user" | "environment" = this.cameraFacingMode,
+  ): Promise<boolean> {
     if (this.disposed) {
       return false;
     }
@@ -1022,11 +1027,14 @@ export class VoiceCallSessionManager {
       }
 
       this.localCameraStream = cameraStream;
+      this.cameraFacingMode = facingMode;
       this.isCameraEnabled = true;
       this.error = null;
 
       cameraTrack.onended = () => {
-        void this.stopCamera();
+        if (this.localCameraStream === cameraStream) {
+          void this.stopCamera();
+        }
       };
 
       for (const entry of this.peers.values()) {
@@ -1065,6 +1073,81 @@ export class VoiceCallSessionManager {
           : "Não foi possível ativar sua câmera.";
       this.emit();
       throw err;
+    }
+  }
+
+  async switchCamera(): Promise<boolean> {
+    if (this.disposed || !this.isCameraEnabled) {
+      return false;
+    }
+
+    const nextFacingMode: "user" | "environment" =
+      this.cameraFacingMode === "user" ? "environment" : "user";
+    const previousStream = this.localCameraStream;
+
+    try {
+      const nextStream = await acquireCameraVideoStream(
+        undefined,
+        nextFacingMode,
+      );
+      if (this.disposed) {
+        stopMediaStream(nextStream);
+        return false;
+      }
+
+      const nextTrack = nextStream.getVideoTracks()[0];
+      if (!nextTrack || !isAuthorizedCameraTrack(nextTrack)) {
+        stopMediaStream(nextStream);
+        return false;
+      }
+
+      this.localCameraStream = nextStream;
+      this.cameraFacingMode = nextFacingMode;
+      this.error = null;
+
+      nextTrack.onended = () => {
+        if (this.localCameraStream === nextStream) {
+          void this.stopCamera();
+        }
+      };
+
+      for (const entry of this.peers.values()) {
+        try {
+          void this.sendSignal({
+            conversationId: this.conversationId,
+            fromUserId: this.localUser.userId,
+            toUserId: entry.remoteUserId,
+            fromSessionId: this.localSessionId,
+            toSessionId: entry.remoteSessionId,
+            kind: "video-track-state",
+            trackKind: "camera",
+            active: true,
+            streamId: nextStream.id ?? null,
+            trackId: nextTrack.id ?? null,
+          });
+          if (entry.cameraSender) {
+            await entry.cameraSender.replaceTrack(nextTrack);
+          } else {
+            entry.cameraSender = entry.pc.addTrack(nextTrack, nextStream);
+            await this.renegotiatePeer(entry);
+          }
+          await applyCameraVideoBitrateCap(entry.cameraSender);
+        } catch {
+          // Segue para os demais participantes.
+        }
+      }
+
+      stopMediaStream(previousStream);
+      await this.publishPresence();
+      this.emit();
+      return true;
+    } catch (err) {
+      this.error =
+        err instanceof Error
+          ? err.message
+          : "Não foi possível alternar a câmera neste dispositivo.";
+      this.emit();
+      return false;
     }
   }
 

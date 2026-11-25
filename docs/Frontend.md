@@ -16,6 +16,8 @@ Rotas App Router, layout compartilhado, navegação e interface.
 - src/app/offline/page.tsx, src/app/not-found.tsx
 - src/components/layout/top-navbar.tsx
 - src/components/home/hero-workbench.tsx
+- src/components/messaging/call-stage-panel.tsx — palco responsivo de voz, vídeo e tela com grid, PiP local ajustável, troca de câmera e tela de chamada efetuada.
+- src/components/messaging/global-call-overlay.tsx — modal de chamada recebida (voz/vídeo/recusar com contagem), áudio WebRTC persistente e barra flutuante.
 
 ## Rotas
 /, /auth, /conta, /projetos, /comunidade, /comunidade/perfil, /mensagens, /offline.

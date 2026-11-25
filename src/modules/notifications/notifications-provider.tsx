@@ -218,6 +218,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const routerRef = useRef(router);
   const userIdRef = useRef(userId);
   const conversationsRef = useRef(conversations);
+  const refreshNotificationsRef = useRef<() => Promise<void>>(async () => {});
   const activeViewedConversationIdRef = useRef<string | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedPrefsUserIdRef = useRef<string | null>(null);
@@ -261,8 +262,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       const detail = (event as CustomEvent<{ linkHref?: string }>).detail;
       openHref(detail?.linkHref);
     };
-    const onNativeReplySent = () => {
+    const onNativeReplySent = (event: Event) => {
+      const detail = (event as CustomEvent<NativeReplyEventDetail>).detail;
+      const convId = detail?.conversationId?.trim();
+      if (convId) {
+        dismissNativeNotificationTag(`conv:${convId}`);
+      }
       emitMessagesChanged();
+      void refreshNotificationsRef.current();
     };
     const onNativeNotificationReply = (event: Event) => {
       const detail = (event as CustomEvent<NativeReplyEventDetail>).detail;
@@ -278,7 +285,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           await markConversationRead(activeUserId, convId, client).catch(
             () => false,
           );
+          dismissNativeNotificationTag(`conv:${convId}`);
           emitMessagesChanged();
+          void refreshNotificationsRef.current();
         })
         .catch(() => undefined);
     };
@@ -795,6 +804,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
   }, [isConfigured, userId]);
+
+  useEffect(() => {
+    refreshNotificationsRef.current = refreshNotifications;
+  }, [refreshNotifications]);
 
   // Carregar lista inicial de notificações + conversas e responder a eventos internos.
   useEffect(() => {

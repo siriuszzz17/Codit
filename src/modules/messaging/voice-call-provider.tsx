@@ -38,7 +38,10 @@ import {
   VoiceCallSessionManager,
   type VoiceCallSnapshot,
 } from "@/modules/messaging/voice-call-manager";
-import { startIncomingCallRingtone } from "@/modules/messaging/webrtc-media";
+import {
+  startIncomingCallRingtone,
+  startOutgoingCallRingback,
+} from "@/modules/messaging/webrtc-media";
 import { shouldDeliverNotification } from "@/modules/notifications/notification-schemas";
 import {
   dispatchVoiceCallAnswer,
@@ -50,19 +53,30 @@ import {
   type ChatMessageRowNotificationInput,
 } from "@/modules/notifications/notifications-provider";
 
+export interface JoinCallOptions {
+  withVideo?: boolean;
+  isAnswering?: boolean;
+}
+
 export interface VoiceCallContextValue {
   activeCall: VoiceCallSnapshot | null;
   incomingCall: IncomingCallNotice | null;
   callError: string | null;
   isJoiningCall: boolean;
-  joinVoiceCall: (summary: ConversationSummary) => Promise<void>;
+  isOutgoingRinging: boolean;
+  ringingDeadlineMs: number | null;
+  joinVoiceCall: (
+    summary: ConversationSummary,
+    options?: JoinCallOptions,
+  ) => Promise<void>;
   leaveVoiceCall: () => Promise<void>;
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleCamera: () => Promise<void>;
+  switchCamera: () => Promise<void>;
   toggleScreenShare: () => Promise<void>;
   retryMicrophone: () => Promise<void>;
-  acceptIncomingCall: () => Promise<void>;
+  acceptIncomingCall: (options?: { withVideo?: boolean }) => Promise<void>;
   dismissIncomingCall: () => void;
   notifyConversationParticipants: (
     recipientUserIds: ReadonlyArray<string>,
@@ -86,6 +100,8 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   const routerRef = useRef(router);
   const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopRingtoneRef = useRef<(() => void) | null>(null);
+  const outgoingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopOutgoingRingtoneRef = useRef<(() => void) | null>(null);
 
   const stopIncomingRingtone = useCallback(() => {
     stopRingtoneRef.current?.();
@@ -98,6 +114,21 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   );
   const [callError, setCallError] = useState<string | null>(null);
   const [isJoiningCall, setIsJoiningCall] = useState(false);
+  const [isOutgoingRinging, setIsOutgoingRinging] = useState(false);
+  const [ringingDeadlineMs, setRingingDeadlineMs] = useState<number | null>(
+    null,
+  );
+
+  const stopOutgoingRinging = useCallback(() => {
+    stopOutgoingRingtoneRef.current?.();
+    stopOutgoingRingtoneRef.current = null;
+    if (outgoingTimerRef.current !== null) {
+      clearTimeout(outgoingTimerRef.current);
+      outgoingTimerRef.current = null;
+    }
+    setIsOutgoingRinging(false);
+    setRingingDeadlineMs(null);
+  }, []);
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -112,6 +143,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   const leaveVoiceCall = useCallback(async () => {
+    stopOutgoingRinging();
     const manager = managerRef.current;
     const currentSnapshot = activeCallRef.current;
     managerRef.current = null;
@@ -134,7 +166,16 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     if (manager) {
       await manager.leaveCall();
     }
-  }, []);
+  }, [stopOutgoingRinging]);
+
+  // Para toque e timeout de chamada efetuada assim que outro participante entrar.
+  useEffect(() => {
+    if (isOutgoingRinging && activeCall && activeCall.participants.length > 1) {
+      void Promise.resolve().then(() => {
+        stopOutgoingRinging();
+      });
+    }
+  }, [activeCall, isOutgoingRinging, stopOutgoingRinging]);
 
   // Sincroniza a notificação persistente (`Ongoing`) da chamada ativa no Android.
   useEffect(() => {
@@ -152,6 +193,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       conversationTitle: activeCall.conversationTitle,
       isGroup: activeCall.isGroup,
       isMuted: activeCall.isMuted,
+      cameraEnabled: activeCall.isCameraEnabled,
       participantCount: Math.max(1, activeCall.participants.length),
       startedAtMs: activeCall.startedAt,
       avatarUrl: remotePeer?.avatarUrl ?? null,
@@ -252,18 +294,27 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       const manager = managerRef.current;
       managerRef.current = null;
+      stopIncomingRingtone();
+      stopOutgoingRingtoneRef.current?.();
+      stopOutgoingRingtoneRef.current = null;
+      if (outgoingTimerRef.current !== null) {
+        clearTimeout(outgoingTimerRef.current);
+        outgoingTimerRef.current = null;
+      }
       stopNativeCallNotification();
       if (manager) {
         void manager.leaveCall();
       }
       void Promise.resolve().then(() => {
+        setIsOutgoingRinging(false);
+        setRingingDeadlineMs(null);
         setActiveCall(null);
         setIncomingCall(null);
         setCallError(null);
         setIsJoiningCall(false);
       });
     }
-  }, [userId]);
+  }, [stopIncomingRingtone, userId]);
 
   // Limpar chamada caso ocorra unmount global.
   useEffect(() => {
@@ -272,6 +323,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
         clearTimeout(incomingTimerRef.current);
       }
       stopIncomingRingtone();
+      stopOutgoingRinging();
       const manager = managerRef.current;
       managerRef.current = null;
       stopNativeCallNotification();
@@ -279,7 +331,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
         void manager.leaveCall();
       }
     };
-  }, [stopIncomingRingtone]);
+  }, [stopIncomingRingtone, stopOutgoingRinging]);
 
   // Escutar inbox pessoal para chamadas recebidas, novas mensagens e alterações RLS.
   useEffect(() => {
@@ -490,15 +542,15 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   }, [isConfigured, leaveVoiceCall, userId]);
 
   const joinVoiceCall = useCallback(
-    async (summary: ConversationSummary) => {
+    async (summary: ConversationSummary, options?: JoinCallOptions) => {
       if (!userId) {
-        setCallError("Entre na sua conta para entrar em chamadas de voz.");
+        setCallError("Entre na sua conta para entrar em chamadas.");
         return;
       }
 
       if (!summary.canSendMessages) {
         setCallError(
-          "Apenas amigos aceitos ou grupos ativos podem iniciar chamadas de voz.",
+          "Apenas amigos aceitos ou grupos ativos podem iniciar chamadas.",
         );
         return;
       }
@@ -512,6 +564,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       setIsJoiningCall(true);
       setCallError(null);
       stopIncomingRingtone();
+      stopOutgoingRinging();
       if (incomingTimerRef.current !== null) {
         clearTimeout(incomingTimerRef.current);
         incomingTimerRef.current = null;
@@ -563,36 +616,71 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
 
       try {
         await manager.start();
+        if (options?.withVideo) {
+          await manager.startCamera().catch(() => undefined);
+        }
         setIsJoiningCall(false);
 
-        const recipientIds = summary.members
-          .map((item) => item.member.user_id)
-          .filter((id) => id !== userId);
+        if (!options?.isAnswering) {
+          const recipientIds = summary.members
+            .map((item) => item.member.user_id)
+            .filter((id) => id !== userId);
 
-        const notice: IncomingCallNotice = {
-          callId: manager.callId,
-          conversationId: summary.conversation.id,
-          conversationTitle: summary.displayTitle,
-          isGroup: summary.conversation.kind === "group",
-          callerId: userId,
-          callerName: localName,
-          callerUsername: localUsername,
-          callerAvatarUrl: profile?.avatar_url ?? null,
-          timeoutSeconds: CALL_RINGING_TIMEOUT_SECONDS,
-          sentAt: new Date().toISOString(),
-        };
-
-        void notifyConversationParticipants(
-          recipientIds,
-          "call:incoming",
-          notice,
-        );
-        if (recipientIds.length > 0) {
-          void dispatchVoiceCallPush(summary.conversation.id, client, {
+          const notice: IncomingCallNotice = {
             callId: manager.callId,
-          });
+            conversationId: summary.conversation.id,
+            conversationTitle: summary.displayTitle,
+            isGroup: summary.conversation.kind === "group",
+            callerId: userId,
+            callerName: localName,
+            callerUsername: localUsername,
+            callerAvatarUrl: profile?.avatar_url ?? null,
+            hasVideo: Boolean(options?.withVideo),
+            timeoutSeconds: CALL_RINGING_TIMEOUT_SECONDS,
+            sentAt: new Date().toISOString(),
+          };
+
+          void notifyConversationParticipants(
+            recipientIds,
+            "call:incoming",
+            notice,
+          );
+          if (recipientIds.length > 0) {
+            void dispatchVoiceCallPush(summary.conversation.id, client, {
+              callId: manager.callId,
+            });
+          }
+
+          if (manager.getSnapshot().participants.length <= 1) {
+            setIsOutgoingRinging(true);
+            setRingingDeadlineMs(Date.now() + CALL_RINGING_TIMEOUT_MS);
+
+            const notifPrefs = notificationsRef.current?.prefs;
+            const allowSound =
+              !notifPrefs ||
+              (!notifPrefs.muteAll && notifPrefs.soundEnabled);
+            if (allowSound) {
+              stopOutgoingRingtoneRef.current = startOutgoingCallRingback();
+            }
+
+            const startedCallId = manager.callId;
+            outgoingTimerRef.current = setTimeout(() => {
+              const current = activeCallRef.current;
+              if (
+                current &&
+                current.callId === startedCallId &&
+                current.participants.length <= 1
+              ) {
+                setCallError("Chamada não atendida (tempo esgotado).");
+                void leaveVoiceCall();
+              } else {
+                stopOutgoingRinging();
+              }
+            }, CALL_RINGING_TIMEOUT_MS);
+          }
         }
       } catch (error) {
+        stopOutgoingRinging();
         managerRef.current = null;
         await manager.leaveCall();
         setActiveCall(null);
@@ -600,53 +688,67 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
         setCallError(
           error instanceof Error
             ? error.message
-            : "Não foi possível iniciar a chamada de voz.",
+            : "Não foi possível iniciar a chamada.",
         );
       }
     },
-    [leaveVoiceCall, notifyConversationParticipants, profile, stopIncomingRingtone, user, userId],
+    [
+      leaveVoiceCall,
+      notifyConversationParticipants,
+      profile,
+      stopIncomingRingtone,
+      stopOutgoingRinging,
+      user,
+      userId,
+    ],
   );
 
-  const acceptIncomingCall = useCallback(async () => {
-    const notice = incomingCall;
-    if (!notice || !userId) {
-      return;
-    }
-
-    const client = getSupabaseClient();
-    if (!client) {
-      return;
-    }
-
-    stopIncomingRingtone();
-    if (incomingTimerRef.current !== null) {
-      clearTimeout(incomingTimerRef.current);
-      incomingTimerRef.current = null;
-    }
-    setIncomingCall(null);
-    void dispatchVoiceCallAnswer(notice.conversationId, notice.callId, client);
-    try {
-      const conversations = await listUserConversations(userId, client);
-      const target = conversations.find(
-        (item) => item.conversation.id === notice.conversationId,
-      );
-      if (!target || !target.canSendMessages) {
-        setCallError(
-          "Esta conversa não está mais disponível para chamadas de voz.",
-        );
+  const acceptIncomingCall = useCallback(
+    async (options?: { withVideo?: boolean }) => {
+      const notice = incomingCall;
+      if (!notice || !userId) {
         return;
       }
 
-      router.push(`/mensagens?c=${encodeURIComponent(notice.conversationId)}`);
-      await joinVoiceCall(target);
-    } catch (error) {
-      setCallError(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível atender a chamada.",
-      );
-    }
-  }, [incomingCall, joinVoiceCall, router, stopIncomingRingtone, userId]);
+      const client = getSupabaseClient();
+      if (!client) {
+        return;
+      }
+
+      stopIncomingRingtone();
+      if (incomingTimerRef.current !== null) {
+        clearTimeout(incomingTimerRef.current);
+        incomingTimerRef.current = null;
+      }
+      setIncomingCall(null);
+      void dispatchVoiceCallAnswer(notice.conversationId, notice.callId, client);
+      try {
+        const conversations = await listUserConversations(userId, client);
+        const target = conversations.find(
+          (item) => item.conversation.id === notice.conversationId,
+        );
+        if (!target || !target.canSendMessages) {
+          setCallError(
+            "Esta conversa não está mais disponível para chamadas.",
+          );
+          return;
+        }
+
+        router.push(`/mensagens?c=${encodeURIComponent(notice.conversationId)}`);
+        await joinVoiceCall(target, {
+          withVideo: options?.withVideo ?? Boolean(notice.hasVideo),
+          isAnswering: true,
+        });
+      } catch (error) {
+        setCallError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível atender a chamada.",
+        );
+      }
+    },
+    [incomingCall, joinVoiceCall, router, stopIncomingRingtone, userId],
+  );
 
   const dismissIncomingCall = useCallback(() => {
     stopIncomingRingtone();
@@ -691,6 +793,23 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const switchCamera = useCallback(async () => {
+    const manager = managerRef.current;
+    if (!manager) {
+      return;
+    }
+
+    try {
+      await manager.switchCamera();
+    } catch (error) {
+      setCallError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível alternar entre câmera frontal e traseira.",
+      );
+    }
+  }, []);
+
   const toggleScreenShare = useCallback(async () => {
     const manager = managerRef.current;
     if (!manager) {
@@ -730,11 +849,14 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       incomingCall,
       callError,
       isJoiningCall,
+      isOutgoingRinging,
+      ringingDeadlineMs,
       joinVoiceCall,
       leaveVoiceCall,
       toggleMute,
       toggleDeafen,
       toggleCamera,
+      switchCamera,
       toggleScreenShare,
       retryMicrophone,
       acceptIncomingCall,
@@ -747,11 +869,14 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       incomingCall,
       callError,
       isJoiningCall,
+      isOutgoingRinging,
+      ringingDeadlineMs,
       joinVoiceCall,
       leaveVoiceCall,
       toggleMute,
       toggleDeafen,
       toggleCamera,
+      switchCamera,
       toggleScreenShare,
       retryMicrophone,
       acceptIncomingCall,

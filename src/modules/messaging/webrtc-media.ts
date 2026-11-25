@@ -1,7 +1,6 @@
 // ==============================================================================
-// Captura de mídia WebRTC estrita (RN-504: somente áudio de voz; RN-505: tela)
-// Câmera de vídeo nunca é solicitada e qualquer faixa de vídeo não autorizada
-// é rejeitada e interrompida imediatamente.
+// Captura de mídia WebRTC (microfone, câmera opcional e compartilhamento de tela)
+// Faixas de câmera e tela só são enviadas quando explicitamente autorizadas.
 // ==============================================================================
 
 import "@/lib/codit-native-bridge";
@@ -750,6 +749,78 @@ export function startIncomingCallRingtone(intervalMs = 2_800): () => void {
   const timerId = window.setInterval(() => {
     if (!stopped) {
       playIncomingCallChime();
+    }
+  }, intervalMs);
+
+  return () => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    window.clearInterval(timerId);
+  };
+}
+
+export function playOutgoingCallRingback(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const AudioContextCtor =
+    window.AudioContext ??
+    (window as Window & { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
+
+  if (!AudioContextCtor) {
+    return;
+  }
+
+  try {
+    const context = new AudioContextCtor();
+    const now = context.currentTime;
+    const duration = 0.72;
+
+    // Tom suave de chamada efetuada (dupla frequência 425 Hz + 450 Hz)
+    const frequencies = [425, 450];
+    frequencies.forEach((frequency) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, now);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.025, now + 0.04);
+      gain.gain.setValueAtTime(0.025, now + duration - 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+
+      oscillator.start(now);
+      oscillator.stop(now + duration + 0.02);
+    });
+
+    setTimeout(() => {
+      if (context.state !== "closed") {
+        void context.close().catch(() => undefined);
+      }
+    }, 950);
+  } catch {
+    // Autoplay pode bloquear antes da interação do usuário.
+  }
+}
+
+export function startOutgoingCallRingback(intervalMs = 3_200): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  let stopped = false;
+  playOutgoingCallRingback();
+  const timerId = window.setInterval(() => {
+    if (!stopped) {
+      playOutgoingCallRingback();
     }
   }, intervalMs);
 

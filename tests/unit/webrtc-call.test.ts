@@ -12,6 +12,7 @@ import {
   canShareScreen,
   isAuthorizedCameraTrack,
   isAuthorizedScreenShareTrack,
+  startOutgoingCallRingback,
   stopMediaStream,
 } from "@/modules/messaging/webrtc-media";
 
@@ -345,5 +346,72 @@ describe("webrtc-media & voice-call-manager", () => {
     });
 
     expect(onCallTimeout).toHaveBeenCalledWith("missed");
+  });
+
+  it("switches camera facingMode (user <-> environment) and stops outgoing ringback cleanly", async () => {
+    const frontTrack = createFakeTrack("video");
+    const rearTrack = createFakeTrack("video");
+    const frontStream = createFakeStream([frontTrack]);
+    const rearStream = createFakeStream([rearTrack]);
+
+    const getUserMedia = vi
+      .fn()
+      .mockResolvedValueOnce(frontStream)
+      .mockResolvedValueOnce(rearStream);
+
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    vi.stubGlobal("RTCPeerConnection", vi.fn());
+
+    const clearIntervalSpy = vi.fn();
+    vi.stubGlobal("window", {
+      setInterval: vi.fn().mockReturnValue(77),
+      clearInterval: clearIntervalSpy,
+    });
+
+    const convId = "11111111-1111-4111-8111-111111111111";
+    const userA = "22222222-2222-4222-8222-222222222222";
+    const userB = "33333333-3333-4333-8333-333333333333";
+
+    try {
+      const stopRingback = startOutgoingCallRingback(3200);
+      stopRingback();
+      expect(clearIntervalSpy).toHaveBeenCalledWith(77);
+
+      const snapshots: VoiceCallSnapshot[] = [];
+      const manager = new VoiceCallSessionManager({
+        client: {} as CoditSupabaseClient,
+        conversationId: convId,
+        conversationTitle: "Bruno",
+        isGroup: false,
+        localUser: {
+          userId: userA,
+          username: "ana",
+          fullName: "Ana",
+          avatarUrl: null,
+        },
+        allowedMemberIds: [userA, userB],
+        onStateChange: (snapshot) => snapshots.push(snapshot),
+      });
+
+      const started = await manager.startCamera("user");
+      expect(started).toBe(true);
+      expect(snapshots[snapshots.length - 1]?.cameraFacingMode).toBe("user");
+      expect(snapshots[snapshots.length - 1]?.isCameraEnabled).toBe(true);
+
+      const switched = await manager.switchCamera();
+      expect(switched).toBe(true);
+      expect(frontTrack.stop).toHaveBeenCalledTimes(1);
+      expect(snapshots[snapshots.length - 1]?.cameraFacingMode).toBe(
+        "environment",
+      );
+      expect(snapshots[snapshots.length - 1]?.localCameraStream).toBe(
+        rearStream,
+      );
+
+      await manager.leaveCall();
+      expect(rearTrack.stop).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

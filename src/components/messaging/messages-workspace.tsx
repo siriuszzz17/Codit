@@ -179,10 +179,14 @@ export function MessagesWorkspace() {
     activeCall,
     callError,
     isJoiningCall,
+    isOutgoingRinging,
+    ringingDeadlineMs,
     joinVoiceCall,
     leaveVoiceCall,
     toggleMute,
     toggleDeafen,
+    toggleCamera,
+    switchCamera,
     toggleScreenShare,
     retryMicrophone,
     notifyConversationParticipants,
@@ -466,7 +470,17 @@ export function MessagesWorkspace() {
 
     convChannelRef.current = channel;
 
+    const onNativeReplySync = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string }>).detail;
+      if (!detail?.conversationId || detail.conversationId === selectedId) {
+        void loadSelectedMessages(selectedId);
+        void refreshWorkspace();
+      }
+    };
+    window.addEventListener("codit:native-reply-sent", onNativeReplySync);
+
     return () => {
+      window.removeEventListener("codit:native-reply-sent", onNativeReplySync);
       convChannelRef.current = null;
       if (typingTimeoutRef.current !== null) {
         clearTimeout(typingTimeoutRef.current);
@@ -1322,7 +1336,7 @@ export function MessagesWorkspace() {
                     </h2>
                     <p className="truncate text-[11px] text-muted">
                       {selectedSummary.conversation.kind === "group"
-                        ? `${selectedSummary.activeMemberCount}/${MAX_GROUP_MEMBERS} participantes · voz e tela`
+                        ? `${selectedSummary.activeMemberCount}/${MAX_GROUP_MEMBERS} participantes · voz, vídeo e tela`
                         : selectedSummary.directPeer
                           ? `@${selectedSummary.directPeer.username} · ${
                               selectedSummary.isDirectFriendActive
@@ -1409,35 +1423,70 @@ export function MessagesWorkspace() {
                       onClick={() => void leaveVoiceCall()}
                       className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-500"
                     >
-                      Sair da voz
+                      Sair da chamada
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={
-                        isJoiningCall ||
-                        !selectedSummary.canSendMessages ||
-                        !isOnline
-                      }
-                      onClick={() => void joinVoiceCall(selectedSummary)}
-                      title="Iniciar chamada de voz e compartilhamento de tela (sem câmera)"
-                      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-55"
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
+                    <>
+                      <button
+                        type="button"
+                        disabled={
+                          isJoiningCall ||
+                          !selectedSummary.canSendMessages ||
+                          !isOnline
+                        }
+                        onClick={() => void joinVoiceCall(selectedSummary)}
+                        title="Iniciar chamada de voz"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-55"
                       >
-                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                      </svg>
-                      <span>{isJoiningCall ? "Conectando..." : "Voz"}</span>
-                    </button>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                        </svg>
+                        <span>{isJoiningCall ? "Conectando..." : "Voz"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={
+                          isJoiningCall ||
+                          !selectedSummary.canSendMessages ||
+                          !isOnline
+                        }
+                        onClick={() =>
+                          void joinVoiceCall(selectedSummary, {
+                            withVideo: true,
+                          })
+                        }
+                        title="Iniciar chamada de vídeo"
+                        aria-label="Iniciar chamada de vídeo"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.1"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" />
+                          <rect x="2" y="6" width="14" height="12" rx="2" />
+                        </svg>
+                        <span className="hidden sm:inline">Vídeo</span>
+                      </button>
+                    </>
                   )}
 
                   {selectedSummary.conversation.kind === "group" ? (
@@ -1461,14 +1510,27 @@ export function MessagesWorkspace() {
                 </div>
               </header>
 
-              {/* Painel de chamada de voz & compartilhamento de tela */}
+              {/* Painel de chamada de voz, vídeo e compartilhamento de tela */}
               {activeCallInSelected ? (
                 <CallStagePanel
                   activeCall={activeCallInSelected}
                   currentUserId={userId}
                   callError={callError}
+                  isOutgoingRinging={isOutgoingRinging}
+                  ringingDeadlineMs={ringingDeadlineMs}
+                  targetPeer={
+                    selectedSummary.directPeer
+                      ? {
+                          fullName: selectedSummary.directPeer.full_name,
+                          username: selectedSummary.directPeer.username,
+                          avatarUrl: selectedSummary.directPeer.avatar_url,
+                        }
+                      : null
+                  }
                   onToggleMute={toggleMute}
                   onToggleDeafen={toggleDeafen}
+                  onToggleCamera={toggleCamera}
+                  onSwitchCamera={switchCamera}
                   onToggleScreenShare={toggleScreenShare}
                   onRetryMicrophone={retryMicrophone}
                   onLeaveCall={leaveVoiceCall}
