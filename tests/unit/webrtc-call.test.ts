@@ -104,6 +104,72 @@ describe("webrtc-media & voice-call-manager", () => {
     }
   });
 
+  it("prioritizes Android native MediaProjection bridge over WebView getDisplayMedia stub", async () => {
+    const getDisplayMedia = vi
+      .fn()
+      .mockRejectedValue(new DOMException("Not supported", "NotReadableError"));
+
+    let startedHandler: ((evt: Event) => void) | undefined;
+    const startScreenCapture = vi.fn(() => {
+      startedHandler?.({
+        detail: { width: 540, height: 960 },
+      } as unknown as Event);
+    });
+    const stopScreenCapture = vi.fn();
+
+    vi.stubGlobal("RTCPeerConnection", vi.fn());
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
+    vi.stubGlobal("Image", class {});
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+      setInterval: vi.fn().mockReturnValue(99),
+      clearInterval: vi.fn(),
+      addEventListener: vi.fn((name: string, cb: (evt: Event) => void) => {
+        if (name === "codit:native-screen-started") {
+          startedHandler = cb;
+        }
+      }),
+      removeEventListener: vi.fn(),
+      CoditNative: {
+        getInsets: () => "0,0,0,0",
+        isScreenCaptureSupported: () => true,
+        startScreenCapture,
+        stopScreenCapture,
+        getScreenFrameSeq: () => 0,
+        getScreenFrameDataUrl: () => "",
+      },
+    });
+
+    const fakeVideoTrack = createFakeTrack("video");
+    const fakeStream = createFakeStream([fakeVideoTrack]);
+    vi.stubGlobal("document", {
+      createElement: vi.fn(() => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          fillStyle: "",
+          fillRect: vi.fn(),
+          drawImage: vi.fn(),
+        }),
+        captureStream: () => fakeStream,
+      })),
+    });
+
+    try {
+      const acquired = await acquireScreenShareStream({ getDisplayMedia });
+      expect(startScreenCapture).toHaveBeenCalledTimes(1);
+      expect(getDisplayMedia).not.toHaveBeenCalled();
+      expect(isAuthorizedScreenShareTrack(acquired.getVideoTracks()[0])).toBe(
+        true,
+      );
+      stopMediaStream(acquired);
+      expect(stopScreenCapture).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps call active in listen-only mode when microphone is missing/denied and recovers via retryMicrophone", async () => {
     const convId = "11111111-1111-4111-8111-111111111111";
     const userA = "22222222-2222-4222-8222-222222222222";

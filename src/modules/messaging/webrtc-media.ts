@@ -386,6 +386,12 @@ export async function acquireScreenShareStream(
   mediaDevices: Pick<MediaDevices, "getDisplayMedia"> | undefined =
     typeof navigator !== "undefined" ? navigator.mediaDevices : undefined,
 ): Promise<MediaStream> {
+  // No Android APK (Capacitor), priorizar sempre o MediaProjection nativo porque
+  // WebViews Chromium em contexto HTTPS podem expor `getDisplayMedia` sem picker nativo.
+  if (isNativeAndroidScreenShareSupported()) {
+    return acquireNativeAndroidScreenShareStream();
+  }
+
   if (mediaDevices && typeof mediaDevices.getDisplayMedia === "function") {
     try {
       const stream = await mediaDevices.getDisplayMedia({
@@ -448,10 +454,6 @@ export async function acquireScreenShareStream(
 
       throw new Error("Não foi possível iniciar o compartilhamento de tela.");
     }
-  }
-
-  if (isNativeAndroidScreenShareSupported()) {
-    return acquireNativeAndroidScreenShareStream();
   }
 
   throw new Error(

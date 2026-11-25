@@ -1,5 +1,6 @@
 package com.codit.app;
 
+import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -23,9 +24,10 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Base64;
 import android.util.DisplayMetrics;
-import android.view.WindowManager;
+import android.view.Display;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.IntentCompat;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -34,15 +36,23 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Serviço em primeiro plano para projeção de tela no Android (MediaProjection).
  *
- * Mantém a regra RN-504/RN-505 do Codit: captura apenas a tela do dispositivo
- * (sem câmera e sem áudio interno) e expõe o frame JPEG mais recente para a
- * ponte WebView -> canvas.captureStream() no WebRTC.
+ * Compatível com Android 10–16 (`targetSdkVersion = 36`):
+ * - Mantém o estado Foreground `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` ativo
+ *   durante `getMediaProjection()` e `createVirtualDisplay()` (nunca chama
+ *   `stopForeground()` antes de adquirir a projeção).
+ * - Evita `getSystemService(WINDOW_SERVICE)` em contexto de Service não-visual,
+ *   usando dimensões passadas pela `MainActivity` com fallback em `DisplayManager`.
+ * - Suporta redimensionamento dinâmico (`onCapturedContentResize`) para captura
+ *   de aplicativo único no Android 14+.
  */
 public class ScreenCaptureService extends Service {
     public static final String ACTION_START = "com.codit.app.action.START_SCREEN_CAPTURE";
     public static final String ACTION_STOP = "com.codit.app.action.STOP_SCREEN_CAPTURE";
     public static final String EXTRA_RESULT_CODE = "result_code";
     public static final String EXTRA_RESULT_DATA = "result_data";
+    public static final String EXTRA_DISPLAY_WIDTH = "display_width";
+    public static final String EXTRA_DISPLAY_HEIGHT = "display_height";
+    public static final String EXTRA_DISPLAY_DENSITY = "display_density";
 
     private static final String CHANNEL_ID = "codit_screen_share";
     private static final int NOTIFICATION_ID = 4102;
@@ -71,6 +81,7 @@ public class ScreenCaptureService extends Service {
     private VirtualDisplay virtualDisplay;
     private ImageReader imageReader;
     private Bitmap reusableBitmap;
+    private int captureDensityDpi = 320;
     private long lastEncodedAtMs = 0L;
 
     public static void setListener(@Nullable Listener listener) {
@@ -106,61 +117,150 @@ public class ScreenCaptureService extends Service {
     @Override
     public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
         if (intent == null) {
+            stopForegroundCompat();
             stopSelf();
             return START_NOT_STICKY;
         }
 
         String action = intent.getAction();
         if (ACTION_STOP.equals(action)) {
-            teardownCapture(true);
+            releaseCaptureResources(true);
+            stopForegroundCompat();
             stopSelf();
             return START_NOT_STICKY;
         }
 
         if (!ACTION_START.equals(action)) {
+            stopForegroundCompat();
             stopSelf();
             return START_NOT_STICKY;
         }
 
-        // Android 8+ e 14+ exigem startForeground imediato com tipo MEDIA_PROJECTION antes de getMediaProjection.
+        // Android 10+ e 14+ exigem startForeground imediato com tipo MEDIA_PROJECTION antes de getMediaProjection.
         Notification notification = buildNotification();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            );
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (Throwable fgErr) {
+            notifyError("Não foi possível iniciar o serviço de captura de tela no Android.");
+            stopSelf();
+            return START_NOT_STICKY;
         }
 
         int resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Integer.MIN_VALUE);
         Intent resultData = IntentCompat.getParcelableExtra(intent, EXTRA_RESULT_DATA, Intent.class);
-        if (resultData == null || resultCode == Integer.MIN_VALUE) {
+        if (resultData == null || resultCode != Activity.RESULT_OK) {
             notifyError("Não foi possível iniciar o compartilhamento de tela.");
-            teardownCapture(false);
+            releaseCaptureResources(false);
+            stopForegroundCompat();
             stopSelf();
             return START_NOT_STICKY;
         }
 
-        startProjection(resultCode, resultData);
+        int hintWidth = intent.getIntExtra(EXTRA_DISPLAY_WIDTH, 0);
+        int hintHeight = intent.getIntExtra(EXTRA_DISPLAY_HEIGHT, 0);
+        int hintDensity = intent.getIntExtra(EXTRA_DISPLAY_DENSITY, 0);
+
+        startProjection(resultCode, resultData, hintWidth, hintHeight, hintDensity);
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
-        teardownCapture(true);
+        releaseCaptureResources(true);
+        stopForegroundCompat();
         super.onDestroy();
     }
 
-    private void startProjection(int resultCode, Intent resultData) {
-        teardownCapture(false);
+    private static int[] computeScaledEvenDimensions(int rawWidth, int rawHeight) {
+        int safeRawWidth = Math.max(rawWidth, MIN_CAPTURE_SIDE_PX);
+        int safeRawHeight = Math.max(rawHeight, MIN_CAPTURE_SIDE_PX);
+
+        int targetWidth;
+        int targetHeight;
+        if (safeRawWidth >= safeRawHeight) {
+            float scale = Math.min(1.0f, (float) MAX_CAPTURE_SIDE_PX / (float) safeRawWidth);
+            targetWidth = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(safeRawWidth * scale));
+            targetHeight = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(safeRawHeight * scale));
+        } else {
+            float scale = Math.min(1.0f, (float) MAX_CAPTURE_SIDE_PX / (float) safeRawHeight);
+            targetHeight = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(safeRawHeight * scale));
+            targetWidth = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(safeRawWidth * scale));
+        }
+
+        // Dimensões pares evitam artefatos de stride em codecs de hardware.
+        targetWidth = Math.max(MIN_CAPTURE_SIDE_PX, targetWidth & ~1);
+        targetHeight = Math.max(MIN_CAPTURE_SIDE_PX, targetHeight & ~1);
+        return new int[] { targetWidth, targetHeight };
+    }
+
+    private int[] resolveInitialDisplayMetrics(int hintWidth, int hintHeight, int hintDensity) {
+        int rawWidth = hintWidth;
+        int rawHeight = hintHeight;
+        int densityDpi = hintDensity;
+
+        if (rawWidth <= 0 || rawHeight <= 0 || densityDpi <= 0) {
+            DisplayMetrics fallbackMetrics = new DisplayMetrics();
+            boolean resolvedFromDisplay = false;
+            try {
+                DisplayManager displayManager =
+                    (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+                Display defaultDisplay =
+                    displayManager != null ? displayManager.getDisplay(Display.DEFAULT_DISPLAY) : null;
+                if (defaultDisplay != null) {
+                    defaultDisplay.getRealMetrics(fallbackMetrics);
+                    resolvedFromDisplay =
+                        fallbackMetrics.widthPixels > 0 && fallbackMetrics.heightPixels > 0;
+                }
+            } catch (Throwable ignored) {
+                resolvedFromDisplay = false;
+            }
+
+            if (!resolvedFromDisplay) {
+                fallbackMetrics = getResources().getDisplayMetrics();
+            }
+
+            if (rawWidth <= 0) {
+                rawWidth = fallbackMetrics.widthPixels;
+            }
+            if (rawHeight <= 0) {
+                rawHeight = fallbackMetrics.heightPixels;
+            }
+            if (densityDpi <= 0) {
+                densityDpi = fallbackMetrics.densityDpi;
+            }
+        }
+
+        return new int[] {
+            Math.max(rawWidth, 720),
+            Math.max(rawHeight, 1280),
+            Math.max(densityDpi, 160)
+        };
+    }
+
+    private void startProjection(
+        int resultCode,
+        Intent resultData,
+        int hintWidth,
+        int hintHeight,
+        int hintDensity
+    ) {
+        // Libera apenas recursos anteriores sem chamar stopForeground()!
+        releaseCaptureResources(false);
 
         try {
             MediaProjectionManager projectionManager =
                 (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
             if (projectionManager == null) {
                 notifyError("Serviço de projeção de tela indisponível neste dispositivo.");
+                stopForegroundCompat();
                 stopSelf();
                 return;
             }
@@ -168,6 +268,7 @@ public class ScreenCaptureService extends Service {
             MediaProjection projection = projectionManager.getMediaProjection(resultCode, resultData);
             if (projection == null) {
                 notifyError("Permissão de captura de tela não concedida.");
+                stopForegroundCompat();
                 stopSelf();
                 return;
             }
@@ -176,33 +277,11 @@ public class ScreenCaptureService extends Service {
             captureThread.start();
             captureHandler = new Handler(captureThread.getLooper());
 
-            DisplayMetrics metrics = new DisplayMetrics();
-            WindowManager windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-            if (windowManager != null && windowManager.getDefaultDisplay() != null) {
-                windowManager.getDefaultDisplay().getRealMetrics(metrics);
-            } else {
-                metrics = getResources().getDisplayMetrics();
-            }
-
-            int rawWidth = Math.max(metrics.widthPixels, 720);
-            int rawHeight = Math.max(metrics.heightPixels, 1280);
-            int densityDpi = Math.max(metrics.densityDpi, 160);
-
-            int targetWidth;
-            int targetHeight;
-            if (rawWidth >= rawHeight) {
-                float scale = Math.min(1.0f, (float) MAX_CAPTURE_SIDE_PX / (float) rawWidth);
-                targetWidth = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(rawWidth * scale));
-                targetHeight = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(rawHeight * scale));
-            } else {
-                float scale = Math.min(1.0f, (float) MAX_CAPTURE_SIDE_PX / (float) rawHeight);
-                targetHeight = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(rawHeight * scale));
-                targetWidth = Math.max(MIN_CAPTURE_SIDE_PX, Math.round(rawWidth * scale));
-            }
-
-            // Dimensões pares evitam artefatos de stride em codecs de hardware.
-            targetWidth = targetWidth & ~1;
-            targetHeight = targetHeight & ~1;
+            int[] displaySpec = resolveInitialDisplayMetrics(hintWidth, hintHeight, hintDensity);
+            int[] scaled = computeScaledEvenDimensions(displaySpec[0], displaySpec[1]);
+            int targetWidth = scaled[0];
+            int targetHeight = scaled[1];
+            captureDensityDpi = displaySpec[2];
 
             captureWidth = targetWidth;
             captureHeight = targetHeight;
@@ -216,34 +295,29 @@ public class ScreenCaptureService extends Service {
                     @Override
                     public void onStop() {
                         mainHandler.post(() -> {
-                            teardownCapture(true);
+                            releaseCaptureResources(true);
+                            stopForegroundCompat();
                             stopSelf();
                         });
+                    }
+
+                    @Override
+                    public void onCapturedContentResize(int width, int height) {
+                        if (width > 0 && height > 0 && captureHandler != null) {
+                            captureHandler.post(() -> handleContentResize(width, height));
+                        }
                     }
                 },
                 captureHandler
             );
 
-            imageReader = ImageReader.newInstance(
-                targetWidth,
-                targetHeight,
-                PixelFormat.RGBA_8888,
-                2
-            );
-
-            final int finalWidth = targetWidth;
-            final int finalHeight = targetHeight;
-
-            imageReader.setOnImageAvailableListener(
-                reader -> processLatestFrame(reader, finalWidth, finalHeight),
-                captureHandler
-            );
+            imageReader = buildImageReader(targetWidth, targetHeight);
 
             virtualDisplay = mediaProjection.createVirtualDisplay(
                 "CoditScreenShare",
                 targetWidth,
                 targetHeight,
-                densityDpi,
+                captureDensityDpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader.getSurface(),
                 null,
@@ -251,14 +325,63 @@ public class ScreenCaptureService extends Service {
             );
 
             running = true;
+            final int startedWidth = targetWidth;
+            final int startedHeight = targetHeight;
             Listener listener = activeListener;
             if (listener != null) {
-                mainHandler.post(() -> listener.onStarted(finalWidth, finalHeight));
+                mainHandler.post(() -> listener.onStarted(startedWidth, startedHeight));
             }
         } catch (Throwable err) {
             notifyError("Falha ao iniciar captura de tela no Android.");
-            teardownCapture(false);
+            releaseCaptureResources(false);
+            stopForegroundCompat();
             stopSelf();
+        }
+    }
+
+    private ImageReader buildImageReader(final int width, final int height) {
+        ImageReader reader = ImageReader.newInstance(
+            width,
+            height,
+            PixelFormat.RGBA_8888,
+            2
+        );
+        reader.setOnImageAvailableListener(
+            r -> processLatestFrame(r, width, height),
+            captureHandler
+        );
+        return reader;
+    }
+
+    private void handleContentResize(int rawWidth, int rawHeight) {
+        if (!running || virtualDisplay == null || captureHandler == null) {
+            return;
+        }
+        int[] scaled = computeScaledEvenDimensions(rawWidth, rawHeight);
+        int nextWidth = scaled[0];
+        int nextHeight = scaled[1];
+        if (nextWidth == captureWidth && nextHeight == captureHeight) {
+            return;
+        }
+
+        try {
+            ImageReader nextReader = buildImageReader(nextWidth, nextHeight);
+            ImageReader previousReader = imageReader;
+            imageReader = nextReader;
+            captureWidth = nextWidth;
+            captureHeight = nextHeight;
+
+            virtualDisplay.resize(nextWidth, nextHeight, captureDensityDpi);
+            virtualDisplay.setSurface(nextReader.getSurface());
+
+            if (previousReader != null) {
+                try {
+                    previousReader.setOnImageAvailableListener(null, null);
+                    previousReader.close();
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {
+            // Mantém a superfície atual caso o OEM não suporte resize dinâmico.
         }
     }
 
@@ -283,6 +406,9 @@ public class ScreenCaptureService extends Service {
             ByteBuffer buffer = planes[0].getBuffer();
             int pixelStride = planes[0].getPixelStride();
             int rowStride = planes[0].getRowStride();
+            if (pixelStride <= 0) {
+                return;
+            }
             int rowPadding = rowStride - pixelStride * width;
             int bitmapWidth = width + Math.max(0, rowPadding / pixelStride);
 
@@ -301,6 +427,7 @@ public class ScreenCaptureService extends Service {
                 );
             }
 
+            buffer.rewind();
             reusableBitmap.copyPixelsFromBuffer(buffer);
             Bitmap frameBitmap = bitmapWidth == width
                 ? reusableBitmap
@@ -320,12 +447,14 @@ public class ScreenCaptureService extends Service {
             // Descartar quadros inválidos durante rotação ou encerramento.
         } finally {
             if (image != null) {
-                image.close();
+                try {
+                    image.close();
+                } catch (Throwable ignored) {}
             }
         }
     }
 
-    private void teardownCapture(boolean notifyStop) {
+    private void releaseCaptureResources(boolean notifyStop) {
         boolean wasRunning = running;
         running = false;
         latestFrameDataUrl = "";
@@ -369,18 +498,22 @@ public class ScreenCaptureService extends Service {
             captureHandler = null;
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE);
-        } else {
-            stopForeground(true);
-        }
-
         if (notifyStop && wasRunning) {
             Listener listener = activeListener;
             if (listener != null) {
                 mainHandler.post(listener::onStopped);
             }
         }
+    }
+
+    private void stopForegroundCompat() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            } else {
+                stopForeground(true);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void notifyError(String message) {
@@ -398,6 +531,7 @@ public class ScreenCaptureService extends Service {
                 NotificationManager.IMPORTANCE_LOW
             );
             channel.setDescription("Notificação ativa enquanto sua tela é compartilhada em chamadas do Codit.");
+            channel.setShowBadge(false);
             NotificationManager manager =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) {
@@ -411,19 +545,21 @@ public class ScreenCaptureService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             pendingFlags |= PendingIntent.FLAG_IMMUTABLE;
         }
-        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, openAppIntent, pendingFlags);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 41020, openAppIntent, pendingFlags);
 
         Intent stopIntent = new Intent(this, ScreenCaptureService.class);
         stopIntent.setAction(ACTION_STOP);
-        PendingIntent stopPendingIntent = PendingIntent.getService(this, 1, stopIntent, pendingFlags);
+        PendingIntent stopPendingIntent = PendingIntent.getService(this, 41021, stopIntent, pendingFlags);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Codit · Compartilhando tela")
             .setContentText("Sua tela está visível na chamada de voz atual.")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_codit)
+            .setColor(ContextCompat.getColor(this, R.color.codit_notification_accent))
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
-            .addAction(0, "Parar", stopPendingIntent)
+            .addAction(R.drawable.ic_notif_call_end, "Parar", stopPendingIntent)
             .build();
     }
 }

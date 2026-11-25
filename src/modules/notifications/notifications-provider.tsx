@@ -12,6 +12,11 @@ import {
   type ReactNode,
 } from "react";
 import {
+  consumeNativePendingNavigationHref,
+  dismissNativeNotificationTag,
+  type NativeReplyEventDetail,
+} from "@/lib/codit-native-bridge";
+import {
   emitFriendshipsChanged,
   emitMessagesChanged,
   emitNotificationsChanged,
@@ -30,6 +35,7 @@ import type { IncomingCallNotice } from "@/modules/messaging/messaging-schemas";
 import {
   listUserConversations,
   markConversationRead,
+  sendConversationMessage,
   type ConversationSummary,
 } from "@/modules/messaging/messaging-service";
 import {
@@ -210,6 +216,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const prefsRef = useRef(prefs);
   const routerRef = useRef(router);
+  const userIdRef = useRef(userId);
   const conversationsRef = useRef(conversations);
   const activeViewedConversationIdRef = useRef<string | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -228,6 +235,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
 
@@ -240,6 +251,52 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         routerRef.current.push(href);
       }
     };
+
+    const pendingLaunchHref = consumeNativePendingNavigationHref();
+    if (pendingLaunchHref) {
+      openHref(pendingLaunchHref);
+    }
+
+    const onNativeNavigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ linkHref?: string }>).detail;
+      openHref(detail?.linkHref);
+    };
+    const onNativeReplySent = () => {
+      emitMessagesChanged();
+    };
+    const onNativeNotificationReply = (event: Event) => {
+      const detail = (event as CustomEvent<NativeReplyEventDetail>).detail;
+      const convId = detail?.conversationId?.trim();
+      const content = detail?.content?.trim();
+      const activeUserId = userIdRef.current;
+      const client = getSupabaseClient();
+      if (!convId || !content || !activeUserId || !client) {
+        return;
+      }
+      void sendConversationMessage(activeUserId, convId, content, client)
+        .then(async () => {
+          await markConversationRead(activeUserId, convId, client).catch(
+            () => false,
+          );
+          emitMessagesChanged();
+        })
+        .catch(() => undefined);
+    };
+
+    window.addEventListener("codit:native-navigate", onNativeNavigate);
+    window.addEventListener("codit:native-reply-sent", onNativeReplySent);
+    window.addEventListener(
+      "codit:native-notification-reply",
+      onNativeNotificationReply,
+    );
+    cleanups.push(() => {
+      window.removeEventListener("codit:native-navigate", onNativeNavigate);
+      window.removeEventListener("codit:native-reply-sent", onNativeReplySent);
+      window.removeEventListener(
+        "codit:native-notification-reply",
+        onNativeNotificationReply,
+      );
+    });
 
     void import("@tauri-apps/plugin-notification")
       .then(({ onAction }) =>
@@ -368,6 +425,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const setActiveViewedConversationId = useCallback(
     (conversationId: string | null) => {
       activeViewedConversationIdRef.current = conversationId;
+      if (conversationId) {
+        dismissNativeNotificationTag(`conv:${conversationId}`);
+      }
     },
     [],
   );
@@ -854,6 +914,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
               rawRow.title,
               rawRow.body ?? null,
               rawRow.link_href ?? null,
+              {
+                category: rawRow.category,
+                conversationId: convId,
+                tag: rawRow.entity_key ?? `notif:${rawRow.id}`,
+                actorId: rawRow.actor_id ?? null,
+              },
             );
           }
         },
@@ -915,7 +981,17 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       });
 
       if (delivery.allowBrowserPush) {
-        void showSystemNotification(item.title, item.body, item.linkHref);
+        void showSystemNotification(item.title, item.body, item.linkHref, {
+          category: "voice_call",
+          conversationId: notice.conversationId,
+          conversationTitle: notice.conversationTitle,
+          isGroup: notice.isGroup,
+          tag: `call:${notice.conversationId}`,
+          actorId: notice.callerId,
+          actorName: notice.callerName,
+          actorUsername: notice.callerUsername,
+          actorAvatarUrl: notice.callerAvatarUrl ?? null,
+        });
       }
     },
     [userId],
@@ -1017,7 +1093,17 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       }
 
       if (delivery.allowBrowserPush) {
-        void showSystemNotification(title, body, linkHref);
+        void showSystemNotification(title, body, linkHref, {
+          category: "message",
+          conversationId: params.conversationId,
+          conversationTitle,
+          isGroup: Boolean(isGroup),
+          tag: `conv:${params.conversationId}`,
+          actorId: params.senderId,
+          actorName: senderName,
+          actorUsername: senderUsername,
+          actorAvatarUrl: senderAvatarUrl ?? null,
+        });
       }
     },
     [pushToast, shouldSkipDuplicateKey, userId],

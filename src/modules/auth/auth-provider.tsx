@@ -13,6 +13,10 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import {
+  clearNativeAuthSession,
+  syncNativeAuthSession,
+} from "@/lib/codit-native-bridge";
+import {
   closeCapacitorOAuthBrowser,
   completeOAuthCallbackUrl,
   isCapacitorNative,
@@ -60,6 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configured && !skipAuthInit,
   );
   const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    syncNativeAuthSession(session);
+  }, [isLoading, session]);
 
   const syncUserProfile = useCallback(async (targetUser: User | null) => {
     if (!targetUser) {
@@ -272,6 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    clearNativeAuthSession();
     await unregisterCurrentAndroidPushDevice(client);
     await signOutUser(client);
     setSession(null);

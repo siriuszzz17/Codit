@@ -1,4 +1,8 @@
 import { Capacitor } from "@capacitor/core";
+import {
+  showNativeRichNotification,
+  type NativeRichNotificationPayload,
+} from "@/lib/codit-native-bridge";
 import { isTauriDesktop } from "@/lib/desktop-updater";
 import {
   ANDROID_HIGH_PRIORITY_CHANNEL_ID,
@@ -10,6 +14,18 @@ export type SystemNotificationPermission =
   | "granted"
   | "denied"
   | "unsupported";
+
+export interface SystemNotificationMetadata {
+  category?: string;
+  conversationId?: string | null;
+  conversationTitle?: string | null;
+  isGroup?: boolean;
+  tag?: string | null;
+  actorId?: string | null;
+  actorName?: string | null;
+  actorUsername?: string | null;
+  actorAvatarUrl?: string | null;
+}
 
 function isCapacitorAndroid(): boolean {
   return (
@@ -106,6 +122,7 @@ export async function showSystemNotification(
   title: string,
   body: string | null,
   linkHref: string | null,
+  metadata?: SystemNotificationMetadata,
 ): Promise<void> {
   if (
     typeof window === "undefined" ||
@@ -132,11 +149,36 @@ export async function showSystemNotification(
     }
 
     if (isCapacitorAndroid()) {
-      // Com FCM registrado, o serviço nativo exibe o push mesmo em segundo plano.
-      // Mantemos LocalNotifications apenas como contingência se não houver token ativo.
+      const richPayload: NativeRichNotificationPayload = {
+        title,
+        body: body ?? "",
+        category: metadata?.category ?? "social",
+        linkHref,
+        conversationId: metadata?.conversationId ?? null,
+        conversationTitle: metadata?.conversationTitle ?? null,
+        isGroup: Boolean(metadata?.isGroup),
+        tag: metadata?.tag ?? null,
+        actorId: metadata?.actorId ?? null,
+        actorName: metadata?.actorName ?? null,
+        actorUsername: metadata?.actorUsername ?? null,
+        actorAvatarUrl: metadata?.actorAvatarUrl ?? null,
+      };
+
+      // Para mensagens (RemoteInput + MessagingStyle + largeIcon circular) ou quando
+      // não há FCM ativo, usa a ponte nativa com deduplicação por tag (`conv:{id}`).
+      if (
+        metadata?.category === "message" ||
+        !hasActiveAndroidPushRegistration()
+      ) {
+        if (showNativeRichNotification(richPayload)) {
+          return;
+        }
+      }
+
       if (hasActiveAndroidPushRegistration()) {
         return;
       }
+
       const { LocalNotifications } = await import(
         "@capacitor/local-notifications"
       );

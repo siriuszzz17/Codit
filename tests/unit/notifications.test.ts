@@ -32,6 +32,12 @@ import {
   persistAndroidPushToken,
   unregisterCurrentAndroidPushDevice,
 } from "@/modules/notifications/push-notification-service";
+import {
+  clearNativeAuthSession,
+  startOrUpdateNativeCallNotification,
+  stopNativeCallNotification,
+  syncNativeAuthSession,
+} from "@/lib/codit-native-bridge";
 
 const USER_A = "11111111-1111-4111-8111-111111111111";
 const USER_B = "22222222-2222-4222-8222-222222222222";
@@ -507,5 +513,71 @@ describe("notifications service & Supabase error diagnostics", () => {
     ).resolves.toBeUndefined();
     expect(hasActiveAndroidPushRegistration()).toBe(false);
     expect(store.size).toBe(0);
+  });
+
+  it("syncs auth session and ongoing call controls with Android native bridge safely", () => {
+    const syncAuthSession = vi.fn();
+    const clearAuthSession = vi.fn();
+    const startOrUpdateCallNotification = vi.fn();
+    const stopCallNotification = vi.fn();
+
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key-123");
+    vi.stubGlobal("window", {
+      CoditNative: {
+        getInsets: () => "0,0,0,0",
+        syncAuthSession,
+        clearAuthSession,
+        startOrUpdateCallNotification,
+        stopCallNotification,
+      },
+    });
+
+    try {
+      syncNativeAuthSession({
+        access_token: "jwt-access",
+        refresh_token: "jwt-refresh",
+        expires_at: 1_900_000_000,
+        user: { id: USER_A },
+      } as never);
+
+      expect(syncAuthSession).toHaveBeenCalledTimes(1);
+      const syncedPayload = JSON.parse(syncAuthSession.mock.calls[0]?.[0] as string);
+      expect(syncedPayload).toMatchObject({
+        supabaseUrl: "https://example.supabase.co",
+        anonKey: "anon-key-123",
+        userId: USER_A,
+        accessToken: "jwt-access",
+        refreshToken: "jwt-refresh",
+      });
+
+      startOrUpdateNativeCallNotification({
+        conversationId: CONV_A,
+        conversationTitle: "Bruno",
+        isGroup: false,
+        isMuted: true,
+        participantCount: 2,
+        startedAtMs: 1_700_000_000_000,
+        avatarUrl: "/icons/octopy-coding.png",
+        username: "bruno",
+      });
+      expect(startOrUpdateCallNotification).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(startOrUpdateCallNotification.mock.calls[0]?.[0] as string),
+      ).toMatchObject({
+        conversationId: CONV_A,
+        isMuted: true,
+        avatarUrl: "/icons/octopy-coding.png",
+      });
+
+      stopNativeCallNotification();
+      expect(stopCallNotification).toHaveBeenCalledTimes(1);
+
+      clearNativeAuthSession();
+      expect(clearAuthSession).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
   });
 });

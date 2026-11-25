@@ -12,6 +12,12 @@ import {
   type ReactNode,
 } from "react";
 import {
+  dismissNativeNotificationTag,
+  startOrUpdateNativeCallNotification,
+  stopNativeCallNotification,
+  type NativeCallActionDetail,
+} from "@/lib/codit-native-bridge";
+import {
   emitMessagesChanged,
   subscribeFriendshipsChanged,
 } from "@/lib/social-events";
@@ -69,6 +75,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   const managerRef = useRef<VoiceCallSessionManager | null>(null);
   const activeCallRef = useRef<VoiceCallSnapshot | null>(null);
   const notificationsRef = useRef(notifications);
+  const routerRef = useRef(router);
   const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [activeCall, setActiveCall] = useState<VoiceCallSnapshot | null>(null);
@@ -86,15 +93,85 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     notificationsRef.current = notifications;
   }, [notifications]);
 
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
+
   const leaveVoiceCall = useCallback(async () => {
     const manager = managerRef.current;
     managerRef.current = null;
     setActiveCall(null);
     setIsJoiningCall(false);
+    stopNativeCallNotification();
     if (manager) {
       await manager.leaveCall();
     }
   }, []);
+
+  // Sincroniza a notificação persistente (`Ongoing`) da chamada ativa no Android.
+  useEffect(() => {
+    if (!activeCall) {
+      stopNativeCallNotification();
+      return;
+    }
+
+    const remotePeer = !activeCall.isGroup
+      ? activeCall.participants.find((item) => item.userId !== userId)
+      : undefined;
+
+    startOrUpdateNativeCallNotification({
+      conversationId: activeCall.conversationId,
+      conversationTitle: activeCall.conversationTitle,
+      isGroup: activeCall.isGroup,
+      isMuted: activeCall.isMuted,
+      participantCount: Math.max(1, activeCall.participants.length),
+      startedAtMs: activeCall.startedAt,
+      avatarUrl: remotePeer?.avatarUrl ?? null,
+      username: remotePeer?.username ?? null,
+    });
+  }, [activeCall, userId]);
+
+  // Recebe ações dos botões da notificação persistente Android (Mutar/Desmutar, Encerrar, Voltar).
+  useEffect(() => {
+    const onNativeCallAction = (event: Event) => {
+      const detail = (event as CustomEvent<NativeCallActionDetail>).detail;
+      if (!detail?.action) {
+        return;
+      }
+
+      if (detail.action === "toggle-mute") {
+        managerRef.current?.toggleMute();
+        return;
+      }
+
+      if (detail.action === "hangup") {
+        void leaveVoiceCall();
+        return;
+      }
+
+      if (detail.action === "return") {
+        const targetConvId =
+          detail.conversationId || activeCallRef.current?.conversationId;
+        const href =
+          detail.linkHref &&
+          detail.linkHref.startsWith("/") &&
+          !detail.linkHref.startsWith("//")
+            ? detail.linkHref
+            : targetConvId
+              ? `/mensagens?c=${encodeURIComponent(targetConvId)}`
+              : "/mensagens";
+        routerRef.current.push(href);
+      }
+    };
+
+    window.addEventListener("codit:native-call-action", onNativeCallAction);
+    return () => {
+      window.removeEventListener(
+        "codit:native-call-action",
+        onNativeCallAction,
+      );
+    };
+  }, [leaveVoiceCall]);
 
   const notifyConversationParticipants = useCallback(
     async (
@@ -147,6 +224,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       const manager = managerRef.current;
       managerRef.current = null;
+      stopNativeCallNotification();
       if (manager) {
         void manager.leaveCall();
       }
@@ -167,6 +245,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       }
       const manager = managerRef.current;
       managerRef.current = null;
+      stopNativeCallNotification();
       if (manager) {
         void manager.leaveCall();
       }
@@ -328,6 +407,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
 
       setIsJoiningCall(true);
       setCallError(null);
+      dismissNativeNotificationTag(`call:${summary.conversation.id}`);
       setIncomingCall((current) =>
         current?.conversationId === summary.conversation.id ? null : current,
       );
@@ -446,7 +526,12 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   }, [incomingCall, joinVoiceCall, router, userId]);
 
   const dismissIncomingCall = useCallback(() => {
-    setIncomingCall(null);
+    setIncomingCall((current) => {
+      if (current?.conversationId) {
+        dismissNativeNotificationTag(`call:${current.conversationId}`);
+      }
+      return null;
+    });
   }, []);
 
   const toggleMute = useCallback(() => {
