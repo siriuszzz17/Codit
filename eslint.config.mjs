@@ -20,6 +20,14 @@ const eslintConfig = defineConfig([
       },
     },
   },
+  {
+    files: ["supabase/functions/**/*.ts"],
+    languageOptions: {
+      globals: {
+        Deno: "readonly",
+      },
+    },
+  },
   globalIgnores([
     ".next/**",
     "out/**",

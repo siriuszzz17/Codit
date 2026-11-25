@@ -31,6 +31,7 @@ import {
 } from "@/modules/messaging/voice-call-manager";
 import { playIncomingCallChime } from "@/modules/messaging/webrtc-media";
 import { shouldDeliverNotification } from "@/modules/notifications/notification-schemas";
+import { dispatchVoiceCallPush } from "@/modules/notifications/push-notification-service";
 import {
   useNotificationsOptional,
   type ChatMessageRowNotificationInput,
@@ -391,6 +392,9 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
           "call:incoming",
           notice,
         );
+        if (recipientIds.length > 0) {
+          void dispatchVoiceCallPush(summary.conversation.id, client);
+        }
       } catch (error) {
         managerRef.current = null;
         await manager.leaveCall();

@@ -3,7 +3,7 @@
 | Campo | Valor |
 | :--- | :--- |
 | **Projeto** | Codit (`TCC-Codit`) |
-| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql), [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql), [20261123000003_fix_grants_rls_and_username_cooldown.sql](../supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql), [20261124000001_sync_public_profile_customization.sql](../supabase/migrations/20261124000001_sync_public_profile_customization.sql), [20261124000002_add_embedded_messaging.sql](../supabase/migrations/20261124000002_add_embedded_messaging.sql) e [20261124000003_add_app_appearance_preferences.sql](../supabase/migrations/20261124000003_add_app_appearance_preferences.sql)) |
+| **SGBD Alvo** | PostgreSQL (`16+` gerenciado via **Supabase** — migrações versionadas em [20261122000001_init_profiles_and_sandbox_projects.sql](../supabase/migrations/20261122000001_init_profiles_and_sandbox_projects.sql), [20261123000001_enhance_profiles_and_projects.sql](../supabase/migrations/20261123000001_enhance_profiles_and_projects.sql), [20261123000002_add_social_network.sql](../supabase/migrations/20261123000002_add_social_network.sql), [20261123000003_fix_grants_rls_and_username_cooldown.sql](../supabase/migrations/20261123000003_fix_grants_rls_and_username_cooldown.sql), [20261124000001_sync_public_profile_customization.sql](../supabase/migrations/20261124000001_sync_public_profile_customization.sql), [20261124000002_add_embedded_messaging.sql](../supabase/migrations/20261124000002_add_embedded_messaging.sql), [20261124000003_add_app_appearance_preferences.sql](../supabase/migrations/20261124000003_add_app_appearance_preferences.sql), [20261124000004_add_notifications_system.sql](../supabase/migrations/20261124000004_add_notifications_system.sql) e [20261125000001_add_android_push_notifications.sql](../supabase/migrations/20261125000001_add_android_push_notifications.sql)) |
 | **Última atualização** | `2026-11-24` |
 | **Documentos relacionados** | [GEMINI.md](../GEMINI.md) · [arquitetura.md](./arquitetura.md) · [regras-negocio.md](./regras-negocio.md) |
 
@@ -204,6 +204,11 @@ erDiagram
   - Mensagens de chat e chamadas WebRTC utilizam os fluxos em tempo real existentes (`chat_messages` / `codit:user-inbox:{userId}`) sem duplicação em `public.notifications`.
 - **Colunas:** `id` (`PK`), `recipient_id` (`FK -> profiles ON DELETE CASCADE`), `actor_id` (`FK -> profiles ON DELETE SET NULL`), `category` (`'message' | 'voice_call' | 'project_like' | 'project_comment' | 'friend_request' | 'friend_accepted' | 'group_invite'`), `title` (`1..140`), `body` (`<=240`), `link_href` (`<=200`, prefixo `/`), `entity_key` (`<=120`), `read_at`, `created_at`.
 - **RPCs `SECURITY DEFINER`:** `mark_all_notifications_read()` e `clear_read_notifications()`.
+
+#### `public.push_devices` *(Migração `20261125000001` — Tokens FCM Android)*
+- **Privilégios & RLS:** acesso restrito a `authenticated` (`REVOKE ALL` para `anon`; `SELECT` e `DELETE` apenas para `auth.uid() = user_id`), com escrita centralizada nas RPCs `register_push_device(p_token)` e `unregister_push_device(p_token)` (`SECURITY DEFINER`) e poda automática em **10 dispositivos** por usuário.
+- **Colunas:** `id` (`PK`), `user_id` (`FK -> profiles ON DELETE CASCADE`), `platform` (`'android'`), `token` (`UNIQUE`, 20..4096 chars), `created_at`, `updated_at`, `last_seen_at`.
+- **Gatilhos de despacho:** `trg_notifications_push_edge` e `trg_chat_messages_push_edge` (`notify_push_edge_on_event()`) enviam eventos de forma não bloqueante via `pg_net` + Supabase Vault (ou Database Webhooks) para a Edge Function `send-push`.
 
 ---
 
