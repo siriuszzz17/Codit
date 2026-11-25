@@ -138,7 +138,7 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
 
 - **`RN-601` — Cobertura Multi-Eventos em Tempo Real:**
   - O Codit notifica o usuário autenticado sobre mensagens diretas/em grupo, ligações de voz recebidas, curtidas e comentários nos seus projetos postados, pedidos de amizade, confirmações de amizade aceita e convites para grupos.
-  - Com permissão concedida, eventos recebidos enquanto o app está em segundo plano geram notificação do sistema no Windows e Android; entrega remota com o processo encerrado depende de futura integração de push.
+  - Com permissão concedida, eventos recebidos em segundo plano no Windows usam `tauri-plugin-notification`; no Android (inclusive em segundo plano ou com o processo encerrado), a Edge Function `send-push` envia via FCM HTTP v1 para o canal `codit_alerts_high_v1` (`IMPORTANCE_HIGH`, com pop-up heads-up e contingência local via `@capacitor/local-notifications`).
 - **`RN-602` — Controle Granular do Que Aparece ou Fica Mutado:**
   - Cada usuário controla globalmente o modo silencioso (`muteAll`), os canais de saída (pop-ups na tela, sons de alerta e notificações do sistema após conceder permissão), cada categoria individualmente e o silenciamento por conversa específica (`mutedConversationIds`), tanto no menu do sino na barra superior quanto em `/conta` e no cabeçalho de `/mensagens`.
 - **`RN-603` — Baixo Consumo de Banco de Dados:**

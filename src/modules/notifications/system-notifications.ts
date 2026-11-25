@@ -1,5 +1,9 @@
 import { Capacitor } from "@capacitor/core";
 import { isTauriDesktop } from "@/lib/desktop-updater";
+import {
+  ANDROID_HIGH_PRIORITY_CHANNEL_ID,
+  hasActiveAndroidPushRegistration,
+} from "@/modules/notifications/push-notification-service";
 
 export type SystemNotificationPermission =
   | "default"
@@ -41,11 +45,11 @@ export async function getSystemNotificationPermission(): Promise<SystemNotificat
     }
 
     if (isCapacitorAndroid()) {
-      const { LocalNotifications } = await import(
-        "@capacitor/local-notifications"
+      const { PushNotifications } = await import(
+        "@capacitor/push-notifications"
       );
-      const permission = await LocalNotifications.checkPermissions();
-      return normalizePermission(permission.display);
+      const permission = await PushNotifications.checkPermissions();
+      return normalizePermission(permission.receive);
     }
 
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -71,11 +75,11 @@ export async function requestSystemNotificationPermission(): Promise<SystemNotif
     }
 
     if (isCapacitorAndroid()) {
-      const { LocalNotifications } = await import(
-        "@capacitor/local-notifications"
+      const { PushNotifications } = await import(
+        "@capacitor/push-notifications"
       );
-      const permission = await LocalNotifications.requestPermissions();
-      return normalizePermission(permission.display);
+      const permission = await PushNotifications.requestPermissions();
+      return normalizePermission(permission.receive);
     }
 
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -128,6 +132,11 @@ export async function showSystemNotification(
     }
 
     if (isCapacitorAndroid()) {
+      // Com FCM registrado, o serviço nativo exibe o push mesmo em segundo plano.
+      // Mantemos LocalNotifications apenas como contingência se não houver token ativo.
+      if (hasActiveAndroidPushRegistration()) {
+        return;
+      }
       const { LocalNotifications } = await import(
         "@capacitor/local-notifications"
       );
@@ -141,6 +150,7 @@ export async function showSystemNotification(
             id: nextLocalNotificationId(),
             title,
             body: body ?? "",
+            channelId: ANDROID_HIGH_PRIORITY_CHANNEL_ID,
             schedule: { at: new Date(Date.now() + 250) },
             smallIcon: "ic_stat_codit",
             iconColor: "#8B6BFF",

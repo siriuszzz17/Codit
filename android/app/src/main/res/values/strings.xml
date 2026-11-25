@@ -4,4 +4,5 @@
     <string name="title_activity_main">Codit</string>
     <string name="package_name">com.codit.app</string>
     <string name="custom_url_scheme">com.codit.app</string>
+    <string name="default_notification_channel_id">codit_alerts_high_v1</string>
 </resources>

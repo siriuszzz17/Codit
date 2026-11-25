@@ -26,6 +26,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileRow } from "@/lib/supabase/database.types";
 import { mapSupabaseAuthError } from "@/lib/supabase/errors";
 import { signOutUser } from "@/modules/auth/auth-service";
+import { unregisterCurrentAndroidPushDevice } from "@/modules/notifications/push-notification-service";
 import { ensureProfile, ProfileServiceError } from "@/modules/profiles/profile-service";
 
 export interface AuthContextValue {
@@ -271,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    await unregisterCurrentAndroidPushDevice(client);
     await signOutUser(client);
     setSession(null);
     setUser(null);

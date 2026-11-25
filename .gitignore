@@ -62,3 +62,4 @@ keystore.properties
 signing.properties
 google-services.json
 GoogleService-Info.plist
+supabase/.temp/

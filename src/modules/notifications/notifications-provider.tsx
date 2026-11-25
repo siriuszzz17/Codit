@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -63,6 +64,12 @@ import {
   shouldPromptForNativeNotificationPermission,
   showSystemNotification,
 } from "@/modules/notifications/system-notifications";
+import {
+  ANDROID_HIGH_PRIORITY_CHANNEL_ID,
+  hasActiveAndroidPushRegistration,
+  persistAndroidPushToken,
+  unregisterCurrentAndroidPushDevice,
+} from "@/modules/notifications/push-notification-service";
 
 export type BrowserNotificationPermission =
   | "default"
@@ -173,6 +180,7 @@ function extractConversationIdFromLink(
 }
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const { user, isLoading: isAuthLoading, isConfigured } = useAuth();
   const isOnline = useIsOnline();
   const userId = user?.id ?? null;
@@ -180,6 +188,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<NotificationPreferences>(() =>
     createDefaultNotificationPreferences(),
   );
+  const [hydratedScope, setHydratedScope] = useState<string | null>(null);
+  const currentAuthScope = isAuthLoading ? null : (userId ?? "guest");
+  const prefsHydrated =
+    currentAuthScope !== null && hydratedScope === currentAuthScope;
   const [browserPermission, setBrowserPermission] =
     useState<BrowserNotificationPermission>("default");
   const [isLoading, setIsLoading] = useState(false);
@@ -197,6 +209,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ActiveNotificationToast[]>([]);
 
   const prefsRef = useRef(prefs);
+  const routerRef = useRef(router);
   const conversationsRef = useRef(conversations);
   const activeViewedConversationIdRef = useRef<string | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -211,15 +224,21 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [prefs]);
 
   useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
+
+  useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
 
-  // Abre a rota associada quando o usuário toca numa notificação do sistema.
+  // Cria o canal Android de alta importância no boot e abre rotas ao tocar nos avisos.
   useEffect(() => {
     let disposed = false;
     const cleanups: Array<() => void> = [];
     const openHref = (href: unknown) => {
-      if (isSafeNotificationHref(href)) window.location.assign(href);
+      if (isSafeNotificationHref(href)) {
+        routerRef.current.push(href);
+      }
     };
 
     void import("@tauri-apps/plugin-notification")
@@ -240,15 +259,42 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         ) {
           return;
         }
-        const { LocalNotifications } = await import(
-          "@capacitor/local-notifications"
-        );
-        const listener = await LocalNotifications.addListener(
-          "localNotificationActionPerformed",
-          (event) => openHref(event.notification.extra?.linkHref),
-        );
-        if (disposed) await listener.remove();
-        else cleanups.push(() => void listener.remove());
+        const [{ PushNotifications }, { LocalNotifications }] =
+          await Promise.all([
+            import("@capacitor/push-notifications"),
+            import("@capacitor/local-notifications"),
+          ]);
+
+        await PushNotifications.createChannel({
+          id: ANDROID_HIGH_PRIORITY_CHANNEL_ID,
+          name: "Mensagens e alertas urgentes",
+          description:
+            "Mensagens diretas, chamadas de voz e atividades sociais do Codit.",
+          importance: 4,
+          visibility: 1,
+          vibration: true,
+          lights: true,
+          lightColor: "#8B6BFF",
+        }).catch(() => undefined);
+
+        const [pushListener, localListener] = await Promise.all([
+          PushNotifications.addListener(
+            "pushNotificationActionPerformed",
+            (event) => openHref(event.notification.data?.linkHref),
+          ),
+          LocalNotifications.addListener(
+            "localNotificationActionPerformed",
+            (event) => openHref(event.notification.extra?.linkHref),
+          ),
+        ]);
+
+        if (disposed) {
+          await pushListener.remove();
+          await localListener.remove();
+        } else {
+          cleanups.push(() => void pushListener.remove());
+          cleanups.push(() => void localListener.remove());
+        }
       })
       .catch(() => undefined);
 
@@ -455,7 +501,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }
   }, [updatePrefs]);
 
-  // Pede a permissão nativa uma vez; no navegador, a solicitação ocorre pelo botão.
+  // Pede a permissão nativa uma vez após hidratar preferências; no navegador, via botão.
   useEffect(() => {
     let cancelled = false;
     let promptTimer: number | undefined;
@@ -465,20 +511,32 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setBrowserPermission(permission);
 
-      if (!shouldPromptForNativeNotificationPermission()) return;
+      if (!shouldPromptForNativeNotificationPermission() || !prefsHydrated) {
+        return;
+      }
 
       try {
-        const permissionPromptKey = "codit:native-notification-prompted";
+        const permissionPromptKey = `codit:native-notification-prompted:v2:${userId ?? "guest"}`;
         if (window.localStorage.getItem(permissionPromptKey) === "1") return;
-        window.localStorage.setItem(permissionPromptKey, "1");
 
         if (permission === "granted") {
-          updatePrefs({ browserPushEnabled: true });
+          window.localStorage.setItem(permissionPromptKey, "1");
+          if (!prefsRef.current.browserPushEnabled) {
+            updatePrefs({ browserPushEnabled: true });
+          }
           return;
         }
-        if (permission !== "default") return;
+        if (permission !== "default") {
+          window.localStorage.setItem(permissionPromptKey, "1");
+          return;
+        }
 
         promptTimer = window.setTimeout(() => {
+          try {
+            window.localStorage.setItem(permissionPromptKey, "1");
+          } catch {
+            // Segue com o prompt mesmo sem localStorage gravável.
+          }
           void requestBrowserPermission();
         }, 1200);
       } catch {
@@ -498,7 +556,82 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshOnFocus);
     };
-  }, [requestBrowserPermission, updatePrefs]);
+  }, [prefsHydrated, requestBrowserPermission, updatePrefs, userId]);
+
+  // Sincroniza o token FCM no servidor ou revoga quando o usuário desativa push.
+  useEffect(() => {
+    if (!userId || !isConfigured || !prefsHydrated) {
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    let disposed = false;
+    const cleanups: Array<() => void> = [];
+
+    const setup = async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        if (
+          !Capacitor.isNativePlatform() ||
+          Capacitor.getPlatform() !== "android"
+        ) {
+          return;
+        }
+
+        if (!prefs.browserPushEnabled) {
+          if (hasActiveAndroidPushRegistration()) {
+            await unregisterCurrentAndroidPushDevice(client);
+          }
+          return;
+        }
+
+        const { PushNotifications } = await import(
+          "@capacitor/push-notifications"
+        );
+        const registrationListener = await PushNotifications.addListener(
+          "registration",
+          (token) => {
+            void persistAndroidPushToken(userId, token.value, client);
+          },
+        );
+        const registrationErrorListener = await PushNotifications.addListener(
+          "registrationError",
+          () => undefined,
+        );
+
+        if (disposed) {
+          await registrationListener.remove();
+          await registrationErrorListener.remove();
+          return;
+        }
+        cleanups.push(() => void registrationListener.remove());
+        cleanups.push(() => void registrationErrorListener.remove());
+
+        const permission = await PushNotifications.checkPermissions();
+        if (permission.receive === "granted") {
+          await PushNotifications.register();
+        }
+      } catch {
+        // O app ainda funciona sem push enquanto Firebase não está configurado.
+      }
+    };
+
+    void setup();
+    return () => {
+      disposed = true;
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [
+    browserPermission,
+    isConfigured,
+    prefs.browserPushEnabled,
+    prefsHydrated,
+    userId,
+  ]);
 
   // Carregar preferências e alertas locais quando o usuário autenticado muda.
   useEffect(() => {
@@ -520,6 +653,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         setToasts([]);
         setMigrationMissing(false);
         setPermissionGrantMissing(false);
+        setHydratedScope("guest");
       });
       return;
     }
@@ -535,15 +669,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     });
 
     if (!isConfigured || !user || loadedPrefsUserIdRef.current === userId) {
+      void Promise.resolve().then(() => setHydratedScope(userId));
       return;
     }
 
     const client = getSupabaseClient();
     if (!client) {
+      void Promise.resolve().then(() => setHydratedScope(userId));
       return;
     }
 
     let cancelled = false;
+    let completed = false;
     loadedPrefsUserIdRef.current = userId;
 
     void fetchUserNotificationPrefs(user, client)
@@ -553,10 +690,19 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           setPrefs(remotePrefs);
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        completed = true;
+        if (!cancelled) {
+          setHydratedScope(userId);
+        }
+      });
 
     return () => {
       cancelled = true;
+      if (!completed && loadedPrefsUserIdRef.current === userId) {
+        loadedPrefsUserIdRef.current = null;
+      }
     };
   }, [isAuthLoading, isConfigured, user, userId]);
 

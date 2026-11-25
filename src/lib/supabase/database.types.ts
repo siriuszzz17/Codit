@@ -496,6 +496,34 @@ export type NotificationUpdate = {
   read_at?: string | null;
 };
 
+export type PushDeviceRow = {
+  id: string;
+  user_id: string;
+  platform: "android";
+  token: string;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+};
+
+export type PushDeviceInsert = {
+  id?: string;
+  user_id: string;
+  platform?: "android";
+  token: string;
+  created_at?: string;
+  updated_at?: string;
+  last_seen_at?: string;
+};
+
+export type PushDeviceUpdate = {
+  user_id?: string;
+  platform?: "android";
+  token?: string;
+  updated_at?: string;
+  last_seen_at?: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -673,6 +701,20 @@ export type Database = {
           },
         ];
       };
+      push_devices: {
+        Row: PushDeviceRow;
+        Insert: PushDeviceInsert;
+        Update: PushDeviceUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fk_push_devices_user_id";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -742,6 +784,18 @@ export type Database = {
       clear_read_notifications: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      register_push_device: {
+        Args: {
+          p_token: string;
+        };
+        Returns: undefined;
+      };
+      unregister_push_device: {
+        Args: {
+          p_token: string;
+        };
+        Returns: undefined;
       };
     };
     Enums: Record<string, never>;

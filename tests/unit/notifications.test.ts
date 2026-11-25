@@ -27,6 +27,11 @@ import {
   readLocalNotificationPrefs,
   writeLocalNotificationPrefs,
 } from "@/modules/notifications/notification-service";
+import {
+  hasActiveAndroidPushRegistration,
+  persistAndroidPushToken,
+  unregisterCurrentAndroidPushDevice,
+} from "@/modules/notifications/push-notification-service";
 
 const USER_A = "11111111-1111-4111-8111-111111111111";
 const USER_B = "22222222-2222-4222-8222-222222222222";
@@ -447,5 +452,60 @@ describe("notifications service & Supabase error diagnostics", () => {
     expect(mapSupabaseDatabaseError(err)).toContain(
       "20261124000004_add_notifications_system.sql",
     );
+
+    const pushErr = {
+      code: "PGRST205",
+      message: "Could not find the table 'public.push_devices' in the schema cache",
+    };
+    expect(detectMissingMigrationName(pushErr)).toBe(
+      "20261125000001_add_android_push_notifications.sql",
+    );
+    expect(mapSupabaseDatabaseError(pushErr)).toContain(
+      "20261125000001_add_android_push_notifications.sql",
+    );
+  });
+
+  it("persists and revokes Android push tokens safely without crashing on RPC errors", async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+      },
+    });
+
+    const rpcMock = vi.fn().mockResolvedValue({ data: null, error: null });
+    const client = { rpc: rpcMock } as unknown as CoditSupabaseClient;
+
+    expect(await persistAndroidPushToken("invalid-id", "short", client)).toBe(
+      false,
+    );
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(hasActiveAndroidPushRegistration()).toBe(false);
+
+    const validToken = "fcm_token_android_codit_1234567890_abcdef";
+    expect(await persistAndroidPushToken(USER_A, validToken, client)).toBe(
+      true,
+    );
+    expect(rpcMock).toHaveBeenCalledWith("register_push_device", {
+      p_token: validToken,
+    });
+    expect(hasActiveAndroidPushRegistration()).toBe(true);
+
+    // Simula rejeição da RPC no logout sem quebrar por falta de .catch() no PostgrestBuilder.
+    const failingClient = {
+      rpc: vi.fn().mockRejectedValue(new Error("network offline")),
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      unregisterCurrentAndroidPushDevice(failingClient),
+    ).resolves.toBeUndefined();
+    expect(hasActiveAndroidPushRegistration()).toBe(false);
+    expect(store.size).toBe(0);
   });
 });

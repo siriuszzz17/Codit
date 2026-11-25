@@ -5,7 +5,8 @@ export type MissingMigrationFile =
   | "20261123000002_add_social_network.sql"
   | "20261123000003_fix_grants_rls_and_username_cooldown.sql"
   | "20261124000002_add_embedded_messaging.sql"
-  | "20261124000004_add_notifications_system.sql";
+  | "20261124000004_add_notifications_system.sql"
+  | "20261125000001_add_android_push_notifications.sql";
 
 export interface SupabaseErrorContext {
   status?: number | null;
@@ -201,6 +202,14 @@ export function detectMissingMigrationName(
 
   const { message, details, hint } = extractSupabaseErrorMeta(error);
   const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
+
+  if (
+    combinedLower.includes("push_devices") ||
+    combinedLower.includes("register_push_device") ||
+    combinedLower.includes("unregister_push_device")
+  ) {
+    return "20261125000001_add_android_push_notifications.sql";
+  }
 
   if (
     combinedLower.includes("notification_prefs") ||
@@ -471,6 +480,9 @@ export function mapSupabaseDatabaseError(
     const missingMigration = detectMissingMigrationName(error);
     const codeSuffix = codeUpper ? ` (código ${codeUpper})` : "";
 
+    if (missingMigration === "20261125000001_add_android_push_notifications.sql") {
+      return `A estrutura de push Android ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261125000001_add_android_push_notifications.sql no SQL Editor do projeto.`;
+    }
     if (missingMigration === "20261124000004_add_notifications_system.sql") {
       return `A estrutura do sistema de notificações ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261124000004_add_notifications_system.sql no SQL Editor do projeto.`;
     }

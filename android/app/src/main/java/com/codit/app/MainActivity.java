@@ -1,13 +1,19 @@
 package com.codit.app;
 
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.media.AudioAttributes;
 import android.media.projection.MediaProjectionManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
@@ -32,6 +38,8 @@ import org.json.JSONObject;
  * projeção nativa de tela no Android (RN-505).
  */
 public class MainActivity extends BridgeActivity {
+    public static final String HIGH_PRIORITY_CHANNEL_ID = "codit_alerts_high_v1";
+
     // Mesmos valores de --background em src/app/globals.css (claro / escuro).
     private static final int LIGHT_BACKGROUND = Color.parseColor("#F8F7FC");
     private static final int DARK_BACKGROUND = Color.parseColor("#0B0A16");
@@ -77,9 +85,38 @@ public class MainActivity extends BridgeActivity {
         setTheme(R.style.AppTheme_NoActionBar);
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
+        ensureNotificationChannels();
         applyBackgrounds();
         ScreenCaptureService.setListener(screenCaptureListener);
         installNativeBridge();
+    }
+
+    private void ensureNotificationChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) {
+            return;
+        }
+        manager.deleteNotificationChannel("codit_alerts");
+        NotificationChannel channel = new NotificationChannel(
+            HIGH_PRIORITY_CHANNEL_ID,
+            "Mensagens e alertas urgentes",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("Mensagens diretas, chamadas de voz e atividades sociais do Codit.");
+        channel.enableVibration(true);
+        channel.setVibrationPattern(new long[] { 0L, 220L, 120L, 220L });
+        channel.enableLights(true);
+        channel.setLightColor(Color.parseColor("#8B6BFF"));
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build();
+        channel.setSound(Settings.System.DEFAULT_NOTIFICATION_URI, audioAttributes);
+        manager.createNotificationChannel(channel);
     }
 
     @Override
