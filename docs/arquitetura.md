@@ -227,7 +227,7 @@ A mesma base TypeScript/React do Codit alimenta três canais de distribuição a
 - **Segurança de segredos em clientes empacotados:** assim como no navegador Web, variáveis sensíveis (`.env`, `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY`) **nunca** entram no bundle `out/`, no binário Tauri ou no APK Android; todas as chamadas autenticadas e de IA apontarão para o backend remoto via HTTPS.
 
 ### Atualização Automática Multiplataforma (Desktop Tauri + Android Capacitor)
-- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.12"`, `versionCode 13`).
+- **Versão única (`NEXT_PUBLIC_APP_VERSION`):** [next.config.ts](../next.config.ts) injeta `packageJson.version` em tempo de build para o cliente comparar com as releases publicadas; [build.gradle](../android/app/build.gradle) mantém `versionName` alinhado com a versão do projeto (`"0.1.13"`, `versionCode 14`).
 - **Backend Rust (`src-tauri/`):** `Cargo.toml` inclui os plugins `tauri-plugin-updater = "2"`, `tauri-plugin-process = "2"` e `tauri-plugin-notification = "2"`; `src-tauri/capabilities/default.json` concede as permissões `"updater:default"`, `"process:default"` e `"notification:default"` à janela `main`.
 - **Camada Cliente Unificada:**
   - [desktop-updater.ts](../src/lib/desktop-updater.ts) expõe `isTauriDesktop()`, `checkForDesktopUpdate()` e `relaunchDesktopApp()` via imports dinâmicos para desktop Windows.
