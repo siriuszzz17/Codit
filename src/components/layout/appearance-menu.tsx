@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   APP_COLOR_MODES,
   APP_THEMES,
@@ -276,20 +277,20 @@ export function AppearanceNavbarControl() {
         ) : null}
       </button>
 
-      {open ? (
+      {open && typeof document !== "undefined" ? createPortal((
         <div
           role="dialog"
           aria-modal="true"
           aria-label="Aparência e papéis de parede"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs md:items-start md:justify-end md:bg-transparent md:backdrop-blur-none"
+          className="codit-safe-modal fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs md:items-start md:justify-end md:bg-transparent md:backdrop-blur-none"
         >
           <div
             aria-hidden="true"
             onClick={() => setOpen(false)}
-            className="fixed inset-0"
+            className="absolute inset-0"
           />
 
-          <div className="relative z-10 max-h-[86dvh] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface-elevated p-5 pb-[calc(1.25rem+var(--codit-safe-bottom))] shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[390px] md:rounded-2xl md:pb-5">
+          <div className="relative z-10 max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface-elevated p-5 pb-[calc(1.25rem+var(--codit-safe-bottom))] shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[390px] md:rounded-2xl md:pb-5">
             <div className="mb-4 flex items-center justify-between gap-2 border-b border-border pb-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">
@@ -311,7 +312,7 @@ export function AppearanceNavbarControl() {
             <AppearanceControlsBody compact />
           </div>
         </div>
-      ) : null}
+      ), document.body) : null}
     </div>
   );
 }

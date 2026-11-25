@@ -59,6 +59,19 @@ describe("app-updater helpers", () => {
     expect(withAndroid?.version).toBe("0.2.0");
     expect(withAndroid?.android?.url).toContain("app.apk");
 
+    const withWindows = parseReleaseManifest({
+      version: "0.2.0",
+      platforms: {
+        "windows-x86_64": {
+          signature: "minisign signature",
+          url: "https://github.com/siriuszzz17/Codit/releases/download/v0.2.0/Codit.exe",
+        },
+      },
+    });
+    expect(withWindows?.platforms?.["windows-x86_64"]?.url).toContain(
+      "Codit.exe",
+    );
+
     const desktopOnly = parseReleaseManifest({ version: "0.2.0" });
     expect(desktopOnly?.version).toBe("0.2.0");
 

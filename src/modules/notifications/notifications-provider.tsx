@@ -56,6 +56,13 @@ import {
   type EnrichedNotificationItem,
   type TransientNotificationItem,
 } from "@/modules/notifications/notification-service";
+import {
+  getSystemNotificationPermission,
+  isSafeNotificationHref,
+  requestSystemNotificationPermission,
+  shouldPromptForNativeNotificationPermission,
+  showSystemNotification,
+} from "@/modules/notifications/system-notifications";
 
 export type BrowserNotificationPermission =
   | "default"
@@ -165,38 +172,6 @@ function extractConversationIdFromLink(
   }
 }
 
-function showBrowserSystemNotification(
-  title: string,
-  body: string | null,
-  linkHref: string | null,
-): void {
-  if (
-    typeof window === "undefined" ||
-    typeof document === "undefined" ||
-    !("Notification" in window) ||
-    window.Notification.permission !== "granted" ||
-    document.visibilityState === "visible"
-  ) {
-    return;
-  }
-
-  try {
-    const instance = new window.Notification(title, {
-      body: body ?? undefined,
-      icon: "/icons/icon-192x192.png",
-    });
-    instance.onclick = () => {
-      window.focus();
-      if (linkHref && linkHref.startsWith("/")) {
-        window.location.assign(linkHref);
-      }
-      instance.close();
-    };
-  } catch {
-    // WebView / ambiente sem suporte completo à Notification API.
-  }
-}
-
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user, isLoading: isAuthLoading, isConfigured } = useAuth();
   const isOnline = useIsOnline();
@@ -239,17 +214,48 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     conversationsRef.current = conversations;
   }, [conversations]);
 
-  // Sincronizar permissão atual de notificações do navegador após montagem (evita mismatch SSR).
+  // Abre a rota associada quando o usuário toca numa notificação do sistema.
   useEffect(() => {
-    void Promise.resolve().then(() => {
-      if (typeof window === "undefined" || !("Notification" in window)) {
-        setBrowserPermission("unsupported");
-        return;
-      }
-      setBrowserPermission(
-        window.Notification.permission as BrowserNotificationPermission,
-      );
-    });
+    let disposed = false;
+    const cleanups: Array<() => void> = [];
+    const openHref = (href: unknown) => {
+      if (isSafeNotificationHref(href)) window.location.assign(href);
+    };
+
+    void import("@tauri-apps/plugin-notification")
+      .then(({ onAction }) =>
+        onAction((event) => openHref(event.notification?.extra?.linkHref)),
+      )
+      .then((unlisten) => {
+        if (disposed) void unlisten.unregister();
+        else cleanups.push(() => void unlisten.unregister());
+      })
+      .catch(() => undefined);
+
+    void import("@capacitor/core")
+      .then(async ({ Capacitor }) => {
+        if (
+          !Capacitor.isNativePlatform() ||
+          Capacitor.getPlatform() !== "android"
+        ) {
+          return;
+        }
+        const { LocalNotifications } = await import(
+          "@capacitor/local-notifications"
+        );
+        const listener = await LocalNotifications.addListener(
+          "localNotificationActionPerformed",
+          (event) => openHref(event.notification.extra?.linkHref),
+        );
+        if (disposed) await listener.remove();
+        else cleanups.push(() => void listener.remove());
+      })
+      .catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      cleanups.forEach((cleanup) => cleanup());
+    };
   }, []);
 
   // Limpar timers no unmount.
@@ -433,13 +439,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [schedulePrefsPersistence]);
 
   const requestBrowserPermission = useCallback(async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      setBrowserPermission("unsupported");
-      return "unsupported";
-    }
-
     try {
-      const result = (await window.Notification.requestPermission()) as BrowserNotificationPermission;
+      const result = await requestSystemNotificationPermission();
       setBrowserPermission(result);
       if (result === "granted") {
         updatePrefs({ browserPushEnabled: true });
@@ -448,9 +449,56 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       }
       return result;
     } catch {
-      return browserPermission;
+      const current = await getSystemNotificationPermission();
+      setBrowserPermission(current);
+      return current;
     }
-  }, [browserPermission, updatePrefs]);
+  }, [updatePrefs]);
+
+  // Pede a permissão nativa uma vez; no navegador, a solicitação ocorre pelo botão.
+  useEffect(() => {
+    let cancelled = false;
+    let promptTimer: number | undefined;
+
+    const refreshPermission = async () => {
+      const permission = await getSystemNotificationPermission();
+      if (cancelled) return;
+      setBrowserPermission(permission);
+
+      if (!shouldPromptForNativeNotificationPermission()) return;
+
+      try {
+        const permissionPromptKey = "codit:native-notification-prompted";
+        if (window.localStorage.getItem(permissionPromptKey) === "1") return;
+        window.localStorage.setItem(permissionPromptKey, "1");
+
+        if (permission === "granted") {
+          updatePrefs({ browserPushEnabled: true });
+          return;
+        }
+        if (permission !== "default") return;
+
+        promptTimer = window.setTimeout(() => {
+          void requestBrowserPermission();
+        }, 1200);
+      } catch {
+        // O estado da permissão segue disponível pelo painel de preferências.
+      }
+    };
+
+    void refreshPermission();
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") void refreshPermission();
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      cancelled = true;
+      if (promptTimer !== undefined) window.clearTimeout(promptTimer);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, [requestBrowserPermission, updatePrefs]);
 
   // Carregar preferências e alertas locais quando o usuário autenticado muda.
   useEffect(() => {
@@ -656,7 +704,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           }
 
           if (delivery.allowBrowserPush) {
-            showBrowserSystemNotification(
+            void showSystemNotification(
               rawRow.title,
               rawRow.body ?? null,
               rawRow.link_href ?? null,
@@ -721,7 +769,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       });
 
       if (delivery.allowBrowserPush) {
-        showBrowserSystemNotification(item.title, item.body, item.linkHref);
+        void showSystemNotification(item.title, item.body, item.linkHref);
       }
     },
     [userId],
@@ -823,7 +871,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       }
 
       if (delivery.allowBrowserPush) {
-        showBrowserSystemNotification(title, body, linkHref);
+        void showSystemNotification(title, body, linkHref);
       }
     },
     [pushToast, shouldSkipDuplicateKey, userId],

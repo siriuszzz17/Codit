@@ -138,8 +138,9 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
 
 - **`RN-601` — Cobertura Multi-Eventos em Tempo Real:**
   - O Codit notifica o usuário autenticado sobre mensagens diretas/em grupo, ligações de voz recebidas, curtidas e comentários nos seus projetos postados, pedidos de amizade, confirmações de amizade aceita e convites para grupos.
+  - Com permissão concedida, eventos recebidos enquanto o app está em segundo plano geram notificação do sistema no Windows e Android; entrega remota com o processo encerrado depende de futura integração de push.
 - **`RN-602` — Controle Granular do Que Aparece ou Fica Mutado:**
-  - Cada usuário controla globalmente o modo silencioso (`muteAll`), os canais de saída (pop-ups na tela, sons de alerta e notificações do navegador quando autorizado), cada categoria individualmente e o silenciamento por conversa específica (`mutedConversationIds`), tanto no menu do sino na barra superior quanto em `/conta` e no cabeçalho de `/mensagens`.
+  - Cada usuário controla globalmente o modo silencioso (`muteAll`), os canais de saída (pop-ups na tela, sons de alerta e notificações do sistema após conceder permissão), cada categoria individualmente e o silenciamento por conversa específica (`mutedConversationIds`), tanto no menu do sino na barra superior quanto em `/conta` e no cabeçalho de `/mensagens`.
 - **`RN-603` — Baixo Consumo de Banco de Dados:**
   - Eventos silenciados em `profiles.notification_prefs` são ignorados ainda no trigger antes da inserção; eventos repetidos são deduplicados via `entity_key`; cada usuário mantém no máximo 60 registros históricos em `public.notifications`; e mensagens/chamadas em tempo real usam `chat_messages` e broadcasts sem duplicar linhas na tabela de notificações.
 - **`RN-604` — Isolamento de Privacidade e Imutabilidade:**

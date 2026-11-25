@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import {
   checkForAppUpdate,
@@ -42,42 +43,65 @@ export function AppUpdateModal() {
 
   useEffect(() => {
     let cancelled = false;
-    let checked = false;
+    let checking = false;
+    let lastCheckedAt = 0;
 
-    async function runCheck() {
-      if (checked || (typeof navigator !== "undefined" && !navigator.onLine)) {
+    async function runCheck(force = false) {
+      const now = Date.now();
+      if (
+        checking ||
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        (!force && now - lastCheckedAt < 5 * 60 * 1000)
+      ) {
         return;
       }
 
-      checked = true;
-      const available = await checkForAppUpdate();
-      if (cancelled || !available) {
-        return;
-      }
-
-      if (readDismissedVersion() === available.version) {
-        if (available.platform === "desktop") {
-          void available.dismiss();
+      checking = true;
+      lastCheckedAt = now;
+      try {
+        const available = await checkForAppUpdate();
+        if (cancelled || !available) {
+          return;
         }
-        return;
-      }
 
-      setUpdate(available);
-      setPhase("prompt");
-      setProgress(null);
-      setErrorMessage(null);
+        if (readDismissedVersion() === available.version) {
+          if (available.platform === "desktop" && available.mode === "native") {
+            void available.dismiss();
+          }
+          return;
+        }
+
+        setUpdate(available);
+        setPhase("prompt");
+        setProgress(null);
+        setErrorMessage(null);
+      } finally {
+        checking = false;
+      }
     }
 
     function handleOnline() {
-      void runCheck();
+      void runCheck(true);
     }
 
-    void runCheck();
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void runCheck();
+      }
+    }
+
+    void runCheck(true);
+    const interval = window.setInterval(() => void runCheck(), 5 * 60 * 1000);
     window.addEventListener("online", handleOnline);
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
       window.removeEventListener("online", handleOnline);
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -92,7 +116,7 @@ export function AppUpdateModal() {
       }
 
       saveDismissedVersion(update.version);
-      if (update.platform === "desktop") {
+      if (update.platform === "desktop" && update.mode === "native") {
         void update.dismiss();
       }
       setUpdate(null);
@@ -116,14 +140,19 @@ export function AppUpdateModal() {
     }
 
     saveDismissedVersion(update.version);
-    if (update.platform === "desktop") {
+    if (update.platform === "desktop" && update.mode === "native") {
       void update.dismiss();
     }
     setUpdate(null);
   }
 
   async function handleDesktopInstall() {
-    if (!update || update.platform !== "desktop" || isBusy) {
+    if (
+      !update ||
+      update.platform !== "desktop" ||
+      update.mode !== "native" ||
+      isBusy
+    ) {
       return;
     }
 
@@ -159,7 +188,7 @@ export function AppUpdateModal() {
           ? `Baixando atualização... (${formatMegabytes(progress.downloadedBytes)})`
           : "Preparando download...";
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -167,7 +196,7 @@ export function AppUpdateModal() {
       aria-describedby="codit-update-description"
       className="codit-safe-modal fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs sm:items-center"
     >
-      <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-surface-elevated p-5 shadow-xl sm:p-6">
+      <div className="max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full max-w-md overflow-y-auto space-y-4 rounded-2xl border border-border bg-surface-elevated p-5 shadow-xl sm:max-h-[calc(100dvh-3rem)] sm:p-6">
         <div className="flex items-start gap-3">
           <OctopyBadge size={40} className="shrink-0 rounded-xl shadow-xs" />
           <div className="min-w-0 flex-1 space-y-1">
@@ -195,7 +224,9 @@ export function AppUpdateModal() {
           </div>
         ) : null}
 
-        {update.platform === "desktop" && isBusy ? (
+        {update.platform === "desktop" &&
+        update.mode === "native" &&
+        isBusy ? (
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted">{progressText}</p>
             <div
@@ -242,7 +273,7 @@ export function AppUpdateModal() {
             {phase === "error" ? "Fechar" : "Agora não"}
           </button>
 
-          {update.platform === "desktop" ? (
+          {update.platform === "desktop" && update.mode === "native" ? (
             <button
               type="button"
               onClick={() => void handleDesktopInstall()}
@@ -255,6 +286,16 @@ export function AppUpdateModal() {
                   ? "Atualizando..."
                   : "Atualizar agora"}
             </button>
+          ) : update.platform === "desktop" ? (
+            <a
+              href={update.downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => saveDismissedVersion(update.version)}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+            >
+              Baixar instalador (.exe)
+            </a>
           ) : (
             <a
               href={update.downloadUrl}
@@ -268,6 +309,7 @@ export function AppUpdateModal() {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

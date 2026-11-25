@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 import { NotificationPreferencesPanel } from "@/components/notifications/notification-preferences-panel";
 import { UserAvatar } from "@/components/social/user-avatar";
@@ -146,6 +147,7 @@ export function NotificationsNavbarControl() {
 
   const {
     prefs,
+    browserPermission,
     visibleItems,
     unreadBadgeCount,
     isLoading,
@@ -157,6 +159,7 @@ export function NotificationsNavbarControl() {
     clearRead,
     setCategoryEnabled,
     toggleConversationMute,
+    requestBrowserPermission,
   } = useNotifications();
 
   const [open, setOpen] = useState(false);
@@ -282,20 +285,20 @@ export function NotificationsNavbarControl() {
         ) : null}
       </button>
 
-      {open ? (
+      {open && typeof document !== "undefined" ? createPortal((
         <div
           role="dialog"
           aria-modal="true"
           aria-label="Central de notificações"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs md:items-start md:justify-end md:bg-transparent md:backdrop-blur-none"
+          className="codit-safe-modal fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs md:items-start md:justify-end md:bg-transparent md:backdrop-blur-none"
         >
           <div
             aria-hidden="true"
             onClick={() => setOpen(false)}
-            className="fixed inset-0"
+            className="absolute inset-0"
           />
 
-          <div className="relative z-10 flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-border bg-surface-elevated shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[420px] md:rounded-2xl">
+          <div className="relative z-10 flex max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full flex-col overflow-hidden rounded-t-3xl border border-border bg-surface-elevated shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[420px] md:rounded-2xl">
             <div className="flex items-center justify-between gap-2 border-b border-border px-4 pb-3 pt-4">
               <div>
                 <h2 className="text-sm font-bold text-foreground">
@@ -348,6 +351,33 @@ export function NotificationsNavbarControl() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-[calc(1.25rem+var(--codit-safe-bottom))] md:pb-4">
+              {activeTab === "activity" && browserPermission === "default" ? (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/35 bg-accent-soft/40 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-foreground">
+                      Receba alertas fora do Codit
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+                      O sistema pode avisar quando o app estiver em segundo plano.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void requestBrowserPermission()}
+                    className="inline-flex min-h-9 items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                  >
+                    Ativar alertas
+                  </button>
+                </div>
+              ) : browserPermission === "denied" && activeTab === "activity" ? (
+                <p
+                  role="status"
+                  className="mb-3 rounded-xl border border-border bg-surface-muted/60 p-3 text-[11px] leading-relaxed text-muted"
+                >
+                  Alertas bloqueados nas configurações do sistema. Reative as notificações do Codit para receber avisos fora do app.
+                </p>
+              ) : null}
+
               {activeTab === "preferences" ? (
                 <NotificationPreferencesPanel compact />
               ) : (
@@ -584,7 +614,7 @@ export function NotificationsNavbarControl() {
             </div>
           </div>
         </div>
-      ) : null}
+      ), document.body) : null}
     </div>
   );
 }

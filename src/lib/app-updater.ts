@@ -6,7 +6,7 @@ import {
 } from "./desktop-updater";
 
 export const CURRENT_APP_VERSION =
-  process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.11";
+  process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.12";
 
 export const RELEASE_MANIFEST_URL =
   "https://github.com/siriuszzz17/Codit/releases/latest/download/latest.json";
@@ -20,6 +20,13 @@ const releaseManifestSchema = z.object({
   version: z.string().trim().min(1),
   notes: z.string().optional(),
   pub_date: z.string().optional(),
+  platforms: z
+    .object({
+      "windows-x86_64": z
+        .object({ url: z.string().trim().min(1) })
+        .optional(),
+    })
+    .optional(),
   android: z
     .object({
       url: z.string().trim().min(1),
@@ -50,8 +57,9 @@ export interface DesktopDownloadProgress {
   finished: boolean;
 }
 
-export interface DesktopAppUpdate {
+export interface NativeDesktopAppUpdate {
   platform: "desktop";
+  mode: "native";
   version: string;
   currentVersion: string;
   notes?: string;
@@ -62,6 +70,20 @@ export interface DesktopAppUpdate {
   relaunch: () => Promise<void>;
   dismiss: () => Promise<void>;
 }
+
+export interface ManualDesktopAppUpdate {
+  platform: "desktop";
+  mode: "manual";
+  version: string;
+  currentVersion: string;
+  notes?: string;
+  date?: string;
+  downloadUrl: string;
+}
+
+export type DesktopAppUpdate =
+  | NativeDesktopAppUpdate
+  | ManualDesktopAppUpdate;
 
 export interface AndroidAppUpdate {
   platform: "android";
@@ -214,6 +236,40 @@ async function fetchAndroidUpdateFromManifest(
   }
 }
 
+async function fetchDesktopUpdateFromManifest(
+  currentVersion: string,
+): Promise<ManualDesktopAppUpdate | null> {
+  try {
+    const response = await fetch(RELEASE_MANIFEST_URL, { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+
+    const manifest = parseReleaseManifest(await response.json());
+    const downloadUrl = manifest?.platforms?.["windows-x86_64"]?.url;
+    if (
+      !manifest ||
+      !isNewerVersion(manifest.version, currentVersion) ||
+      !downloadUrl ||
+      !isAllowedReleaseDownloadUrl(downloadUrl)
+    ) {
+      return null;
+    }
+
+    return {
+      platform: "desktop",
+      mode: "manual",
+      version: manifest.version.replace(/^v/i, ""),
+      currentVersion,
+      ...(manifest.notes !== undefined ? { notes: manifest.notes } : {}),
+      ...(manifest.pub_date !== undefined ? { date: manifest.pub_date } : {}),
+      downloadUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchAndroidUpdateFromGitHubApi(
   currentVersion: string,
 ): Promise<AndroidAppUpdate | null> {
@@ -290,63 +346,64 @@ export async function checkForAppUpdate(
 ): Promise<AppUpdate | null> {
   if (isTauriDesktop()) {
     const update = await checkForDesktopUpdate();
-    if (!update) {
-      return null;
+    if (update) {
+      return {
+        platform: "desktop",
+        mode: "native",
+        version: update.version,
+        currentVersion: update.currentVersion,
+        ...(update.body !== undefined ? { notes: update.body } : {}),
+        ...(update.date !== undefined ? { date: update.date } : {}),
+        downloadAndInstall: async (onProgress) => {
+          let downloadedBytes = 0;
+          let totalBytes: number | undefined;
+
+          await update.downloadAndInstall((event) => {
+            if (event.event === "Started") {
+              totalBytes = event.data.contentLength;
+              onProgress?.({
+                downloadedBytes,
+                ...(totalBytes !== undefined ? { totalBytes } : {}),
+                ...(totalBytes && totalBytes > 0 ? { percent: 0 } : {}),
+                finished: false,
+              });
+              return;
+            }
+
+            if (event.event === "Progress") {
+              downloadedBytes += event.data.chunkLength;
+              const percent =
+                totalBytes && totalBytes > 0
+                  ? Math.min(
+                      100,
+                      Math.round((downloadedBytes / totalBytes) * 100),
+                    )
+                  : undefined;
+              onProgress?.({
+                downloadedBytes,
+                ...(totalBytes !== undefined ? { totalBytes } : {}),
+                ...(percent !== undefined ? { percent } : {}),
+                finished: false,
+              });
+              return;
+            }
+
+            if (event.event === "Finished") {
+              onProgress?.({
+                downloadedBytes,
+                ...(totalBytes !== undefined ? { totalBytes } : {}),
+                ...(totalBytes && totalBytes > 0 ? { percent: 100 } : {}),
+                finished: true,
+              });
+            }
+          });
+        },
+        relaunch: relaunchDesktopApp,
+        dismiss: update.close,
+      };
     }
 
-    return {
-      platform: "desktop",
-      version: update.version,
-      currentVersion: update.currentVersion,
-      ...(update.body !== undefined ? { notes: update.body } : {}),
-      ...(update.date !== undefined ? { date: update.date } : {}),
-      downloadAndInstall: async (onProgress) => {
-        let downloadedBytes = 0;
-        let totalBytes: number | undefined;
-
-        await update.downloadAndInstall((event) => {
-          if (event.event === "Started") {
-            totalBytes = event.data.contentLength;
-            onProgress?.({
-              downloadedBytes,
-              ...(totalBytes !== undefined ? { totalBytes } : {}),
-              ...(totalBytes && totalBytes > 0 ? { percent: 0 } : {}),
-              finished: false,
-            });
-            return;
-          }
-
-          if (event.event === "Progress") {
-            downloadedBytes += event.data.chunkLength;
-            const percent =
-              totalBytes && totalBytes > 0
-                ? Math.min(
-                    100,
-                    Math.round((downloadedBytes / totalBytes) * 100),
-                  )
-                : undefined;
-            onProgress?.({
-              downloadedBytes,
-              ...(totalBytes !== undefined ? { totalBytes } : {}),
-              ...(percent !== undefined ? { percent } : {}),
-              finished: false,
-            });
-            return;
-          }
-
-          if (event.event === "Finished") {
-            onProgress?.({
-              downloadedBytes,
-              ...(totalBytes !== undefined ? { totalBytes } : {}),
-              ...(totalBytes && totalBytes > 0 ? { percent: 100 } : {}),
-              finished: true,
-            });
-          }
-        });
-      },
-      relaunch: relaunchDesktopApp,
-      dismiss: update.close,
-    };
+    return fetchDesktopUpdateFromManifest(currentVersion);
   }
 
   if (isCapacitorAndroid()) {

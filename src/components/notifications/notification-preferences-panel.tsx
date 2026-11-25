@@ -152,30 +152,41 @@ export function NotificationPreferencesPanel({
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-foreground">
-                Alertas do navegador
+                Notificações do sistema
               </p>
               <p className="text-[11px] text-muted">
                 {browserPermission === "unsupported"
                   ? "Indisponível neste ambiente."
                   : browserPermission === "denied"
-                    ? "Permissão bloqueada nas configurações do navegador."
-                    : "Mostra avisos quando o Codit estiver em segundo plano."}
+                    ? "Permissão bloqueada nas configurações do sistema."
+                    : "Mostra avisos fora do Codit quando o app estiver em segundo plano."}
               </p>
             </div>
-            <ToggleSwitch
-              checked={
-                prefs.browserPushEnabled &&
-                !prefs.muteAll &&
-                browserPermission === "granted"
-              }
-              disabled={
-                prefs.muteAll ||
-                browserPermission === "unsupported" ||
-                browserPermission === "denied"
-              }
-              label="Ativar notificações do navegador"
-              onChange={handleBrowserToggle}
-            />
+            {browserPermission === "default" ? (
+              <button
+                type="button"
+                onClick={handleBrowserToggle}
+                disabled={prefs.muteAll}
+                className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Permitir
+              </button>
+            ) : (
+              <ToggleSwitch
+                checked={
+                  prefs.browserPushEnabled &&
+                  !prefs.muteAll &&
+                  browserPermission === "granted"
+                }
+                disabled={
+                  prefs.muteAll ||
+                  browserPermission === "unsupported" ||
+                  browserPermission === "denied"
+                }
+                label="Ativar notificações do sistema"
+                onChange={handleBrowserToggle}
+              />
+            )}
           </div>
         </div>
       </div>
