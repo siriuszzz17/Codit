@@ -3,11 +3,10 @@
 ## Pronto no código
 - App Router e interface em Next.js/React/TypeScript; PWA e shells Tauri/Capacitor (`v0.1.13`, Android `versionCode 14`).
 - Auth/OAuth, perfis, aparência, projetos sandbox, comunidade, mensagens/WebRTC, notificações in-app/desktop e camada nativa Android + Bridge Capacitor (projeção `ScreenCaptureService` corrigida para SDK 36 + `CoditWebChromeClient`, `smallIcon` monocromático `ic_stat_codit`, `largeIcon` circular com fallback via `NotificationAvatarLoader`, resposta rápida `RemoteInput` via `NotificationActionReceiver` + `NativeSessionStore` e chamada persistente `CallForegroundService` com Mutar/Desmutar, Encerrar e Voltar).
-- Migrações Supabase versionadas em `supabase/migrations/` (incluindo `20261125000001_add_android_push_notifications.sql`); testes unitários em `tests/unit/`.
+- Migrações Supabase versionadas em `supabase/migrations/` (incluindo `20261125000001_add_android_push_notifications.sql` e `20261125000002_add_call_sessions_and_push_reply.sql`); Edge Function `send-push` em FCM data-only com avatar (`largeIcon`), quick-reply (`reply`/`notification_reply`) e timeout server-side de 60s para chamadas `ringing` + sinalização WebRTC de câmera e screen share; testes unitários em `tests/unit/`.
 
 ## Pendente / em andamento
-- Etapa 2 de chamadas/push: migrar Edge Function `send-push` para payload FCM data-only com metadados de avatar e evoluir WebRTC (vídeo opcional, timeout 60s e ringtone).
-- Aplicar e validar migrações no projeto Supabase remoto (`20261123000001`..`20261125000001`), configurar secrets Firebase/webhook na Edge Function `send-push`, Custom SMTP e Redirect URLs no painel.
+- Aplicar e validar migrações no projeto Supabase remoto (`20261123000001`..`20261125000002`), publicar Edge Function `send-push` com secrets Firebase/webhook, Custom SMTP e Redirect URLs no painel.
 - Catálogo curricular e progresso de aulas (tracks, lessons, etc.).
 - Execução Python via Pyodide Worker.
 - Proxy server-side para tutor Octopy.

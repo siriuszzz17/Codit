@@ -7,10 +7,13 @@ import {
   type CallSignalEnvelope,
 } from "@/modules/messaging/messaging-schemas";
 import {
+  acquireCameraVideoStream,
   acquireScreenShareStream,
   acquireVoiceMicrophoneStream,
+  applyCameraVideoBitrateCap,
   applyScreenShareBitrateCap,
   createVoiceActivityMonitor,
+  isAuthorizedCameraTrack,
   isAuthorizedScreenShareTrack,
   MediaCaptureCancelledError,
   stopMediaStream,
@@ -27,11 +30,15 @@ export interface CallParticipantPresence extends CallUserIdentity {
   sessionId: string;
   muted: boolean;
   deafened: boolean;
+  cameraEnabled: boolean;
   screenSharing: boolean;
+  cameraStreamId?: string | null;
+  screenStreamId?: string | null;
   joinedAt: string;
 }
 
 export interface VoiceCallSnapshot {
+  callId: string;
   conversationId: string;
   conversationTitle: string;
   isGroup: boolean;
@@ -39,12 +46,15 @@ export interface VoiceCallSnapshot {
   participants: CallParticipantPresence[];
   speakingUserIds: string[];
   remoteAudioStreams: Map<string, MediaStream>;
+  remoteCameraStreams: Map<string, MediaStream>;
   remoteScreenStreams: Map<string, MediaStream>;
+  localCameraStream: MediaStream | null;
   localScreenStream: MediaStream | null;
   hasMicrophone: boolean;
   micWarning: string | null;
   isMuted: boolean;
   isDeafened: boolean;
+  isCameraEnabled: boolean;
   isScreenSharing: boolean;
   startedAt: number;
   error: string | null;
@@ -60,9 +70,13 @@ interface PeerConnectionEntry {
   pendingCandidates: RTCIceCandidateInit[];
   audioSender: RTCRtpSender | null;
   audioTransceiver: RTCRtpTransceiver | null;
+  cameraSender: RTCRtpSender | null;
   screenSender: RTCRtpSender | null;
   remoteAudioStream: MediaStream | null;
-  remoteVideoStream: MediaStream | null;
+  remoteCameraStream: MediaStream | null;
+  remoteScreenStream: MediaStream | null;
+  expectedCameraStreamId: string | null;
+  expectedScreenStreamId: string | null;
 }
 
 export function isPolitePeer(
@@ -84,27 +98,32 @@ function createSessionId(): string {
 
 export interface VoiceCallManagerOptions {
   client: CoditSupabaseClient;
+  callId?: string;
   conversationId: string;
   conversationTitle: string;
   isGroup: boolean;
   localUser: CallUserIdentity;
   allowedMemberIds: ReadonlyArray<string>;
   onStateChange: (snapshot: VoiceCallSnapshot) => void;
+  onCallTimeout?: (reason: "missed" | "timeout") => void;
 }
 
 export class VoiceCallSessionManager {
   private readonly client: CoditSupabaseClient;
+  readonly callId: string;
   private readonly conversationId: string;
   private readonly conversationTitle: string;
   private readonly isGroup: boolean;
   private readonly localUser: CallUserIdentity;
   private readonly localSessionId: string;
   private readonly onStateChange: (snapshot: VoiceCallSnapshot) => void;
+  private readonly onCallTimeout?: (reason: "missed" | "timeout") => void;
   private readonly iceServers: RTCIceServer[];
 
   private allowedMemberIds: Set<string>;
   private channel: RealtimeChannel | null = null;
   private localAudioStream: MediaStream | null = null;
+  private localCameraStream: MediaStream | null = null;
   private localScreenStream: MediaStream | null = null;
   private stopVoiceMonitor: () => void = () => {};
   private status: "connecting" | "connected" = "connecting";
@@ -112,6 +131,7 @@ export class VoiceCallSessionManager {
   private micWarning: string | null = null;
   private isMuted = false;
   private isDeafened = false;
+  private isCameraEnabled = false;
   private isScreenSharing = false;
   private disposed = false;
   private error: string | null = null;
@@ -125,12 +145,14 @@ export class VoiceCallSessionManager {
 
   constructor(options: VoiceCallManagerOptions) {
     this.client = options.client;
+    this.callId = options.callId ?? createSessionId();
     this.conversationId = options.conversationId;
     this.conversationTitle = options.conversationTitle;
     this.isGroup = options.isGroup;
     this.localUser = options.localUser;
     this.allowedMemberIds = new Set(options.allowedMemberIds);
     this.onStateChange = options.onStateChange;
+    this.onCallTimeout = options.onCallTimeout;
     this.localSessionId = createSessionId();
     this.iceServers = resolveWebRtcIceServers();
 
@@ -139,13 +161,27 @@ export class VoiceCallSessionManager {
       sessionId: this.localSessionId,
       muted: false,
       deafened: false,
+      cameraEnabled: false,
       screenSharing: false,
+      cameraStreamId: null,
+      screenStreamId: null,
       joinedAt: this.joinedAt,
     });
   }
 
+  private getLocalVideoTrackMeta(): {
+    cameraStreamId: string | null;
+    screenStreamId: string | null;
+  } {
+    return {
+      cameraStreamId: this.localCameraStream?.id ?? null,
+      screenStreamId: this.localScreenStream?.id ?? null,
+    };
+  }
+
   getSnapshot(): VoiceCallSnapshot {
     const remoteAudioStreams = new Map<string, MediaStream>();
+    const remoteCameraStreams = new Map<string, MediaStream>();
     const remoteScreenStreams = new Map<string, MediaStream>();
 
     for (const [remoteUserId, entry] of this.peers.entries()) {
@@ -158,10 +194,12 @@ export class VoiceCallSessionManager {
       }
 
       const presence = this.participants.get(remoteUserId);
-      // RN-504: só expor fluxo de vídeo remoto quando o participante declarou
-      // compartilhamento de tela ativo (nunca vídeo de câmera).
-      if (entry.remoteVideoStream && presence?.screenSharing) {
-        remoteScreenStreams.set(remoteUserId, entry.remoteVideoStream);
+      if (entry.remoteCameraStream && presence?.cameraEnabled) {
+        remoteCameraStreams.set(remoteUserId, entry.remoteCameraStream);
+      }
+
+      if (entry.remoteScreenStream && presence?.screenSharing) {
+        remoteScreenStreams.set(remoteUserId, entry.remoteScreenStream);
       }
     }
 
@@ -179,6 +217,7 @@ export class VoiceCallSessionManager {
       });
 
     return {
+      callId: this.callId,
       conversationId: this.conversationId,
       conversationTitle: this.conversationTitle,
       isGroup: this.isGroup,
@@ -186,12 +225,15 @@ export class VoiceCallSessionManager {
       participants: orderedParticipants,
       speakingUserIds: Array.from(this.speakingUserIds),
       remoteAudioStreams,
+      remoteCameraStreams,
       remoteScreenStreams,
+      localCameraStream: this.localCameraStream,
       localScreenStream: this.localScreenStream,
       hasMicrophone: this.hasMicrophone,
       micWarning: this.micWarning,
       isMuted: this.isMuted,
       isDeafened: this.isDeafened,
+      isCameraEnabled: this.isCameraEnabled,
       isScreenSharing: this.isScreenSharing,
       startedAt: this.startedAt,
       error: this.error,
@@ -357,7 +399,10 @@ export class VoiceCallSessionManager {
       sessionId: this.localSessionId,
       muted: this.isMuted,
       deafened: this.isDeafened,
+      cameraEnabled: this.isCameraEnabled,
       screenSharing: this.isScreenSharing,
+      cameraStreamId: this.localCameraStream?.id ?? null,
+      screenStreamId: this.localScreenStream?.id ?? null,
       joinedAt: this.joinedAt,
     };
     this.participants.set(this.localUser.userId, localPresence);
@@ -400,7 +445,10 @@ export class VoiceCallSessionManager {
       sessionId: this.localSessionId,
       muted: this.isMuted,
       deafened: this.isDeafened,
+      cameraEnabled: this.isCameraEnabled,
       screenSharing: this.isScreenSharing,
+      cameraStreamId: this.localCameraStream?.id ?? null,
+      screenStreamId: this.localScreenStream?.id ?? null,
       joinedAt: this.joinedAt,
     };
 
@@ -433,7 +481,10 @@ export class VoiceCallSessionManager {
         sessionId: latest.sessionId || candidateUserId,
         muted: Boolean(latest.muted),
         deafened: Boolean(latest.deafened),
+        cameraEnabled: Boolean(latest.cameraEnabled),
         screenSharing: Boolean(latest.screenSharing),
+        cameraStreamId: latest.cameraStreamId ?? null,
+        screenStreamId: latest.screenStreamId ?? null,
         joinedAt: latest.joinedAt || new Date().toISOString(),
       };
 
@@ -445,12 +496,29 @@ export class VoiceCallSessionManager {
         !existingPeer ||
         existingPeer.remoteSessionId !== normalized.sessionId
       ) {
-        this.ensurePeerConnection(
+        const created = this.ensurePeerConnection(
           candidateUserId,
           normalized.sessionId,
         );
-      } else if (!normalized.screenSharing && existingPeer.remoteVideoStream) {
-        existingPeer.remoteVideoStream = null;
+        if (created) {
+          created.expectedCameraStreamId = normalized.cameraStreamId ?? null;
+          created.expectedScreenStreamId = normalized.screenStreamId ?? null;
+        }
+      } else {
+        if (normalized.cameraStreamId) {
+          existingPeer.expectedCameraStreamId = normalized.cameraStreamId;
+        }
+        if (normalized.screenStreamId) {
+          existingPeer.expectedScreenStreamId = normalized.screenStreamId;
+        }
+        if (!normalized.cameraEnabled && existingPeer.remoteCameraStream) {
+          existingPeer.remoteCameraStream = null;
+          existingPeer.expectedCameraStreamId = null;
+        }
+        if (!normalized.screenSharing && existingPeer.remoteScreenStream) {
+          existingPeer.remoteScreenStream = null;
+          existingPeer.expectedScreenStreamId = null;
+        }
       }
     }
 
@@ -507,9 +575,13 @@ export class VoiceCallSessionManager {
       pendingCandidates: [],
       audioSender: null,
       audioTransceiver: null,
+      cameraSender: null,
       screenSender: null,
       remoteAudioStream: null,
-      remoteVideoStream: null,
+      remoteCameraStream: null,
+      remoteScreenStream: null,
+      expectedCameraStreamId: null,
+      expectedScreenStreamId: null,
     };
 
     this.peers.set(remoteUserId, entry);
@@ -522,6 +594,19 @@ export class VoiceCallSessionManager {
       entry.audioTransceiver = pc.addTransceiver("audio", {
         direction: "recvonly",
       });
+    }
+
+    const localCameraTrack = this.localCameraStream?.getVideoTracks()[0];
+    if (
+      localCameraTrack &&
+      this.localCameraStream &&
+      isAuthorizedCameraTrack(localCameraTrack)
+    ) {
+      entry.cameraSender = pc.addTrack(
+        localCameraTrack,
+        this.localCameraStream,
+      );
+      void applyCameraVideoBitrateCap(entry.cameraSender);
     }
 
     const localScreenTrack = this.localScreenStream?.getVideoTracks()[0];
@@ -600,14 +685,35 @@ export class VoiceCallSessionManager {
       }
 
       if (event.track.kind === "video") {
-        // Apenas exibido quando presence.screenSharing === true (RN-504).
-        entry.remoteVideoStream = stream;
-        event.track.onended = () => {
-          if (entry.remoteVideoStream === stream) {
-            entry.remoteVideoStream = null;
-            this.emit();
-          }
-        };
+        const presence = this.participants.get(remoteUserId);
+        const streamId = stream.id ?? "";
+        const expectedScreenId =
+          entry.expectedScreenStreamId ?? presence?.screenStreamId ?? null;
+        const expectedCameraId =
+          entry.expectedCameraStreamId ?? presence?.cameraStreamId ?? null;
+
+        const isCameraTrack =
+          (expectedCameraId !== null && streamId === expectedCameraId) ||
+          (expectedScreenId !== null && streamId !== expectedScreenId && Boolean(presence?.cameraEnabled)) ||
+          (Boolean(presence?.cameraEnabled) && !presence?.screenSharing);
+
+        if (isCameraTrack) {
+          entry.remoteCameraStream = stream;
+          event.track.onended = () => {
+            if (entry.remoteCameraStream === stream) {
+              entry.remoteCameraStream = null;
+              this.emit();
+            }
+          };
+        } else {
+          entry.remoteScreenStream = stream;
+          event.track.onended = () => {
+            if (entry.remoteScreenStream === stream) {
+              entry.remoteScreenStream = null;
+              this.emit();
+            }
+          };
+        }
         this.emit();
       }
     };
@@ -649,16 +755,81 @@ export class VoiceCallSessionManager {
       return;
     }
 
+    if (signal.kind === "call-timeout") {
+      this.onCallTimeout?.(signal.reason);
+      return;
+    }
+
+    if (signal.kind === "video-track-state") {
+      const existing = this.peers.get(signal.fromUserId);
+      const participant = this.participants.get(signal.fromUserId);
+      if (signal.trackKind === "camera") {
+        if (existing) {
+          existing.expectedCameraStreamId = signal.active
+            ? (signal.streamId ?? existing.expectedCameraStreamId)
+            : null;
+          if (!signal.active) {
+            existing.remoteCameraStream = null;
+          }
+        }
+        if (participant) {
+          this.participants.set(signal.fromUserId, {
+            ...participant,
+            cameraEnabled: signal.active,
+            cameraStreamId: signal.active ? (signal.streamId ?? null) : null,
+          });
+        }
+      } else {
+        if (existing) {
+          existing.expectedScreenStreamId = signal.active
+            ? (signal.streamId ?? existing.expectedScreenStreamId)
+            : null;
+          if (!signal.active) {
+            existing.remoteScreenStream = null;
+          }
+        }
+        if (participant) {
+          this.participants.set(signal.fromUserId, {
+            ...participant,
+            screenSharing: signal.active,
+            screenStreamId: signal.active ? (signal.streamId ?? null) : null,
+          });
+        }
+      }
+      this.emit();
+      return;
+    }
+
+    if (signal.kind === "camera-stopped") {
+      const existing = this.peers.get(signal.fromUserId);
+      if (existing) {
+        existing.remoteCameraStream = null;
+        existing.expectedCameraStreamId = null;
+      }
+      const participant = this.participants.get(signal.fromUserId);
+      if (participant) {
+        this.participants.set(signal.fromUserId, {
+          ...participant,
+          cameraEnabled: false,
+          cameraStreamId: null,
+        });
+      }
+      this.emit();
+      return;
+    }
+
     if (signal.kind === "screen-share-stopped") {
       const existing = this.peers.get(signal.fromUserId);
       if (existing) {
-        existing.remoteVideoStream = null;
+        existing.remoteScreenStream = null;
+        existing.expectedScreenStreamId = null;
       }
       const participant = this.participants.get(signal.fromUserId);
       if (participant) {
         this.participants.set(signal.fromUserId, {
           ...participant,
           screenSharing: false,
+          screenStreamId: null,
         });
       }
       this.emit();
@@ -697,6 +868,15 @@ export class VoiceCallSessionManager {
       return;
     }
 
+    if (signal.videoTrackMeta) {
+      if (signal.videoTrackMeta.cameraStreamId !== undefined) {
+        entry.expectedCameraStreamId = signal.videoTrackMeta.cameraStreamId ?? null;
+      }
+      if (signal.videoTrackMeta.screenStreamId !== undefined) {
+        entry.expectedScreenStreamId = signal.videoTrackMeta.screenStreamId ?? null;
+      }
+    }
+
     try {
       await pc.setRemoteDescription(signal.sdp);
 
@@ -721,6 +901,7 @@ export class VoiceCallSessionManager {
               type: "answer",
               sdp: pc.localDescription.sdp,
             },
+            videoTrackMeta: this.getLocalVideoTrackMeta(),
           });
         }
       }
@@ -755,6 +936,7 @@ export class VoiceCallSessionManager {
             type: "offer",
             sdp: pc.localDescription.sdp,
           },
+          videoTrackMeta: this.getLocalVideoTrackMeta(),
         });
       }
     } catch {
@@ -817,6 +999,110 @@ export class VoiceCallSessionManager {
     return this.isDeafened;
   }
 
+  async startCamera(facingMode: "user" | "environment" = "user"): Promise<boolean> {
+    if (this.disposed) {
+      return false;
+    }
+
+    if (this.isCameraEnabled && this.localCameraStream) {
+      return true;
+    }
+
+    try {
+      const cameraStream = await acquireCameraVideoStream(undefined, facingMode);
+      if (this.disposed) {
+        stopMediaStream(cameraStream);
+        return false;
+      }
+
+      const cameraTrack = cameraStream.getVideoTracks()[0];
+      if (!cameraTrack || !isAuthorizedCameraTrack(cameraTrack)) {
+        stopMediaStream(cameraStream);
+        return false;
+      }
+
+      this.localCameraStream = cameraStream;
+      this.isCameraEnabled = true;
+      this.error = null;
+
+      cameraTrack.onended = () => {
+        void this.stopCamera();
+      };
+
+      for (const entry of this.peers.values()) {
+        try {
+          void this.sendSignal({
+            conversationId: this.conversationId,
+            fromUserId: this.localUser.userId,
+            toUserId: entry.remoteUserId,
+            fromSessionId: this.localSessionId,
+            toSessionId: entry.remoteSessionId,
+            kind: "video-track-state",
+            trackKind: "camera",
+            active: true,
+            streamId: cameraStream.id ?? null,
+            trackId: cameraTrack.id ?? null,
+          });
+          if (entry.cameraSender) {
+            await entry.cameraSender.replaceTrack(cameraTrack);
+          } else {
+            entry.cameraSender = entry.pc.addTrack(cameraTrack, cameraStream);
+            await this.renegotiatePeer(entry);
+          }
+          await applyCameraVideoBitrateCap(entry.cameraSender);
+        } catch {
+          // Segue para os demais participantes.
+        }
+      }
+
+      await this.publishPresence();
+      this.emit();
+      return true;
+    } catch (err) {
+      this.error =
+        err instanceof Error
+          ? err.message
+          : "Não foi possível ativar sua câmera.";
+      this.emit();
+      throw err;
+    }
+  }
+
+  async stopCamera(): Promise<void> {
+    if (!this.isCameraEnabled && !this.localCameraStream) {
+      return;
+    }
+
+    const currentStream = this.localCameraStream;
+    this.localCameraStream = null;
+    this.isCameraEnabled = false;
+    stopMediaStream(currentStream);
+
+    for (const entry of this.peers.values()) {
+      if (entry.cameraSender) {
+        try {
+          entry.pc.removeTrack(entry.cameraSender);
+          await this.renegotiatePeer(entry);
+        } catch {
+          // noop
+        }
+        entry.cameraSender = null;
+      }
+
+      void this.sendSignal({
+        conversationId: this.conversationId,
+        fromUserId: this.localUser.userId,
+        toUserId: entry.remoteUserId,
+        fromSessionId: this.localSessionId,
+        toSessionId: entry.remoteSessionId,
+        kind: "camera-stopped",
+      });
+    }
+
+    await this.publishPresence();
+    this.emit();
+  }
+
   async startScreenShare(): Promise<boolean> {
     if (this.disposed) {
       return false;
@@ -849,6 +1135,18 @@ export class VoiceCallSessionManager {
 
       for (const entry of this.peers.values()) {
         try {
+          void this.sendSignal({
+            conversationId: this.conversationId,
+            fromUserId: this.localUser.userId,
+            toUserId: entry.remoteUserId,
+            fromSessionId: this.localSessionId,
+            toSessionId: entry.remoteSessionId,
+            kind: "video-track-state",
+            trackKind: "screen",
+            active: true,
+            streamId: screenStream.id ?? null,
+            trackId: screenTrack.id ?? null,
+          });
           if (entry.screenSender) {
             await entry.screenSender.replaceTrack(screenTrack);
           } else {
@@ -958,8 +1256,10 @@ export class VoiceCallSessionManager {
 
     this.stopVoiceMonitor();
     stopMediaStream(this.localAudioStream);
+    stopMediaStream(this.localCameraStream);
     stopMediaStream(this.localScreenStream);
     this.localAudioStream = null;
+    this.localCameraStream = null;
     this.localScreenStream = null;
 
     if (this.channel) {

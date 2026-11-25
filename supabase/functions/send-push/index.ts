@@ -14,12 +14,24 @@
  *   - PUSH_WEBHOOK_SECRET
  */
 
-const ANDROID_HIGH_PRIORITY_CHANNEL_ID = "codit_alerts_high_v1";
+import {
+  buildFcmDataOnlyMessage,
+  CALL_RINGING_TIMEOUT_MS,
+  CALL_RINGING_TIMEOUT_SECONDS,
+  CallRingingRegistry,
+  type PushMessageSpec,
+  type PushNotificationCategory,
+  UUID_REGEX,
+  validateQuickReplyInput,
+} from "./helpers.ts";
+
 const DEFAULT_GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const VOICE_CALL_RATE_LIMIT_MS = 10_000;
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+declare const EdgeRuntime:
+  | { waitUntil?: (promise: Promise<unknown>) => void }
+  | undefined;
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -28,14 +40,7 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type NotificationCategory =
-  | "message"
-  | "voice_call"
-  | "project_like"
-  | "project_comment"
-  | "friend_request"
-  | "friend_accepted"
-  | "group_invite";
+type NotificationCategory = Exclude<PushNotificationCategory, "voice_call_cancel">;
 
 type PrefCategoryKey =
   | "messages"
@@ -46,16 +51,6 @@ type PrefCategoryKey =
   | "friend_accepted"
   | "group_invites";
 
-interface PushMessageSpec {
-  title: string;
-  body: string;
-  linkHref: string;
-  category: NotificationCategory;
-  conversationId: string | null;
-  tag: string;
-  ttl: string;
-}
-
 interface OAuthTokenCache {
   token: string;
   expiresAtMs: number;
@@ -65,6 +60,7 @@ interface OAuthTokenCache {
 let cachedOAuthToken: OAuthTokenCache | null = null;
 let cachedCryptoKey: { pemHash: string; key: CryptoKey } | null = null;
 const voiceCallRateLimits = new Map<string, number>();
+const callRingingRegistry = new CallRingingRegistry(CALL_RINGING_TIMEOUT_MS);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -286,6 +282,128 @@ async function deleteDeadPushTokens(
   }).catch(() => undefined);
 }
 
+async function broadcastRealtimeEvents(
+  supabaseUrl: string,
+  serviceKey: string,
+  messages: Array<{ topic: string; event: string; payload: Record<string, unknown> }>,
+): Promise<void> {
+  if (messages.length === 0) {
+    return;
+  }
+  const url = `${supabaseUrl.replace(/\/$/, "")}/realtime/v1/api/broadcast`;
+  await fetch(url, {
+    method: "POST",
+    headers: supabaseHeaders(serviceKey),
+    body: JSON.stringify({ messages }),
+  }).catch(() => undefined);
+}
+
+async function persistCallSessionRinging(
+  supabaseUrl: string,
+  serviceKey: string,
+  input: {
+    callId: string;
+    conversationId: string;
+    callerId: string;
+    hasVideo: boolean;
+  },
+): Promise<void> {
+  const now = Date.now();
+  const url = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/call_sessions`;
+  await fetch(url, {
+    method: "POST",
+    headers: {
+      ...supabaseHeaders(serviceKey),
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify({
+      id: input.callId,
+      conversation_id: input.conversationId,
+      caller_id: input.callerId,
+      status: "ringing",
+      has_video: input.hasVideo,
+      ringing_timeout_seconds: CALL_RINGING_TIMEOUT_SECONDS,
+      started_at: new Date(now).toISOString(),
+      expires_at: new Date(now + CALL_RINGING_TIMEOUT_MS).toISOString(),
+    }),
+  }).catch(() => undefined);
+}
+
+async function isCallSessionStillRingingInDb(
+  supabaseUrl: string,
+  serviceKey: string,
+  callId: string,
+): Promise<boolean> {
+  try {
+    const rows = await fetchSupabaseRest<Array<{ status?: string }>>(
+      supabaseUrl,
+      serviceKey,
+      `call_sessions?id=eq.${encodeURIComponent(callId)}&select=status&limit=1`,
+    );
+    if (rows.length === 0) {
+      return true;
+    }
+    return rows[0]?.status === "ringing";
+  } catch {
+    return true;
+  }
+}
+
+async function updateCallSessionStatusInDb(
+  supabaseUrl: string,
+  serviceKey: string,
+  callId: string,
+  patch: Record<string, unknown>,
+  onlyIfRinging = false,
+): Promise<void> {
+  const filter = onlyIfRinging
+    ? `id=eq.${encodeURIComponent(callId)}&status=eq.ringing`
+    : `id=eq.${encodeURIComponent(callId)}`;
+  const url = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/call_sessions?${filter}`;
+  await fetch(url, {
+    method: "PATCH",
+    headers: {
+      ...supabaseHeaders(serviceKey),
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(patch),
+  }).catch(() => undefined);
+}
+
+async function authenticateBearerUser(
+  req: Request,
+  supabaseUrl: string,
+  serviceKey: string,
+): Promise<{ userId: string } | { error: Response }> {
+  const authHeader = req.headers.get("authorization") ?? "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  const jwt = match?.[1]?.trim() ?? "";
+  if (!jwt) {
+    return { error: jsonResponse({ error: "Autenticação obrigatória." }, 401) };
+  }
+
+  const userRes = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${jwt}`,
+    },
+  });
+  if (!userRes.ok) {
+    return {
+      error: jsonResponse({ error: "Sessão inválida." }, 401),
+    };
+  }
+  const userJson = (await userRes.json()) as { id?: string };
+  const userId = typeof userJson.id === "string" ? userJson.id : "";
+  if (!UUID_REGEX.test(userId)) {
+    return {
+      error: jsonResponse({ error: "Usuário não identificado." }, 401),
+    };
+  }
+  return { userId };
+}
+
 function extractConversationIdFromLink(
   linkHref: string | null | undefined,
 ): string | null {
@@ -410,37 +528,7 @@ async function sendFcmToTokens(
 
   await Promise.allSettled(
     uniqueTokens.map(async (deviceToken) => {
-      const payload = {
-        message: {
-          token: deviceToken,
-          notification: {
-            title: spec.title,
-            body: spec.body,
-          },
-          data: {
-            linkHref: spec.linkHref,
-            category: spec.category,
-            conversationId: spec.conversationId ?? "",
-            tag: spec.tag,
-          },
-          android: {
-            priority: "HIGH",
-            ttl: spec.ttl,
-            collapse_key: spec.tag.slice(0, 64),
-            notification: {
-              channel_id: ANDROID_HIGH_PRIORITY_CHANNEL_ID,
-              icon: "ic_stat_codit",
-              color: "#8B6BFF",
-              sound: "default",
-              default_vibrate_timings: true,
-              default_light_settings: true,
-              notification_priority: "PRIORITY_HIGH",
-              visibility: "PUBLIC",
-              tag: spec.tag.slice(0, 64),
-            },
-          },
-        },
-      };
+      const payload = buildFcmDataOnlyMessage(deviceToken, spec);
 
       const res = await fetch(fcmUrl, {
         method: "POST",
@@ -512,8 +600,12 @@ async function handleNotificationsWebhook(
   const linkHref = sanitizeSafeLinkHref(record.link_href);
   const conversationId = extractConversationIdFromLink(linkHref);
   const prefKey = mapCategoryToPrefKey(category);
+  const actorId =
+    typeof record.actor_id === "string" && UUID_REGEX.test(record.actor_id)
+      ? record.actor_id
+      : null;
 
-  const [profiles, devices] = await Promise.all([
+  const [profiles, devices, actorProfiles] = await Promise.all([
     fetchSupabaseRest<Array<{ notification_prefs?: unknown }>>(
       supabaseUrl,
       serviceKey,
@@ -524,6 +616,20 @@ async function handleNotificationsWebhook(
       serviceKey,
       `push_devices?user_id=eq.${encodeURIComponent(recipientId)}&platform=eq.android&select=token`,
     ),
+    actorId
+      ? fetchSupabaseRest<
+          Array<{
+            id: string;
+            full_name: string | null;
+            username: string | null;
+            avatar_url: string | null;
+          }>
+        >(
+          supabaseUrl,
+          serviceKey,
+          `public_profiles?id=eq.${encodeURIComponent(actorId)}&select=id,full_name,username,avatar_url&limit=1`,
+        ).catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   if (devices.length === 0) {
@@ -539,6 +645,7 @@ async function handleNotificationsWebhook(
     typeof record.entity_key === "string" && record.entity_key.trim()
       ? record.entity_key.trim()
       : `notif:${id}`;
+  const actor = actorProfiles[0];
 
   const result = await sendFcmToTokens(
     supabaseUrl,
@@ -550,8 +657,14 @@ async function handleNotificationsWebhook(
       linkHref,
       category,
       conversationId,
+      conversationTitle: title.slice(0, 140),
+      isGroup: false,
       tag: entityKey,
       ttl: "86400s",
+      actorId,
+      actorName: actor ? formatActorDisplayName(actor, title.slice(0, 140)) : title.slice(0, 140),
+      actorUsername: actor?.username ?? null,
+      actorAvatarUrl: actor?.avatar_url ?? null,
     },
   );
 
@@ -587,10 +700,16 @@ async function handleChatMessageWebhook(
       serviceKey,
       `chat_conversations?id=eq.${encodeURIComponent(conversationId)}&select=id,kind,title&limit=1`,
     ),
-    fetchSupabaseRest<Array<{ full_name: string | null; username: string | null }>>(
+    fetchSupabaseRest<
+      Array<{
+        full_name: string | null;
+        username: string | null;
+        avatar_url: string | null;
+      }>
+    >(
       supabaseUrl,
       serviceKey,
-      `public_profiles?id=eq.${encodeURIComponent(senderId)}&select=full_name,username&limit=1`,
+      `public_profiles?id=eq.${encodeURIComponent(senderId)}&select=full_name,username,avatar_url&limit=1`,
     ),
     fetchSupabaseRest<Array<{ user_id: string }>>(
       supabaseUrl,
@@ -646,7 +765,8 @@ async function handleChatMessageWebhook(
     return jsonResponse({ skipped: "all_recipients_muted" });
   }
 
-  const senderName = formatActorDisplayName(senderProfiles[0], "Nova mensagem");
+  const senderProfile = senderProfiles[0];
+  const senderName = formatActorDisplayName(senderProfile, "Nova mensagem");
   const isGroup = conversation.kind === "group";
   const groupTitle = conversation.title?.trim() || "Grupo Codit";
   const title = isGroup ? `${senderName} em ${groupTitle}` : senderName;
@@ -657,8 +777,15 @@ async function handleChatMessageWebhook(
     linkHref: `/mensagens?c=${encodeURIComponent(conversationId)}`,
     category: "message",
     conversationId,
+    conversationTitle: (isGroup ? groupTitle : senderName).slice(0, 140),
+    isGroup,
     tag: `conv:${conversationId}`,
     ttl: "86400s",
+    actorId: senderId,
+    actorName: senderName.slice(0, 120),
+    actorUsername: senderProfile?.username ?? null,
+    actorAvatarUrl: senderProfile?.avatar_url ?? null,
+    supportsReply: true,
   });
 
   return jsonResponse({ ok: true, table: "chat_messages", ...result });
@@ -688,28 +815,11 @@ async function handleVoiceCallPush(
   serviceKey: string,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const authHeader = req.headers.get("authorization") ?? "";
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  const jwt = match?.[1]?.trim() ?? "";
-  if (!jwt) {
-    return jsonResponse({ error: "Autenticação obrigatória." }, 401);
+  const auth = await authenticateBearerUser(req, supabaseUrl, serviceKey);
+  if ("error" in auth) {
+    return auth.error;
   }
-
-  const userRes = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
-    method: "GET",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${jwt}`,
-    },
-  });
-  if (!userRes.ok) {
-    return jsonResponse({ error: "Sessão inválida para disparar alerta de chamada." }, 401);
-  }
-  const userJson = (await userRes.json()) as { id?: string };
-  const callerId = typeof userJson.id === "string" ? userJson.id : "";
-  if (!UUID_REGEX.test(callerId)) {
-    return jsonResponse({ error: "Usuário não identificado." }, 401);
-  }
+  const callerId = auth.userId;
 
   const conversationId =
     typeof body.conversationId === "string" ? body.conversationId.trim() : "";
@@ -717,8 +827,12 @@ async function handleVoiceCallPush(
     return jsonResponse({ error: "Identificador de conversa inválido." }, 400);
   }
 
+  const rawCallId = typeof body.callId === "string" ? body.callId.trim() : "";
+  const callId = UUID_REGEX.test(rawCallId) ? rawCallId : crypto.randomUUID();
+  const hasVideo = body.hasVideo === true;
+
   if (isVoiceCallRateLimited(callerId, conversationId)) {
-    return jsonResponse({ skipped: "rate_limited" });
+    return jsonResponse({ skipped: "rate_limited", callId });
   }
 
   const [conversations, activeMembers, callerProfiles] = await Promise.all([
@@ -732,10 +846,16 @@ async function handleVoiceCallPush(
       serviceKey,
       `chat_conversation_members?conversation_id=eq.${encodeURIComponent(conversationId)}&left_at=is.null&select=user_id`,
     ),
-    fetchSupabaseRest<Array<{ full_name: string | null; username: string | null }>>(
+    fetchSupabaseRest<
+      Array<{
+        full_name: string | null;
+        username: string | null;
+        avatar_url: string | null;
+      }>
+    >(
       supabaseUrl,
       serviceKey,
-      `public_profiles?id=eq.${encodeURIComponent(callerId)}&select=full_name,username&limit=1`,
+      `public_profiles?id=eq.${encodeURIComponent(callerId)}&select=full_name,username,avatar_url&limit=1`,
     ),
   ]);
 
@@ -754,13 +874,13 @@ async function handleVoiceCallPush(
     .filter((id) => id !== callerId && UUID_REGEX.test(id));
 
   if (recipientIds.length === 0) {
-    return jsonResponse({ skipped: "no_recipients" });
+    return jsonResponse({ skipped: "no_recipients", callId });
   }
 
   if (conversation.kind === "direct") {
     const peerId = recipientIds[0];
     if (!peerId) {
-      return jsonResponse({ skipped: "no_peer" });
+      return jsonResponse({ skipped: "no_peer", callId });
     }
     const areFriends = await callSupabaseRpc<boolean>(
       supabaseUrl,
@@ -787,10 +907,6 @@ async function handleVoiceCallPush(
     ),
   ]);
 
-  if (devices.length === 0) {
-    return jsonResponse({ skipped: "no_registered_devices" });
-  }
-
   const prefsByUser = new Map<string, unknown>();
   for (const profile of recipientProfiles) {
     prefsByUser.set(profile.id, profile.notification_prefs);
@@ -806,16 +922,126 @@ async function handleVoiceCallPush(
     )
     .map((device) => device.token);
 
-  if (eligibleTokens.length === 0) {
-    return jsonResponse({ skipped: "all_recipients_muted" });
-  }
-
-  const callerName = formatActorDisplayName(callerProfiles[0], "Amigo do Codit");
+  const callerProfile = callerProfiles[0];
+  const callerName = formatActorDisplayName(callerProfile, "Amigo do Codit");
   const isGroup = conversation.kind === "group";
   const groupTitle = conversation.title?.trim() || "Grupo Codit";
   const title = isGroup
     ? `Ligação no grupo ${groupTitle}`
-    : `${callerName} está chamando por voz`;
+    : hasVideo
+      ? `${callerName} está chamando com vídeo`
+      : `${callerName} está chamando por voz`;
+
+  await persistCallSessionRinging(supabaseUrl, serviceKey, {
+    callId,
+    conversationId,
+    callerId,
+    hasVideo,
+  });
+
+  const { waitPromise } = callRingingRegistry.registerRinging(
+    {
+      callId,
+      conversationId,
+      callerId,
+      recipientIds,
+      hasVideo,
+      timeoutMs: CALL_RINGING_TIMEOUT_MS,
+    },
+    async (expiredSession) => {
+      const stillRinging = await isCallSessionStillRingingInDb(
+        supabaseUrl,
+        serviceKey,
+        expiredSession.callId,
+      );
+      if (!stillRinging) {
+        return;
+      }
+
+      const timedOutAt = new Date().toISOString();
+      await updateCallSessionStatusInDb(
+        supabaseUrl,
+        serviceKey,
+        expiredSession.callId,
+        {
+          status: "missed",
+          ended_at: timedOutAt,
+          end_reason: "timeout",
+        },
+        true,
+      );
+
+      const timeoutPayload = {
+        callId: expiredSession.callId,
+        conversationId: expiredSession.conversationId,
+        callerId: expiredSession.callerId,
+        reason: "missed",
+        timedOutAt,
+      };
+
+      const broadcastTargets = [
+        {
+          topic: `codit:user-inbox:${expiredSession.callerId}`,
+          event: "call:timeout",
+          payload: timeoutPayload,
+        },
+        ...expiredSession.recipientIds.map((rid) => ({
+          topic: `codit:user-inbox:${rid}`,
+          event: "call:timeout",
+          payload: timeoutPayload,
+        })),
+        {
+          topic: `codit:call:${expiredSession.conversationId}`,
+          event: "webrtc:signal",
+          payload: {
+            conversationId: expiredSession.conversationId,
+            fromUserId: expiredSession.callerId,
+            toUserId: expiredSession.callerId,
+            fromSessionId: "server-timeout",
+            kind: "call-timeout",
+            callId: expiredSession.callId,
+            reason: "missed",
+            timedOutAt,
+          },
+        },
+      ];
+
+      await Promise.allSettled([
+        broadcastRealtimeEvents(supabaseUrl, serviceKey, broadcastTargets),
+        eligibleTokens.length > 0
+          ? sendFcmToTokens(supabaseUrl, serviceKey, eligibleTokens, {
+              title: "Chamada perdida",
+              body: `${callerName} ligou para você.`,
+              linkHref: `/mensagens?c=${encodeURIComponent(expiredSession.conversationId)}`,
+              category: "voice_call_cancel",
+              conversationId: expiredSession.conversationId,
+              conversationTitle: isGroup ? groupTitle : callerName,
+              isGroup,
+              tag: `call:${expiredSession.conversationId}`,
+              ttl: "30s",
+              actorId: callerId,
+              actorName: callerName.slice(0, 120),
+              actorUsername: callerProfile?.username ?? null,
+              actorAvatarUrl: callerProfile?.avatar_url ?? null,
+              callId: expiredSession.callId,
+            })
+          : Promise.resolve(),
+      ]);
+    },
+  );
+
+  if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime?.waitUntil === "function") {
+    EdgeRuntime.waitUntil(waitPromise);
+  }
+
+  if (eligibleTokens.length === 0) {
+    return jsonResponse({
+      ok: true,
+      skipped: devices.length === 0 ? "no_registered_devices" : "all_recipients_muted",
+      callId,
+      timeoutSeconds: CALL_RINGING_TIMEOUT_SECONDS,
+    });
+  }
 
   const result = await sendFcmToTokens(supabaseUrl, serviceKey, eligibleTokens, {
     title: title.slice(0, 140),
@@ -823,11 +1049,292 @@ async function handleVoiceCallPush(
     linkHref: `/mensagens?c=${encodeURIComponent(conversationId)}`,
     category: "voice_call",
     conversationId,
+    conversationTitle: (isGroup ? groupTitle : callerName).slice(0, 140),
+    isGroup,
     tag: `call:${conversationId}`,
-    ttl: "30s",
+    ttl: `${CALL_RINGING_TIMEOUT_SECONDS}s`,
+    actorId: callerId,
+    actorName: callerName.slice(0, 120),
+    actorUsername: callerProfile?.username ?? null,
+    actorAvatarUrl: callerProfile?.avatar_url ?? null,
+    callId,
+    hasVideo,
+    timeoutSeconds: CALL_RINGING_TIMEOUT_SECONDS,
+    supportsReply: false,
   });
 
-  return jsonResponse({ ok: true, kind: "voice_call", ...result });
+  return jsonResponse({
+    ok: true,
+    kind: "voice_call",
+    callId,
+    timeoutSeconds: CALL_RINGING_TIMEOUT_SECONDS,
+    ...result,
+  });
+}
+
+async function handleVoiceCallStateChange(
+  req: Request,
+  supabaseUrl: string,
+  serviceKey: string,
+  body: Record<string, unknown>,
+  action: "answer" | "cancel",
+): Promise<Response> {
+  const auth = await authenticateBearerUser(req, supabaseUrl, serviceKey);
+  if ("error" in auth) {
+    return auth.error;
+  }
+  const actorId = auth.userId;
+
+  const conversationId =
+    typeof body.conversationId === "string" ? body.conversationId.trim() : "";
+  if (!UUID_REGEX.test(conversationId)) {
+    return jsonResponse({ error: "Identificador de conversa inválido." }, 400);
+  }
+
+  const rawCallId = typeof body.callId === "string" ? body.callId.trim() : "";
+  const callId = UUID_REGEX.test(rawCallId) ? rawCallId : null;
+
+  const activeMembers = await fetchSupabaseRest<Array<{ user_id: string }>>(
+    supabaseUrl,
+    serviceKey,
+    `chat_conversation_members?conversation_id=eq.${encodeURIComponent(conversationId)}&left_at=is.null&select=user_id`,
+  );
+
+  if (!activeMembers.some((m) => m.user_id === actorId)) {
+    return jsonResponse({ error: "Você não participa desta conversa." }, 403);
+  }
+
+  const session =
+    action === "answer"
+      ? callRingingRegistry.markAnswered(conversationId, callId)
+      : callRingingRegistry.markCancelled(conversationId, callId);
+
+  const effectiveCallId = callId ?? session?.callId ?? null;
+  const nowIso = new Date().toISOString();
+
+  if (effectiveCallId) {
+    await updateCallSessionStatusInDb(
+      supabaseUrl,
+      serviceKey,
+      effectiveCallId,
+      action === "answer"
+        ? { status: "active", answered_by: actorId, answered_at: nowIso }
+        : { status: "cancelled", ended_at: nowIso, end_reason: "cancelled" },
+      true,
+    );
+  }
+
+  const otherMemberIds = activeMembers
+    .map((m) => m.user_id)
+    .filter((id) => id !== actorId && UUID_REGEX.test(id));
+
+  if (otherMemberIds.length > 0) {
+    const idFilter = `in.(${otherMemberIds.join(",")})`;
+    const devices = await fetchSupabaseRest<Array<{ token: string }>>(
+      supabaseUrl,
+      serviceKey,
+      `push_devices?user_id=${encodeURIComponent(idFilter)}&platform=eq.android&select=token`,
+    ).catch(() => []);
+
+    const eventName = action === "answer" ? "call:answered" : "call:cancelled";
+    const broadcastPayload = {
+      callId: effectiveCallId ?? undefined,
+      conversationId,
+      callerId: session?.callerId ?? actorId,
+      reason: action === "answer" ? "timeout" : "cancelled",
+      timedOutAt: nowIso,
+    };
+
+    await Promise.allSettled([
+      broadcastRealtimeEvents(
+        supabaseUrl,
+        serviceKey,
+        otherMemberIds.map((rid) => ({
+          topic: `codit:user-inbox:${rid}`,
+          event: eventName,
+          payload: broadcastPayload,
+        })),
+      ),
+      devices.length > 0
+        ? sendFcmToTokens(
+            supabaseUrl,
+            serviceKey,
+            devices.map((d) => d.token),
+            {
+              title: "Chamada encerrada",
+              body: "",
+              linkHref: `/mensagens?c=${encodeURIComponent(conversationId)}`,
+              category: "voice_call_cancel",
+              conversationId,
+              tag: `call:${conversationId}`,
+              ttl: "30s",
+              callId: effectiveCallId,
+            },
+          )
+        : Promise.resolve(),
+    ]);
+  }
+
+  return jsonResponse({
+    ok: true,
+    kind: action === "answer" ? "voice_call_answer" : "voice_call_cancel",
+    callId: effectiveCallId,
+  });
+}
+
+async function handleQuickReply(
+  req: Request,
+  supabaseUrl: string,
+  serviceKey: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const auth = await authenticateBearerUser(req, supabaseUrl, serviceKey);
+  if ("error" in auth) {
+    return auth.error;
+  }
+  const senderId = auth.userId;
+
+  const validated = validateQuickReplyInput(body);
+  if (!validated.ok) {
+    return jsonResponse({ error: validated.error }, 400);
+  }
+  const { conversationId, content } = validated;
+
+  const [conversations, activeMembers, senderProfiles] = await Promise.all([
+    fetchSupabaseRest<Array<{ id: string; kind: string; title: string | null }>>(
+      supabaseUrl,
+      serviceKey,
+      `chat_conversations?id=eq.${encodeURIComponent(conversationId)}&select=id,kind,title&limit=1`,
+    ),
+    fetchSupabaseRest<Array<{ user_id: string }>>(
+      supabaseUrl,
+      serviceKey,
+      `chat_conversation_members?conversation_id=eq.${encodeURIComponent(conversationId)}&left_at=is.null&select=user_id`,
+    ),
+    fetchSupabaseRest<
+      Array<{
+        full_name: string | null;
+        username: string | null;
+        avatar_url: string | null;
+      }>
+    >(
+      supabaseUrl,
+      serviceKey,
+      `public_profiles?id=eq.${encodeURIComponent(senderId)}&select=full_name,username,avatar_url&limit=1`,
+    ),
+  ]);
+
+  const conversation = conversations[0];
+  if (!conversation) {
+    return jsonResponse({ error: "Conversa não encontrada." }, 404);
+  }
+
+  if (!activeMembers.some((m) => m.user_id === senderId)) {
+    return jsonResponse({ error: "Você não participa desta conversa." }, 403);
+  }
+
+  const recipientIds = activeMembers
+    .map((m) => m.user_id)
+    .filter((id) => id !== senderId && UUID_REGEX.test(id));
+
+  if (conversation.kind === "direct") {
+    const peerId = recipientIds[0];
+    if (!peerId) {
+      return jsonResponse({ error: "Destinatário indisponível." }, 400);
+    }
+    const areFriends = await callSupabaseRpc<boolean>(
+      supabaseUrl,
+      serviceKey,
+      "are_users_friends",
+      { p_user_a: senderId, p_user_b: peerId },
+    );
+    if (!areFriends) {
+      return jsonResponse(
+        { error: "Apenas amigos aceitos podem enviar mensagens diretas." },
+        403,
+      );
+    }
+  }
+
+  const insertRes = await fetch(
+    `${supabaseUrl.replace(/\/$/, "")}/rest/v1/chat_messages`,
+    {
+      method: "POST",
+      headers: {
+        ...supabaseHeaders(serviceKey),
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        sender_id: senderId,
+        message_type: "text",
+        content,
+      }),
+    },
+  );
+
+  if (!insertRes.ok) {
+    const detail = await insertRes.text().catch(() => "");
+    return jsonResponse(
+      { error: `Não foi possível enviar a resposta (${insertRes.status}): ${detail.slice(0, 160)}` },
+      500,
+    );
+  }
+
+  const insertedRows = (await insertRes.json()) as Array<{
+    id?: string;
+    created_at?: string;
+  }>;
+  const created = insertedRows[0];
+
+  const nowIso = created?.created_at ?? new Date().toISOString();
+  const senderProfile = senderProfiles[0];
+  const senderName = formatActorDisplayName(senderProfile, "Estudante Codit");
+
+  await Promise.allSettled([
+    fetch(
+      `${supabaseUrl.replace(/\/$/, "")}/rest/v1/chat_conversation_members?conversation_id=eq.${encodeURIComponent(conversationId)}&user_id=eq.${encodeURIComponent(senderId)}&left_at=is.null`,
+      {
+        method: "PATCH",
+        headers: {
+          ...supabaseHeaders(serviceKey),
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ last_read_at: nowIso }),
+      },
+    ),
+    recipientIds.length > 0
+      ? broadcastRealtimeEvents(
+          supabaseUrl,
+          serviceKey,
+          recipientIds.map((rid) => ({
+            topic: `codit:user-inbox:${rid}`,
+            event: "message:notify",
+            payload: {
+              conversationId,
+              conversationTitle:
+                conversation.kind === "group"
+                  ? conversation.title?.trim() || "Grupo Codit"
+                  : senderName,
+              isGroup: conversation.kind === "group",
+              senderId,
+              senderName,
+              senderUsername: senderProfile?.username ?? "codit",
+              senderAvatarUrl: senderProfile?.avatar_url ?? null,
+              preview: content.slice(0, 180),
+              sentAt: nowIso,
+            },
+          })),
+        )
+      : Promise.resolve(),
+  ]);
+
+  return jsonResponse({
+    ok: true,
+    kind: "reply",
+    conversationId,
+    messageId: created?.id ?? null,
+  });
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -892,6 +1399,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (body.kind === "voice_call") {
       return await handleVoiceCallPush(req, supabaseUrl, serviceKey, body);
+    }
+
+    if (body.kind === "voice_call_answer") {
+      return await handleVoiceCallStateChange(
+        req,
+        supabaseUrl,
+        serviceKey,
+        body,
+        "answer",
+      );
+    }
+
+    if (body.kind === "voice_call_cancel") {
+      return await handleVoiceCallStateChange(
+        req,
+        supabaseUrl,
+        serviceKey,
+        body,
+        "cancel",
+      );
+    }
+
+    if (body.kind === "reply" || body.kind === "notification_reply") {
+      return await handleQuickReply(req, supabaseUrl, serviceKey, body);
     }
 
     return jsonResponse({ error: "Requisição não autorizada." }, 401);

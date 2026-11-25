@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  CALL_RINGING_TIMEOUT_MS,
+  CALL_RINGING_TIMEOUT_SECONDS,
   callSignalEnvelopeSchema,
+  callTimeoutNoticeSchema,
   createGroupConversationSchema,
   DEFAULT_WEBRTC_ICE_SERVERS,
   MAX_GROUP_INVITEES,
@@ -128,5 +131,31 @@ describe("messaging-schemas", () => {
     expect(resolveWebRtcIceServers(JSON.stringify(customTurn))).toEqual(
       customTurn,
     );
+
+    expect(CALL_RINGING_TIMEOUT_SECONDS).toBe(60);
+    expect(CALL_RINGING_TIMEOUT_MS).toBe(60_000);
+
+    expect(
+      callSignalEnvelopeSchema.safeParse({
+        conversationId: makeUuid(1),
+        fromUserId: makeUuid(2),
+        toUserId: makeUuid(3),
+        fromSessionId: "sess-1",
+        kind: "video-track-state",
+        trackKind: "camera",
+        active: true,
+        streamId: "cam-stream-1",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      callTimeoutNoticeSchema.safeParse({
+        callId: makeUuid(4),
+        conversationId: makeUuid(1),
+        callerId: makeUuid(2),
+        reason: "missed",
+        timedOutAt: new Date().toISOString(),
+      }).success,
+    ).toBe(true);
   });
 });

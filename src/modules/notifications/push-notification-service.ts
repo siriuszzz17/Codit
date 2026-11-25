@@ -119,20 +119,105 @@ export async function unregisterCurrentAndroidPushDevice(
 export async function dispatchVoiceCallPush(
   conversationId: string,
   client: CoditSupabaseClient,
+  options?: { callId?: string; hasVideo?: boolean },
 ): Promise<void> {
   const parsed = uuidSchema.safeParse(conversationId);
   if (!parsed.success || typeof client.functions?.invoke !== "function") {
     return;
   }
 
+  const parsedCallId = options?.callId
+    ? uuidSchema.safeParse(options.callId)
+    : null;
+
   try {
     await client.functions.invoke("send-push", {
       body: {
         kind: "voice_call",
         conversationId: parsed.data,
+        ...(parsedCallId?.success ? { callId: parsedCallId.data } : {}),
+        ...(options?.hasVideo ? { hasVideo: true } : {}),
       },
     });
   } catch {
     // Chamada em tempo real via WebSocket continua funcionando mesmo sem push.
+  }
+}
+
+export async function dispatchVoiceCallAnswer(
+  conversationId: string,
+  callId: string | null | undefined,
+  client: CoditSupabaseClient,
+): Promise<void> {
+  const parsedConv = uuidSchema.safeParse(conversationId);
+  if (!parsedConv.success || typeof client.functions?.invoke !== "function") {
+    return;
+  }
+  const parsedCallId = callId ? uuidSchema.safeParse(callId) : null;
+
+  try {
+    await client.functions.invoke("send-push", {
+      body: {
+        kind: "voice_call_answer",
+        conversationId: parsedConv.data,
+        ...(parsedCallId?.success ? { callId: parsedCallId.data } : {}),
+      },
+    });
+  } catch {
+    // noop
+  }
+}
+
+export async function dispatchVoiceCallCancel(
+  conversationId: string,
+  callId: string | null | undefined,
+  client: CoditSupabaseClient,
+): Promise<void> {
+  const parsedConv = uuidSchema.safeParse(conversationId);
+  if (!parsedConv.success || typeof client.functions?.invoke !== "function") {
+    return;
+  }
+  const parsedCallId = callId ? uuidSchema.safeParse(callId) : null;
+
+  try {
+    await client.functions.invoke("send-push", {
+      body: {
+        kind: "voice_call_cancel",
+        conversationId: parsedConv.data,
+        ...(parsedCallId?.success ? { callId: parsedCallId.data } : {}),
+      },
+    });
+  } catch {
+    // noop
+  }
+}
+
+export async function dispatchNotificationQuickReply(
+  conversationId: string,
+  content: string,
+  client: CoditSupabaseClient,
+): Promise<boolean> {
+  const parsedConv = uuidSchema.safeParse(conversationId);
+  const trimmed = content.trim();
+  if (
+    !parsedConv.success ||
+    !trimmed ||
+    trimmed.length > 2000 ||
+    typeof client.functions?.invoke !== "function"
+  ) {
+    return false;
+  }
+
+  try {
+    const { error } = await client.functions.invoke("send-push", {
+      body: {
+        kind: "notification_reply",
+        conversationId: parsedConv.data,
+        content: trimmed,
+      },
+    });
+    return !error;
+  } catch {
+    return false;
   }
 }

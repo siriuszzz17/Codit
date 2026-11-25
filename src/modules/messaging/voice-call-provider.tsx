@@ -24,6 +24,9 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/modules/auth/auth-provider";
 import {
+  CALL_RINGING_TIMEOUT_MS,
+  CALL_RINGING_TIMEOUT_SECONDS,
+  callTimeoutNoticeSchema,
   incomingCallNoticeSchema,
   type IncomingCallNotice,
 } from "@/modules/messaging/messaging-schemas";
@@ -35,9 +38,13 @@ import {
   VoiceCallSessionManager,
   type VoiceCallSnapshot,
 } from "@/modules/messaging/voice-call-manager";
-import { playIncomingCallChime } from "@/modules/messaging/webrtc-media";
+import { startIncomingCallRingtone } from "@/modules/messaging/webrtc-media";
 import { shouldDeliverNotification } from "@/modules/notifications/notification-schemas";
-import { dispatchVoiceCallPush } from "@/modules/notifications/push-notification-service";
+import {
+  dispatchVoiceCallAnswer,
+  dispatchVoiceCallCancel,
+  dispatchVoiceCallPush,
+} from "@/modules/notifications/push-notification-service";
 import {
   useNotificationsOptional,
   type ChatMessageRowNotificationInput,
@@ -52,6 +59,7 @@ export interface VoiceCallContextValue {
   leaveVoiceCall: () => Promise<void>;
   toggleMute: () => void;
   toggleDeafen: () => void;
+  toggleCamera: () => Promise<void>;
   toggleScreenShare: () => Promise<void>;
   retryMicrophone: () => Promise<void>;
   acceptIncomingCall: () => Promise<void>;
@@ -77,6 +85,12 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
   const notificationsRef = useRef(notifications);
   const routerRef = useRef(router);
   const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopRingtoneRef = useRef<(() => void) | null>(null);
+
+  const stopIncomingRingtone = useCallback(() => {
+    stopRingtoneRef.current?.();
+    stopRingtoneRef.current = null;
+  }, []);
 
   const [activeCall, setActiveCall] = useState<VoiceCallSnapshot | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCallNotice | null>(
@@ -99,10 +113,24 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
 
   const leaveVoiceCall = useCallback(async () => {
     const manager = managerRef.current;
+    const currentSnapshot = activeCallRef.current;
     managerRef.current = null;
     setActiveCall(null);
     setIsJoiningCall(false);
     stopNativeCallNotification();
+    if (
+      currentSnapshot &&
+      currentSnapshot.participants.length <= 1
+    ) {
+      const client = getSupabaseClient();
+      if (client) {
+        void dispatchVoiceCallCancel(
+          currentSnapshot.conversationId,
+          currentSnapshot.callId,
+          client,
+        );
+      }
+    }
     if (manager) {
       await manager.leaveCall();
     }
@@ -243,6 +271,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       if (incomingTimerRef.current !== null) {
         clearTimeout(incomingTimerRef.current);
       }
+      stopIncomingRingtone();
       const manager = managerRef.current;
       managerRef.current = null;
       stopNativeCallNotification();
@@ -250,7 +279,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
         void manager.leaveCall();
       }
     };
-  }, []);
+  }, [stopIncomingRingtone]);
 
   // Escutar inbox pessoal para chamadas recebidas, novas mensagens e alterações RLS.
   useEffect(() => {
@@ -306,18 +335,93 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
           if (incomingTimerRef.current !== null) {
             clearTimeout(incomingTimerRef.current);
           }
+          const timeoutMs = notice.timeoutSeconds
+            ? notice.timeoutSeconds * 1000
+            : CALL_RINGING_TIMEOUT_MS;
           incomingTimerRef.current = setTimeout(() => {
+            stopIncomingRingtone();
+            dismissNativeNotificationTag(`call:${notice.conversationId}`);
             setIncomingCall((current) =>
               current?.conversationId === notice.conversationId
                 ? null
                 : current,
             );
-          }, 25_000);
+          }, timeoutMs);
         }
 
         if (delivery.allowSound) {
-          playIncomingCallChime();
+          stopIncomingRingtone();
+          stopRingtoneRef.current = startIncomingCallRingtone();
         }
+      })
+      .on("broadcast", { event: "call:timeout" }, (event) => {
+        const rawPayload =
+          event && typeof event === "object" && "payload" in event
+            ? event.payload
+            : event;
+        const parsed = callTimeoutNoticeSchema.safeParse(rawPayload);
+        if (!parsed.success) {
+          return;
+        }
+        const notice = parsed.data;
+        stopIncomingRingtone();
+        if (incomingTimerRef.current !== null) {
+          clearTimeout(incomingTimerRef.current);
+          incomingTimerRef.current = null;
+        }
+        dismissNativeNotificationTag(`call:${notice.conversationId}`);
+        setIncomingCall((current) =>
+          current?.conversationId === notice.conversationId ? null : current,
+        );
+
+        const active = activeCallRef.current;
+        if (
+          active &&
+          active.conversationId === notice.conversationId &&
+          active.participants.length <= 1
+        ) {
+          setCallError("Chamada não atendida (tempo esgotado).");
+          void leaveVoiceCall();
+        }
+      })
+      .on("broadcast", { event: "call:cancelled" }, (event) => {
+        const rawPayload =
+          event && typeof event === "object" && "payload" in event
+            ? event.payload
+            : event;
+        const parsed = callTimeoutNoticeSchema.safeParse(rawPayload);
+        if (!parsed.success) {
+          return;
+        }
+        const notice = parsed.data;
+        stopIncomingRingtone();
+        if (incomingTimerRef.current !== null) {
+          clearTimeout(incomingTimerRef.current);
+          incomingTimerRef.current = null;
+        }
+        dismissNativeNotificationTag(`call:${notice.conversationId}`);
+        setIncomingCall((current) =>
+          current?.conversationId === notice.conversationId ? null : current,
+        );
+      })
+      .on("broadcast", { event: "call:answered" }, (event) => {
+        const rawPayload =
+          event && typeof event === "object" && "payload" in event
+            ? event.payload
+            : event;
+        const parsed = callTimeoutNoticeSchema.safeParse(rawPayload);
+        if (!parsed.success) {
+          return;
+        }
+        stopIncomingRingtone();
+        if (incomingTimerRef.current !== null) {
+          clearTimeout(incomingTimerRef.current);
+          incomingTimerRef.current = null;
+        }
+        dismissNativeNotificationTag(`call:${parsed.data.conversationId}`);
+        setIncomingCall((current) =>
+          current?.conversationId === parsed.data.conversationId ? null : current,
+        );
       })
       .on("broadcast", { event: "message:notify" }, (event) => {
         const rawPayload =
@@ -345,7 +449,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     return () => {
       void client.removeChannel(inboxChannel);
     };
-  }, [isConfigured, userId]);
+  }, [isConfigured, leaveVoiceCall, stopIncomingRingtone, userId]);
 
   // Se uma amizade for desfeita durante chamada DM, encerrar chamada na hora (RN-501).
   useEffect(() => {
@@ -407,6 +511,11 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
 
       setIsJoiningCall(true);
       setCallError(null);
+      stopIncomingRingtone();
+      if (incomingTimerRef.current !== null) {
+        clearTimeout(incomingTimerRef.current);
+        incomingTimerRef.current = null;
+      }
       dismissNativeNotificationTag(`call:${summary.conversation.id}`);
       setIncomingCall((current) =>
         current?.conversationId === summary.conversation.id ? null : current,
@@ -444,6 +553,10 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
             setCallError(snapshot.error);
           }
         },
+        onCallTimeout: () => {
+          setCallError("Chamada não atendida (tempo esgotado).");
+          void leaveVoiceCall();
+        },
       });
 
       managerRef.current = manager;
@@ -457,6 +570,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
           .filter((id) => id !== userId);
 
         const notice: IncomingCallNotice = {
+          callId: manager.callId,
           conversationId: summary.conversation.id,
           conversationTitle: summary.displayTitle,
           isGroup: summary.conversation.kind === "group",
@@ -464,6 +578,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
           callerName: localName,
           callerUsername: localUsername,
           callerAvatarUrl: profile?.avatar_url ?? null,
+          timeoutSeconds: CALL_RINGING_TIMEOUT_SECONDS,
           sentAt: new Date().toISOString(),
         };
 
@@ -473,7 +588,9 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
           notice,
         );
         if (recipientIds.length > 0) {
-          void dispatchVoiceCallPush(summary.conversation.id, client);
+          void dispatchVoiceCallPush(summary.conversation.id, client, {
+            callId: manager.callId,
+          });
         }
       } catch (error) {
         managerRef.current = null;
@@ -487,7 +604,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [notifyConversationParticipants, profile, user, userId],
+    [leaveVoiceCall, notifyConversationParticipants, profile, stopIncomingRingtone, user, userId],
   );
 
   const acceptIncomingCall = useCallback(async () => {
@@ -501,7 +618,13 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    stopIncomingRingtone();
+    if (incomingTimerRef.current !== null) {
+      clearTimeout(incomingTimerRef.current);
+      incomingTimerRef.current = null;
+    }
     setIncomingCall(null);
+    void dispatchVoiceCallAnswer(notice.conversationId, notice.callId, client);
     try {
       const conversations = await listUserConversations(userId, client);
       const target = conversations.find(
@@ -523,16 +646,21 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
           : "Não foi possível atender a chamada.",
       );
     }
-  }, [incomingCall, joinVoiceCall, router, userId]);
+  }, [incomingCall, joinVoiceCall, router, stopIncomingRingtone, userId]);
 
   const dismissIncomingCall = useCallback(() => {
+    stopIncomingRingtone();
+    if (incomingTimerRef.current !== null) {
+      clearTimeout(incomingTimerRef.current);
+      incomingTimerRef.current = null;
+    }
     setIncomingCall((current) => {
       if (current?.conversationId) {
         dismissNativeNotificationTag(`call:${current.conversationId}`);
       }
       return null;
     });
-  }, []);
+  }, [stopIncomingRingtone]);
 
   const toggleMute = useCallback(() => {
     managerRef.current?.toggleMute();
@@ -540,6 +668,27 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
 
   const toggleDeafen = useCallback(() => {
     managerRef.current?.toggleDeafen();
+  }, []);
+
+  const toggleCamera = useCallback(async () => {
+    const manager = managerRef.current;
+    if (!manager) {
+      return;
+    }
+
+    try {
+      if (activeCallRef.current?.isCameraEnabled) {
+        await manager.stopCamera();
+      } else {
+        await manager.startCamera();
+      }
+    } catch (error) {
+      setCallError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível alternar a câmera.",
+      );
+    }
   }, []);
 
   const toggleScreenShare = useCallback(async () => {
@@ -585,6 +734,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       leaveVoiceCall,
       toggleMute,
       toggleDeafen,
+      toggleCamera,
       toggleScreenShare,
       retryMicrophone,
       acceptIncomingCall,
@@ -601,6 +751,7 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       leaveVoiceCall,
       toggleMute,
       toggleDeafen,
+      toggleCamera,
       toggleScreenShare,
       retryMicrophone,
       acceptIncomingCall,

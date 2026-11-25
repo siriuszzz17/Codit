@@ -6,9 +6,11 @@ import {
   type VoiceCallSnapshot,
 } from "@/modules/messaging/voice-call-manager";
 import {
+  acquireCameraVideoStream,
   acquireScreenShareStream,
   acquireVoiceMicrophoneStream,
   canShareScreen,
+  isAuthorizedCameraTrack,
   isAuthorizedScreenShareTrack,
   stopMediaStream,
 } from "@/modules/messaging/webrtc-media";
@@ -288,5 +290,60 @@ describe("webrtc-media & voice-call-manager", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("captures optional camera video track without audio and signals video-track-state & call-timeout", async () => {
+    const camTrack = createFakeTrack("video");
+    const extraAudio = createFakeTrack("audio");
+    const camStream = createFakeStream([camTrack, extraAudio]);
+    const getUserMedia = vi.fn().mockResolvedValue(camStream);
+
+    const acquired = await acquireCameraVideoStream({ getUserMedia }, "user");
+    expect(getUserMedia).toHaveBeenCalledWith({
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 24, max: 30 },
+      },
+      audio: false,
+    });
+    expect(extraAudio.stop).toHaveBeenCalledTimes(1);
+    expect(acquired.getAudioTracks()).toHaveLength(0);
+    expect(isAuthorizedCameraTrack(camTrack)).toBe(true);
+    expect(isAuthorizedScreenShareTrack(camTrack)).toBe(false);
+
+    const convId = "11111111-1111-4111-8111-111111111111";
+    const userA = "22222222-2222-4222-8222-222222222222";
+    const userB = "33333333-3333-4333-8333-333333333333";
+    const onCallTimeout = vi.fn();
+
+    const manager = new VoiceCallSessionManager({
+      client: {} as CoditSupabaseClient,
+      conversationId: convId,
+      conversationTitle: "Bruno",
+      isGroup: false,
+      localUser: {
+        userId: userA,
+        username: "ana",
+        fullName: "Ana",
+        avatarUrl: null,
+      },
+      allowedMemberIds: [userA, userB],
+      onStateChange: vi.fn(),
+      onCallTimeout,
+    });
+
+    await manager.handleIncomingSignalPayload({
+      conversationId: convId,
+      fromUserId: userB,
+      toUserId: userA,
+      fromSessionId: "server-timeout",
+      kind: "call-timeout",
+      reason: "missed",
+      timedOutAt: new Date().toISOString(),
+    });
+
+    expect(onCallTimeout).toHaveBeenCalledWith("missed");
   });
 });

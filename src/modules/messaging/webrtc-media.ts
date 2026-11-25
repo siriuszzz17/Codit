@@ -7,6 +7,7 @@
 import "@/lib/codit-native-bridge";
 
 const authorizedScreenShareTracks = new WeakSet<MediaStreamTrack>();
+const authorizedCameraTracks = new WeakSet<MediaStreamTrack>();
 
 export class MediaCaptureCancelledError extends Error {
   constructor(message = "Compartilhamento de tela cancelado.") {
@@ -38,6 +39,23 @@ export function canShareScreen(): boolean {
       typeof navigator.mediaDevices?.getDisplayMedia === "function") ||
       isNativeAndroidScreenShareSupported())
   );
+}
+
+export function canCaptureCamera(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    typeof navigator.mediaDevices?.getUserMedia === "function" &&
+    typeof RTCPeerConnection !== "undefined"
+  );
+}
+
+export function isAuthorizedCameraTrack(
+  track: MediaStreamTrack | null | undefined,
+): boolean {
+  if (!track) {
+    return false;
+  }
+  return track.kind === "video" && authorizedCameraTracks.has(track);
 }
 
 export function isAuthorizedScreenShareTrack(
@@ -461,6 +479,111 @@ export async function acquireScreenShareStream(
   );
 }
 
+export async function acquireCameraVideoStream(
+  mediaDevices: Pick<MediaDevices, "getUserMedia"> | undefined =
+    typeof navigator !== "undefined" ? navigator.mediaDevices : undefined,
+  facingMode: "user" | "environment" = "user",
+): Promise<MediaStream> {
+  if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
+    throw new Error(
+      "Seu navegador ou dispositivo não oferece suporte para captura de câmera.",
+    );
+  }
+
+  try {
+    let stream: MediaStream;
+    try {
+      stream = await mediaDevices.getUserMedia({
+        video: {
+          facingMode,
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 24, max: 30 },
+        },
+        audio: false,
+      });
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        (error.name === "OverconstrainedError" || error.name === "TypeError")
+      ) {
+        stream = await mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    for (const audioTrack of stream.getAudioTracks()) {
+      try {
+        audioTrack.stop();
+      } catch {
+        // noop
+      }
+      if (typeof stream.removeTrack === "function") {
+        stream.removeTrack(audioTrack);
+      }
+    }
+
+    const videoTracks = stream.getVideoTracks();
+    if (videoTracks.length === 0) {
+      stopMediaStream(stream);
+      throw new Error("Nenhuma câmera ativa foi encontrada neste dispositivo.");
+    }
+
+    for (const track of videoTracks) {
+      authorizedCameraTracks.add(track);
+      try {
+        if ("contentHint" in track) {
+          track.contentHint = "motion";
+        }
+      } catch {
+        // noop
+      }
+    }
+
+    return stream;
+  } catch (error) {
+    if (error instanceof DOMException) {
+      if (
+        error.name === "NotAllowedError" ||
+        error.name === "PermissionDeniedError"
+      ) {
+        throw new Error(
+          "Permissão de câmera negada. Libere o acesso à câmera nas configurações do navegador ou do sistema.",
+        );
+      }
+      if (
+        error.name === "NotFoundError" ||
+        error.name === "DevicesNotFoundError"
+      ) {
+        throw new Error("Nenhuma câmera conectada neste dispositivo.");
+      }
+      if (
+        error.name === "NotReadableError" ||
+        error.name === "TrackStartError"
+      ) {
+        throw new Error("Sua câmera está ocupada por outro aplicativo no momento.");
+      }
+    }
+
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error("Não foi possível ativar a câmera.");
+  }
+}
+
+export async function applyCameraVideoBitrateCap(
+  sender: RTCRtpSender,
+  maxBitrateBps = 1_500_000,
+): Promise<void> {
+  return applyScreenShareBitrateCap(sender, maxBitrateBps);
+}
+
 export async function applyScreenShareBitrateCap(
   sender: RTCRtpSender,
   maxBitrateBps = 1_200_000,
@@ -615,4 +738,26 @@ export function playIncomingCallChime(): void {
   } catch {
     // Autoplay pode bloquear antes da interação do usuário.
   }
+}
+
+export function startIncomingCallRingtone(intervalMs = 2_800): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  let stopped = false;
+  playIncomingCallChime();
+  const timerId = window.setInterval(() => {
+    if (!stopped) {
+      playIncomingCallChime();
+    }
+  }, intervalMs);
+
+  return () => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    window.clearInterval(timerId);
+  };
 }

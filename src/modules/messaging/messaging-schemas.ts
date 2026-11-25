@@ -6,6 +6,8 @@ export const MAX_GROUP_INVITEES = MAX_GROUP_MEMBERS - 1;
 export const MIN_GROUP_INVITEES = 1;
 export const MAX_GROUP_TITLE_LENGTH = 80;
 export const MAX_MESSAGE_LENGTH = 2000;
+export const CALL_RINGING_TIMEOUT_SECONDS = 60;
+export const CALL_RINGING_TIMEOUT_MS = CALL_RINGING_TIMEOUT_SECONDS * 1000;
 
 export const DEFAULT_WEBRTC_ICE_SERVERS: ReadonlyArray<RTCIceServer> = [
   {
@@ -108,6 +110,13 @@ const signalBaseSchema = {
   toSessionId: z.string().trim().min(1).max(120).optional(),
 };
 
+const videoTrackMetaSchema = z
+  .object({
+    cameraStreamId: z.string().trim().min(1).max(160).nullable().optional(),
+    screenStreamId: z.string().trim().min(1).max(160).nullable().optional(),
+  })
+  .optional();
+
 export const callSignalEnvelopeSchema = z.discriminatedUnion("kind", [
   z.object({
     ...signalBaseSchema,
@@ -116,6 +125,7 @@ export const callSignalEnvelopeSchema = z.discriminatedUnion("kind", [
       type: z.literal("offer"),
       sdp: z.string().min(1),
     }),
+    videoTrackMeta: videoTrackMetaSchema,
   }),
   z.object({
     ...signalBaseSchema,
@@ -124,6 +134,7 @@ export const callSignalEnvelopeSchema = z.discriminatedUnion("kind", [
       type: z.literal("answer"),
       sdp: z.string().min(1),
     }),
+    videoTrackMeta: videoTrackMetaSchema,
   }),
   z.object({
     ...signalBaseSchema,
@@ -137,7 +148,26 @@ export const callSignalEnvelopeSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     ...signalBaseSchema,
+    kind: z.literal("video-track-state"),
+    trackKind: z.enum(["camera", "screen"]),
+    active: z.boolean(),
+    streamId: z.string().trim().min(1).max(160).nullable().optional(),
+    trackId: z.string().trim().min(1).max(160).nullable().optional(),
+  }),
+  z.object({
+    ...signalBaseSchema,
+    kind: z.literal("camera-stopped"),
+  }),
+  z.object({
+    ...signalBaseSchema,
     kind: z.literal("screen-share-stopped"),
+  }),
+  z.object({
+    ...signalBaseSchema,
+    kind: z.literal("call-timeout"),
+    callId: uuidSchema.optional(),
+    reason: z.enum(["missed", "timeout"]).default("missed"),
+    timedOutAt: z.string().min(1),
   }),
   z.object({
     ...signalBaseSchema,
@@ -148,6 +178,7 @@ export const callSignalEnvelopeSchema = z.discriminatedUnion("kind", [
 export type CallSignalEnvelope = z.infer<typeof callSignalEnvelopeSchema>;
 
 export const incomingCallNoticeSchema = z.object({
+  callId: uuidSchema.optional(),
   conversationId: uuidSchema,
   conversationTitle: z.string().trim().min(1).max(MAX_GROUP_TITLE_LENGTH),
   isGroup: z.boolean(),
@@ -155,10 +186,22 @@ export const incomingCallNoticeSchema = z.object({
   callerName: z.string().trim().min(1).max(120),
   callerUsername: z.string().trim().min(1).max(30),
   callerAvatarUrl: z.string().nullable().optional(),
+  hasVideo: z.boolean().optional(),
+  timeoutSeconds: z.number().int().min(10).max(120).optional(),
   sentAt: z.string().min(1),
 });
 
 export type IncomingCallNotice = z.infer<typeof incomingCallNoticeSchema>;
+
+export const callTimeoutNoticeSchema = z.object({
+  callId: uuidSchema.optional(),
+  conversationId: uuidSchema,
+  callerId: uuidSchema,
+  reason: z.enum(["missed", "timeout", "cancelled"]).default("missed"),
+  timedOutAt: z.string().min(1),
+});
+
+export type CallTimeoutNotice = z.infer<typeof callTimeoutNoticeSchema>;
 
 const iceUrlSchema = z
   .string()
