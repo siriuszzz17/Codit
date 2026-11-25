@@ -7,7 +7,7 @@ A API própria contém apenas o health check. Os serviços de domínio usam Supa
 - src/app/api/v1/health/route.ts — GET /api/v1/health.
 - src/lib/supabase/client.ts — cliente Supabase.
 - src/modules/*/*-service.ts — acesso aos dados por domínio.
-- supabase/functions/send-push/index.ts e helpers.ts — Edge Function FCM HTTP v1 data-only (avatar/`largeIcon`, `reply`/`notification_reply` autenticado e timeout server-side de 60s para chamadas `ringing` com broadcast `call:timeout` + `voice_call_cancel`).
+- supabase/functions/send-push/index.ts e helpers.ts — Edge Function FCM HTTP v1 data-only (avatar/`largeIcon`, resposta autenticada, notificações `Ongoing` de chamada e timeout server-side de 60s com broadcast `call:timeout` + `voice_call_cancel`).
 - supabase/migrations/*.sql — schema, funções, políticas RLS e `public.call_sessions` (`20261125000002_add_call_sessions_and_push_reply.sql`).
 
 ## Funções e rotas

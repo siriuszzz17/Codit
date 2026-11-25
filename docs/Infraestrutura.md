@@ -14,7 +14,7 @@ Configuração, acesso a dados, contratos compartilhados, segurança, PWA e empa
 - supabase/functions/send-push/index.ts — Edge Function FCM HTTP v1 (secrets server-side).
 - next.config.ts — exportação estática e cabeçalhos.
 - src/components/pwa/service-worker-register.tsx, public/sw.js
-- src-tauri/ — desktop (`.exe` + `.sig`, Tauri Updater `v0.1.13`); android/ — Capacitor (`Codit-mobile.apk`, `versionCode 14`).
+- src-tauri/ — desktop (`.exe` + `.sig`, Tauri Updater `v0.1.14`); android/ — Capacitor (`Codit-mobile.apk`, `versionCode 15`).
 - tests/unit/
 
 ## Dependências

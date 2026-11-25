@@ -1,13 +1,15 @@
 # Mensagens
 
 ## Responsabilidade
-Conversas diretas e em grupo, sinalização de chamadas, WebRTC e compartilhamento de tela.
+Conversas diretas e em grupo, chamadas WebRTC de voz/vídeo, compartilhamento de tela e controles nativos de chamada no Android.
 
 ## Arquivos-chave
 - src/modules/messaging/messaging-service.ts — listUserConversations(), createGroupConversation(), addGroupMembers(), sendConversationMessage().
 - src/modules/messaging/messaging-schemas.ts
 - src/modules/messaging/voice-call-manager.ts — VoiceCallSessionManager.
 - src/modules/messaging/voice-call-provider.tsx — VoiceCallProvider().
+- src/lib/codit-native-bridge.ts — sessão Android e ações nativas da chamada.
+- android/app/src/main/java/com/codit/app/CallForegroundService.java — chamada ativa persistente com controles.
 - src/modules/messaging/webrtc-media.ts
 - src/components/messaging/messages-workspace.tsx
 - src/components/messaging/global-call-overlay.tsx

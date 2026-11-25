@@ -1,7 +1,7 @@
 # Notificacoes
 
 ## Responsabilidade
-Notificações no app, leitura, preferências de mudo, notificações locais de sistema e Push Notifications nativas Android (`ic_stat_codit` monocromático, `largeIcon` circular com fallback, `MessagingStyle` + `RemoteInput` "Responder" e notificação `Ongoing` de chamada ativa com Mutar/Desmutar, Encerrar e Voltar).
+Notificações no app, leitura, preferências de mudo, Push Android FCM e notificações interativas (`MessagingStyle`, resposta rápida `RemoteInput` e controles de chamada persistentes).
 
 ## Arquivos-chave
 - src/modules/notifications/notification-service.ts — listUserNotifications(), markAllNotificationsRead(), persistUserNotificationPrefs().
