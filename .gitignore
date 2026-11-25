@@ -62,3 +62,6 @@ keystore.properties
 signing.properties
 google-services.json
 GoogleService-Info.plist
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+supabase/.temp/

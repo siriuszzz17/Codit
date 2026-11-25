@@ -43,3 +43,8 @@
 | [docs/status.md](./docs/status.md) | Estado real, roadmap, decisões em aberto (`DEC-XXX`) e changelog |
 
 > **Sincronização obrigatória:** Toda entrega técnica que altere arquitetura, schema, regra de negócio ou progresso deve atualizar o respectivo documento em `docs/` no mesmo fluxo.
+
+## Contexto e Documentação (Obsidian)
+- Sempre leia `docs/INDEX.md` antes de buscar ou abrir arquivos no repositório.
+- Use os caminhos listados nos arquivos de `docs/` para ir direto ao trecho de código necessário.
+- Ao criar arquivos novos ou alterar a arquitetura, atualize o `.md` correspondente em `docs/` e o `docs/STATE.md`.
