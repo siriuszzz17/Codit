@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { problemResponse } from "@/lib/problem-details";
+import { createProblemDetails, isProblemDetails } from "@/lib/problem-details";
+import { problemResponse } from "@/lib/problem-response";
 
 describe("problemResponse (RFC 9457)", () => {
+  it("builds client-safe ProblemDetails payloads via createProblemDetails", () => {
+    const problem = createProblemDetails({
+      type: "https://codit.app/errors/supabase-database",
+      title: "Falha ao salvar dados",
+      status: 400,
+      detail: "Não foi possível salvar os dados no momento.",
+    });
+
+    expect(isProblemDetails(problem)).toBe(true);
+    expect(problem.traceId).toMatch(/^req_/);
+  });
+
   it("returns application/problem+json with no-store cache and req_ traceId", async () => {
     const response = problemResponse({
       type: "https://codit.app/errors/forbidden-resource",

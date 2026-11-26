@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { FriendshipActionButton } from "@/components/social/friendship-action-button";
 import { UserAvatar } from "@/components/social/user-avatar";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import {
   emitFriendshipsChanged,
   type FriendshipsDrawerTab,
@@ -64,6 +65,13 @@ export function FriendshipsDrawer({
   const [hasLoadedPeople, setHasLoadedPeople] = useState(false);
 
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
+
+  useDialogA11y({
+    open: isOpen,
+    containerRef: dialogRef,
+    onClose,
+  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -73,18 +81,10 @@ export function FriendshipsDrawer({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   useEffect(() => {
     return () => {
@@ -294,7 +294,10 @@ export function FriendshipsDrawer({
     >
       <div aria-hidden="true" onClick={onClose} className="fixed inset-0" />
 
-      <aside className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl md:my-4 md:mr-4 md:h-auto md:rounded-2xl md:border">
+      <aside
+        ref={dialogRef}
+        className="codit-safe-x relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl md:my-4 md:mr-4 md:h-auto md:rounded-2xl md:border"
+      >
         {/* Cabeçalho do painel */}
         <div className="flex items-start justify-between gap-3 border-b border-border px-4 pb-4 pt-[calc(1rem+var(--codit-safe-top))] sm:px-5 md:pb-5 md:pt-5">
           <div className="min-w-0 space-y-1">

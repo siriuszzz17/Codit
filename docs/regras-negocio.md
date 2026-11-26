@@ -129,8 +129,8 @@ Este documento define as regras funcionais, invariantes e casos de borda do **Co
   - Todo grupo (`kind = 'group'`) exige pelo menos 2 participantes na criação (criador + 1..9 amigos) e impõe teto estrito de **10 membros ativos** (`left_at IS NULL`) validado no Zod (`createGroupConversationSchema`, `validateGroupMemberAddition`), na UI, nas RPCs `create_group_conversation` / `add_group_conversation_members` e no trigger com lock `FOR UPDATE` (`enforce_chat_member_limits`).
 - **`RN-503` — Isolamento de Conversas e Zero Acesso Anônimo:**
   - Tabelas `chat_conversations`, `chat_conversation_members` e `chat_messages` negam qualquer privilégio a `anon` e permitem leitura/envio apenas a participantes ativos autenticados (`is_active_chat_member`), além de descartar sinais WebRTC de usuários fora da conversa.
-- **`RN-504` — Chamadas Exclusivamente de Voz (Proibido Vídeo de Câmera):**
-  - Chamadas capturam apenas áudio (`getUserMedia({ audio: ..., video: false })`); a permissão `camera=()` permanece bloqueada em `Permissions-Policy`, `android.permission.CAMERA` não é declarada no Android e faixas de vídeo recebidas/enviadas que não sejam compartilhamento de tela autorizado são descartadas.
+- **`RN-504` — Chamadas de Voz e Vídeo com Consentimento Explícito:**
+  - Chamadas iniciam com captura de áudio e permitem ativação/alternância explícita de câmera (`camera=(self)` e `microphone=(self)` em `Permissions-Policy`, além de `android.permission.CAMERA` no shell Android), exigindo permissão ativa do usuário e encerramento automático das faixas ao sair ou após timeout de 60s.
 - **`RN-505` — Compartilhamento de Tela em Chamadas de Voz:**
   - Participantes em dispositivos compatíveis com `getDisplayMedia` podem compartilhar tela/janela (`audio: false`), enquanto todos os participantes ativos na chamada (inclusive em dispositivos móveis sem `getDisplayMedia`) podem visualizar a transmissão ao vivo e alternar entre múltiplas telas compartilhadas.
 

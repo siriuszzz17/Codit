@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { UserAvatar } from "@/components/social/user-avatar";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import {
   MAX_GROUP_INVITEES,
   MAX_GROUP_MEMBERS,
@@ -32,6 +33,13 @@ export function CreateGroupModal({
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useDialogA11y({
+    open: isOpen,
+    containerRef: dialogRef,
+    onClose,
+  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -41,18 +49,10 @@ export function CreateGroupModal({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -114,7 +114,10 @@ export function CreateGroupModal({
     >
       <div aria-hidden="true" onClick={onClose} className="fixed inset-0" />
 
-      <div className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-2xl">
+      <div
+        ref={dialogRef}
+        className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-2xl"
+      >
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="space-y-1">
             <h2

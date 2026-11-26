@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { NotificationPreferencesPanel } from "@/components/notifications/notification-preferences-panel";
 import { UserAvatar } from "@/components/social/user-avatar";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import { emitOpenFriendshipsDrawer } from "@/lib/social-events";
 import type { NotificationCategory } from "@/lib/supabase/database.types";
 import { useAuth } from "@/modules/auth/auth-provider";
@@ -165,23 +166,13 @@ export function NotificationsNavbarControl() {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BellTab>("activity");
   const [filter, setFilter] = useState<ActivityFilter>("all");
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+  useDialogA11y({
+    open,
+    containerRef: dialogRef,
+    onClose: () => setOpen(false),
+  });
 
   const filteredItems = useMemo(() => {
     if (filter === "unread") {
@@ -298,7 +289,10 @@ export function NotificationsNavbarControl() {
             className="absolute inset-0"
           />
 
-          <div className="relative z-10 flex max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full flex-col overflow-hidden rounded-t-3xl border border-border bg-surface-elevated shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[420px] md:rounded-2xl">
+          <div
+            ref={dialogRef}
+            className="relative z-10 flex max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full flex-col overflow-hidden rounded-t-3xl border border-border bg-surface-elevated shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[420px] md:rounded-2xl"
+          >
             <div className="flex items-center justify-between gap-2 border-b border-border px-4 pb-3 pt-4">
               <div>
                 <h2 className="text-sm font-bold text-foreground">

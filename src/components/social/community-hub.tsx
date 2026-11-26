@@ -17,6 +17,8 @@ import {
   SANDBOX_VISIBILITY_LABELS,
 } from "@/components/social/social-labels";
 import { UserAvatar } from "@/components/social/user-avatar";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { SkeletonList } from "@/components/ui/skeleton";
 import {
   emitFriendshipsChanged,
   emitOpenFriendshipsDrawer,
@@ -675,12 +677,10 @@ export function CommunityHub() {
       </section>
 
       {initialLoading || isAuthLoading ? (
-        <div className="codit-panel flex flex-col items-center justify-center gap-3 py-14 text-center">
-          <div className="h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent" />
-          <p className="text-sm text-muted">
-            Carregando perfis e projetos da Comunidade...
-          </p>
-        </div>
+        <SkeletonList
+          count={4}
+          label="Carregando perfis e projetos da Comunidade..."
+        />
       ) : activeTab === "feed" ? (
         <section aria-label="Feed de mini-projetos" className="space-y-4">
           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
@@ -758,26 +758,19 @@ export function CommunityHub() {
           </div>
 
           {filteredFeedProjects.length === 0 ? (
-            <div className="codit-panel space-y-2 border-dashed p-8 text-center">
-              <p className="text-sm font-semibold text-foreground">
-                {feedScope === "friends"
+            <EmptyStateCard
+              title={
+                feedScope === "friends"
                   ? "Nenhum projeto de amigos para exibir ainda."
-                  : "Nenhum projeto encontrado com os filtros atuais."}
-              </p>
-              <p className="text-xs text-muted">
-                {feedScope === "friends"
+                  : "Nenhum projeto encontrado com os filtros atuais."
+              }
+              description={
+                feedScope === "friends"
                   ? "Adicione colegas na aba Pessoas ou pelo botão Amigos no topo."
-                  : "Publique um projeto com visibilidade Portfólio público ou Somente amigos."}
-              </p>
-              <div className="pt-2">
-                <Link
-                  href="/projetos"
-                  className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90"
-                >
-                  Abrir meus projetos
-                </Link>
-              </div>
-            </div>
+                  : "Publique um projeto com visibilidade Portfólio público ou Somente amigos."
+              }
+              action={{ label: "Abrir meus projetos", href: "/projetos" }}
+            />
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {filteredFeedProjects.map((item) => {

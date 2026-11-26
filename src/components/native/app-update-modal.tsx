@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import {
   checkForAppUpdate,
   type AppUpdate,
@@ -40,6 +41,18 @@ export function AppUpdateModal() {
     null,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useDialogA11y({
+    open: Boolean(update),
+    containerRef: dialogRef,
+    onClose: () => {
+      if (update && phase !== "downloading" && phase !== "installing") {
+        saveDismissedVersion(update.version);
+        setUpdate(null);
+      }
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -196,7 +209,10 @@ export function AppUpdateModal() {
       aria-describedby="codit-update-description"
       className="codit-safe-modal fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs sm:items-center"
     >
-      <div className="max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full max-w-md overflow-y-auto space-y-4 rounded-2xl border border-border bg-surface-elevated p-5 shadow-xl sm:max-h-[calc(100dvh-3rem)] sm:p-6">
+      <div
+        ref={dialogRef}
+        className="max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full max-w-md overflow-y-auto space-y-4 rounded-2xl border border-border bg-surface-elevated p-5 shadow-xl sm:max-h-[calc(100dvh-3rem)] sm:p-6"
+      >
         <div className="flex items-start gap-3">
           <OctopyBadge size={40} className="shrink-0 rounded-xl shadow-xs" />
           <div className="min-w-0 flex-1 space-y-1">

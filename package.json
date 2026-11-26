@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:rls": "vitest run --config vitest.rls.config.ts",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "android:sync": "npm run build && cap sync android",

@@ -3,7 +3,9 @@
 ## Pronto no código
 - App Router e interface em Next.js/React/TypeScript; PWA e shells Tauri/Capacitor (`v0.1.14`, Android `versionCode 15`).
 - Auth/OAuth, perfis, aparência, projetos sandbox, comunidade, mensagens/WebRTC (voz, vídeo com alternância de câmera, tela, grid/PiP responsivo, ringtone de entrada/saída com timeout de 60s), notificações in-app/desktop e camada nativa Android + Bridge Capacitor (projeção `ScreenCaptureService`, `smallIcon`/`largeIcon`, resposta rápida `RemoteInput` sincronizada ao app e chamada persistente com controles de áudio/vídeo, encerrar e retornar).
-- Migrações Supabase versionadas em `supabase/migrations/` (incluindo `20261125000001_add_android_push_notifications.sql` e `20261125000002_add_call_sessions_and_push_reply.sql`); Edge Function `send-push` em FCM data-only com avatar (`largeIcon`), quick-reply (`reply`/`notification_reply`) e timeout server-side de 60s para chamadas `ringing` + sinalização WebRTC de câmera e screen share; testes unitários em `tests/unit/` (22 arquivos, 115 testes), `eslint`, `tsc --noEmit`, `next build --webpack` e `cap sync android` validados.
+- **Fase 1 (Qualidade, Segurança RLS & Base UX):** `.github/workflows/ci.yml`, `supabase/config.toml`, migration `20261126000001_harden_rls_and_soft_deleted_messages.sql` (sem novas tabelas; hardening de `are_users_friends`, `is_active_chat_member`, `guard_chat_message_update`), `tests/rls/rls-policies.integration.test.ts`, `ProblemDetails` client-safe + `app-toast.ts` + `errors.ts`, `useDialogA11y`, `SkeletonList`/`EmptyStateCard`, `camera=(self)` em `next.config.ts` e `RN-504`.
+- **`/verify`:** `typecheck`, `lint`, `test` (23 arquivos, 118 testes) e `build` PASS; `npm run test:rls` bloqueado localmente (sem `docker`), configurado no CI.
+- **Próxima fase:** Fase 2 (Catálogo curricular, progresso de aulas e execução Python Pyodide Worker).
 
 ## Pendente / em andamento
 - Aplicar e validar migrações no projeto Supabase remoto (`20261123000001`..`20261125000002`), publicar Edge Function `send-push` com secrets Firebase/webhook, Custom SMTP e Redirect URLs no painel.
