@@ -11,8 +11,10 @@ import {
   createGroupConversation,
   getOrCreateDirectConversation,
   listUserConversations,
+  markConversationRead,
   MessagingServiceError,
   MessagingValidationError,
+  notifyIncomingCall,
   sendConversationMessage,
 } from "@/modules/messaging/messaging-service";
 
@@ -491,5 +493,60 @@ describe("messaging-service", () => {
     expect(list[0]?.isDirectFriendActive).toBe(true);
     expect(list[0]?.canSendMessages).toBe(true);
     expect(list[0]?.unreadCount).toBe(1);
+  });
+
+  it("uses mark_conversation_read RPC exclusively without direct table UPDATE fallback", async () => {
+    const fromSpy = vi.fn();
+    const client = {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: { user: { id: USER_A } } },
+          error: null,
+        }),
+      },
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { code: "42501", message: "permission denied" },
+      }),
+      from: fromSpy,
+    } as unknown as CoditSupabaseClient;
+
+    await expect(
+      markConversationRead(USER_A, CONV_ID, client),
+    ).rejects.toBeInstanceOf(MessagingServiceError);
+    expect(client.rpc).toHaveBeenCalledWith("mark_conversation_read", {
+      p_conversation_id: CONV_ID,
+    });
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
+
+  it("dispatches incoming call via notify_incoming_call RPC", async () => {
+    const callId = makeUuid(9);
+    const client = {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: { user: { id: USER_A } } },
+          error: null,
+        }),
+      },
+      rpc: vi.fn().mockResolvedValue({
+        data: callId,
+        error: null,
+      }),
+    } as unknown as CoditSupabaseClient;
+
+    const result = await notifyIncomingCall(
+      USER_A,
+      CONV_ID,
+      { callId, hasVideo: true },
+      client,
+    );
+
+    expect(result).toBe(callId);
+    expect(client.rpc).toHaveBeenCalledWith("notify_incoming_call", {
+      p_conversation_id: CONV_ID,
+      p_call_id: callId,
+      p_has_video: true,
+    });
   });
 });

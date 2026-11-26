@@ -229,7 +229,11 @@ describe("webrtc-media & voice-call-manager", () => {
       expect(afterStart?.micWarning).toContain("Nenhum microfone conectado");
       expect(client.channel).toHaveBeenCalledWith(
         `codit:call:${convId}`,
-        expect.any(Object),
+        expect.objectContaining({
+          config: expect.objectContaining({
+            private: true,
+          }),
+        }),
       );
 
       const retried = await manager.retryMicrophone();
@@ -345,7 +349,161 @@ describe("webrtc-media & voice-call-manager", () => {
       timedOutAt: new Date().toISOString(),
     });
 
-    expect(onCallTimeout).toHaveBeenCalledWith("missed");
+    // Timeout via codit:call: é ignorado (aceito apenas via codit:user-inbox:<uid> server-only).
+    expect(onCallTimeout).not.toHaveBeenCalled();
+  });
+
+  it("blocks WebRTC signaling spoofing when sender is absent from presence or sessionId mismatches", async () => {
+    const convId = "11111111-1111-4111-8111-111111111111";
+    const userA = "22222222-2222-4222-8222-222222222222";
+    const userB = "33333333-3333-4333-8333-333333333333";
+    const userC = "44444444-4444-4444-8444-444444444444";
+
+    const handlers: { onPresenceSync?: () => void } = {};
+    const peerInstances: Array<{ close: ReturnType<typeof vi.fn>; setRemoteDescription: ReturnType<typeof vi.fn> }> = [];
+    const peerCtor = vi.fn().mockImplementation(function () {
+      const instance = {
+        signalingState: "stable",
+        remoteDescription: null,
+        localDescription: null,
+        addTrack: vi.fn(),
+        addTransceiver: vi.fn(),
+        setRemoteDescription: vi.fn().mockResolvedValue(undefined),
+        setLocalDescription: vi.fn().mockResolvedValue(undefined),
+        addIceCandidate: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      };
+      peerInstances.push(instance);
+      return instance;
+    });
+
+    const presenceMap: Record<string, Array<Record<string, unknown>>> = {
+      // Presença forjada (key !== userId) deve ser descartada.
+      [userC]: [
+        {
+          userId: userB,
+          username: "spoof",
+          fullName: "Spoof",
+          avatarUrl: null,
+          sessionId: "spoof-session",
+          muted: false,
+          deafened: false,
+          cameraEnabled: false,
+          screenSharing: false,
+          joinedAt: new Date().toISOString(),
+        },
+      ],
+      [userB]: [
+        {
+          userId: userB,
+          username: "bruno",
+          fullName: "Bruno",
+          avatarUrl: null,
+          sessionId: "real-session-b",
+          muted: false,
+          deafened: false,
+          cameraEnabled: false,
+          screenSharing: false,
+          joinedAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    const channelStub = {
+      on: vi.fn(function (
+        this: unknown,
+        type: string,
+        filter: { event?: string },
+        cb: () => void,
+      ) {
+        if (type === "presence" && filter?.event === "sync") {
+          handlers.onPresenceSync = cb;
+        }
+        return this;
+      }),
+      subscribe: vi.fn(function (this: unknown, cb?: (status: string) => void) {
+        cb?.("SUBSCRIBED");
+        return this;
+      }),
+      track: vi.fn().mockResolvedValue("ok"),
+      untrack: vi.fn().mockResolvedValue("ok"),
+      send: vi.fn().mockResolvedValue("ok"),
+      presenceState: vi.fn(() => presenceMap),
+    };
+
+    const client = {
+      channel: vi.fn().mockReturnValue(channelStub),
+      removeChannel: vi.fn().mockResolvedValue("ok"),
+    } as unknown as CoditSupabaseClient;
+
+    vi.stubGlobal("RTCPeerConnection", peerCtor);
+    vi.stubGlobal("navigator", {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockRejectedValue(new Error("no mic")),
+      },
+    });
+
+    try {
+      const manager = new VoiceCallSessionManager({
+        client,
+        conversationId: convId,
+        conversationTitle: "Grupo",
+        isGroup: true,
+        localUser: {
+          userId: userA,
+          username: "ana",
+          fullName: "Ana",
+          avatarUrl: null,
+        },
+        allowedMemberIds: [userA, userB, userC],
+        onStateChange: vi.fn(),
+      });
+
+      await manager.start();
+      handlers.onPresenceSync?.();
+
+      // Apenas userB (com key === userId) foi aceito na presence.
+      expect(manager.getSnapshot().participants.map((p) => p.userId)).toEqual([
+        userA,
+        userB,
+      ]);
+      expect(peerInstances).toHaveLength(1);
+
+      // 1) Sinal de userC (membro do grupo, mas ausente de presence válida) é ignorado.
+      await manager.handleIncomingSignalPayload({
+        conversationId: convId,
+        fromUserId: userC,
+        toUserId: userA,
+        fromSessionId: "spoof-session",
+        kind: "offer",
+        sdp: { type: "offer", sdp: "v=0..." },
+      });
+      expect(peerInstances).toHaveLength(1);
+
+      // 2) Hangup forjado em nome de userB com sessionId divergente NÃO derruba o peer real.
+      await manager.handleIncomingSignalPayload({
+        conversationId: convId,
+        fromUserId: userB,
+        toUserId: userA,
+        fromSessionId: "wrong-session-id",
+        kind: "hangup",
+      });
+      expect(peerInstances[0]?.close).not.toHaveBeenCalled();
+
+      // 3) Hangup com o sessionId autenticado na presence encerra o peer normalmente.
+      await manager.handleIncomingSignalPayload({
+        conversationId: convId,
+        fromUserId: userB,
+        toUserId: userA,
+        fromSessionId: "real-session-b",
+        kind: "hangup",
+      });
+      expect(peerInstances[0]?.close).toHaveBeenCalledTimes(1);
+
+      await manager.leaveCall();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("switches camera facingMode (user <-> environment) and stops outgoing ringback cleanly", async () => {

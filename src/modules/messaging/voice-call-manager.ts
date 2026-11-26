@@ -6,6 +6,7 @@ import {
   resolveWebRtcIceServers,
   type CallSignalEnvelope,
 } from "@/modules/messaging/messaging-schemas";
+import { uuidSchema } from "@/modules/social/social-schemas";
 import {
   acquireCameraVideoStream,
   acquireScreenShareStream,
@@ -292,6 +293,7 @@ export class VoiceCallSessionManager {
 
     const channel = this.client.channel(`codit:call:${this.conversationId}`, {
       config: {
+        private: true,
         broadcast: { self: false, ack: false },
         presence: { key: this.localUser.userId, enabled: true },
       },
@@ -464,8 +466,18 @@ export class VoiceCallSessionManager {
         continue;
       }
 
-      const candidateUserId = latest.userId || key;
+      if (!uuidSchema.safeParse(key).success) {
+        continue;
+      }
+      if (latest.userId && latest.userId !== key) {
+        continue;
+      }
+
+      const candidateUserId = key;
+      const remoteSessionId =
+        typeof latest.sessionId === "string" ? latest.sessionId.trim() : "";
       if (
+        !remoteSessionId ||
         candidateUserId === this.localUser.userId ||
         !this.allowedMemberIds.has(candidateUserId)
       ) {
@@ -481,7 +493,7 @@ export class VoiceCallSessionManager {
         username: latest.username || "codit",
         fullName: latest.fullName || "Amigo no Codit",
         avatarUrl: latest.avatarUrl ?? null,
-        sessionId: latest.sessionId || candidateUserId,
+        sessionId: remoteSessionId,
         muted: Boolean(latest.muted),
         deafened: Boolean(latest.deafened),
         cameraEnabled: Boolean(latest.cameraEnabled),
@@ -751,15 +763,23 @@ export class VoiceCallSessionManager {
       return;
     }
 
+    const activeParticipant = this.participants.get(signal.fromUserId);
+    if (
+      !activeParticipant ||
+      activeParticipant.sessionId !== signal.fromSessionId
+    ) {
+      return;
+    }
+
+    const existingPeer = this.peers.get(signal.fromUserId);
+    if (existingPeer && existingPeer.remoteSessionId !== signal.fromSessionId) {
+      return;
+    }
+
     if (signal.kind === "hangup") {
       this.teardownPeer(signal.fromUserId);
       this.participants.delete(signal.fromUserId);
       this.emit();
-      return;
-    }
-
-    if (signal.kind === "call-timeout") {
-      this.onCallTimeout?.(signal.reason);
       return;
     }
 

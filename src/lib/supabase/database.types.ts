@@ -777,6 +777,14 @@ export type Database = {
         };
         Returns: boolean;
       };
+      notify_incoming_call: {
+        Args: {
+          p_conversation_id: string;
+          p_call_id?: string | null;
+          p_has_video?: boolean;
+        };
+        Returns: string;
+      };
       mark_all_notifications_read: {
         Args: Record<string, never>;
         Returns: number;

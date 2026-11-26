@@ -25,13 +25,13 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/modules/auth/auth-provider";
 import {
   CALL_RINGING_TIMEOUT_MS,
-  CALL_RINGING_TIMEOUT_SECONDS,
   callTimeoutNoticeSchema,
   incomingCallNoticeSchema,
   type IncomingCallNotice,
 } from "@/modules/messaging/messaging-schemas";
 import {
   listUserConversations,
+  notifyIncomingCall,
   type ConversationSummary,
 } from "@/modules/messaging/messaging-service";
 import {
@@ -78,11 +78,6 @@ export interface VoiceCallContextValue {
   retryMicrophone: () => Promise<void>;
   acceptIncomingCall: (options?: { withVideo?: boolean }) => Promise<void>;
   dismissIncomingCall: () => void;
-  notifyConversationParticipants: (
-    recipientUserIds: ReadonlyArray<string>,
-    event: "message:notify" | "call:incoming",
-    payload: unknown,
-  ) => Promise<void>;
   clearCallError: () => void;
 }
 
@@ -243,52 +238,6 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     };
   }, [leaveVoiceCall]);
 
-  const notifyConversationParticipants = useCallback(
-    async (
-      recipientUserIds: ReadonlyArray<string>,
-      event: "message:notify" | "call:incoming",
-      payload: unknown,
-    ) => {
-      const client = getSupabaseClient();
-      if (!client || !userId) {
-        return;
-      }
-
-      const targets = Array.from(new Set(recipientUserIds)).filter(
-        (id) => id !== userId,
-      );
-
-      await Promise.allSettled(
-        targets.map(async (targetId) => {
-          const topic = `codit:user-inbox:${targetId}`;
-          const existingChannel =
-            typeof client.getChannels === "function"
-              ? client
-                  .getChannels()
-                  .find((ch) => ch.topic === `realtime:${topic}`)
-              : undefined;
-          const targetChannel = existingChannel ?? client.channel(topic);
-          try {
-            await targetChannel.httpSend(event, payload);
-          } catch {
-            await targetChannel
-              .send({
-                type: "broadcast",
-                event,
-                payload,
-              })
-              .catch(() => undefined);
-          } finally {
-            if (!existingChannel) {
-              await client.removeChannel(targetChannel).catch(() => undefined);
-            }
-          }
-        }),
-      );
-    },
-    [userId],
-  );
-
   // Encerrar chamada ao sair da conta.
   useEffect(() => {
     if (!userId) {
@@ -345,7 +294,9 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     }
 
     const inboxChannel = client
-      .channel(`codit:user-inbox:${userId}`)
+      .channel(`codit:user-inbox:${userId}`, {
+        config: { private: true },
+      })
       .on("broadcast", { event: "call:incoming" }, (event) => {
         const rawPayload =
           event && typeof event === "object" && "payload" in event
@@ -626,28 +577,19 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
             .map((item) => item.member.user_id)
             .filter((id) => id !== userId);
 
-          const notice: IncomingCallNotice = {
-            callId: manager.callId,
-            conversationId: summary.conversation.id,
-            conversationTitle: summary.displayTitle,
-            isGroup: summary.conversation.kind === "group",
-            callerId: userId,
-            callerName: localName,
-            callerUsername: localUsername,
-            callerAvatarUrl: profile?.avatar_url ?? null,
-            hasVideo: Boolean(options?.withVideo),
-            timeoutSeconds: CALL_RINGING_TIMEOUT_SECONDS,
-            sentAt: new Date().toISOString(),
-          };
-
-          void notifyConversationParticipants(
-            recipientIds,
-            "call:incoming",
-            notice,
-          );
           if (recipientIds.length > 0) {
+            void notifyIncomingCall(
+              userId,
+              summary.conversation.id,
+              {
+                callId: manager.callId,
+                hasVideo: Boolean(options?.withVideo),
+              },
+              client,
+            ).catch(() => undefined);
             void dispatchVoiceCallPush(summary.conversation.id, client, {
               callId: manager.callId,
+              hasVideo: Boolean(options?.withVideo),
             });
           }
 
@@ -694,7 +636,6 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
     },
     [
       leaveVoiceCall,
-      notifyConversationParticipants,
       profile,
       stopIncomingRingtone,
       stopOutgoingRinging,
@@ -861,7 +802,6 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       retryMicrophone,
       acceptIncomingCall,
       dismissIncomingCall,
-      notifyConversationParticipants,
       clearCallError,
     }),
     [
@@ -881,7 +821,6 @@ export function VoiceCallProvider({ children }: { children: ReactNode }) {
       retryMicrophone,
       acceptIncomingCall,
       dismissIncomingCall,
-      notifyConversationParticipants,
       clearCallError,
     ],
   );

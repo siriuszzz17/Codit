@@ -935,23 +935,53 @@ export async function markConversationRead(
     p_conversation_id: validConversationId,
   });
 
-  if (!error) {
-    return Boolean(data);
-  }
-
-  const { error: fallbackError } = await client
-    .from("chat_conversation_members")
-    .update({ last_read_at: new Date().toISOString() })
-    .eq("conversation_id", validConversationId)
-    .eq("user_id", validUserId)
-    .is("left_at", null);
-
-  if (fallbackError) {
-    throw toMessagingServiceError(fallbackError, {
+  if (error) {
+    throw toMessagingServiceError(error, {
       table: "chat_conversation_members",
-      operation: "markConversationRead.fallback",
+      operation: "markConversationRead",
     });
   }
 
-  return true;
+  return Boolean(data);
+}
+
+export async function notifyIncomingCall(
+  userId: string,
+  conversationId: string,
+  options: { callId?: string; hasVideo?: boolean } = {},
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<string> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validConversationId = assertValidUuid(
+    conversationId,
+    "Identificador da conversa",
+  );
+  const validCallId = options.callId
+    ? assertValidUuid(options.callId, "Identificador da chamada")
+    : null;
+
+  await assertAuthenticatedUserMatches(validUserId, client, (message) => {
+    return new MessagingServiceError(message, {
+      code: "AUTH_USER_MISMATCH",
+      status: 403,
+    });
+  });
+
+  const { data, error } = await client.rpc("notify_incoming_call", {
+    p_conversation_id: validConversationId,
+    p_call_id: validCallId,
+    p_has_video: Boolean(options.hasVideo),
+  });
+
+  if (error || typeof data !== "string") {
+    throw toMessagingServiceError(
+      error ?? { message: "Não foi possível notificar os participantes da chamada." },
+      {
+        table: "chat_conversations",
+        operation: "notifyIncomingCall",
+      },
+    );
+  }
+
+  return data;
 }

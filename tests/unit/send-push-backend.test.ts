@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildFcmDataOnlyMessage,
+  buildRealtimeBroadcastBody,
   CALL_RINGING_TIMEOUT_MS,
   CALL_RINGING_TIMEOUT_SECONDS,
   CallRingingRegistry,
@@ -188,5 +189,26 @@ describe("send-push backend helpers", () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(onTimeout).not.toHaveBeenCalled();
+  });
+
+  it("marks all Realtime REST broadcast events as private: true", () => {
+    const body = buildRealtimeBroadcastBody([
+      {
+        topic: `codit:user-inbox:${PEER_ID}`,
+        event: "call:timeout",
+        payload: { conversationId: CONV_ID, callId: CALL_ID },
+      },
+    ]);
+
+    expect(body).toEqual({
+      messages: [
+        {
+          topic: `codit:user-inbox:${PEER_ID}`,
+          event: "call:timeout",
+          payload: { conversationId: CONV_ID, callId: CALL_ID },
+          private: true,
+        },
+      ],
+    });
   });
 });

@@ -16,11 +16,13 @@
 
 import {
   buildFcmDataOnlyMessage,
+  buildRealtimeBroadcastBody,
   CALL_RINGING_TIMEOUT_MS,
   CALL_RINGING_TIMEOUT_SECONDS,
   CallRingingRegistry,
   type PushMessageSpec,
   type PushNotificationCategory,
+  type RealtimeBroadcastEventInput,
   UUID_REGEX,
   validateQuickReplyInput,
 } from "./helpers.ts";
@@ -285,7 +287,7 @@ async function deleteDeadPushTokens(
 async function broadcastRealtimeEvents(
   supabaseUrl: string,
   serviceKey: string,
-  messages: Array<{ topic: string; event: string; payload: Record<string, unknown> }>,
+  messages: ReadonlyArray<RealtimeBroadcastEventInput>,
 ): Promise<void> {
   if (messages.length === 0) {
     return;
@@ -294,7 +296,7 @@ async function broadcastRealtimeEvents(
   await fetch(url, {
     method: "POST",
     headers: supabaseHeaders(serviceKey),
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(buildRealtimeBroadcastBody(messages)),
   }).catch(() => undefined);
 }
 
@@ -990,20 +992,6 @@ async function handleVoiceCallPush(
           event: "call:timeout",
           payload: timeoutPayload,
         })),
-        {
-          topic: `codit:call:${expiredSession.conversationId}`,
-          event: "webrtc:signal",
-          payload: {
-            conversationId: expiredSession.conversationId,
-            fromUserId: expiredSession.callerId,
-            toUserId: expiredSession.callerId,
-            fromSessionId: "server-timeout",
-            kind: "call-timeout",
-            callId: expiredSession.callId,
-            reason: "missed",
-            timedOutAt,
-          },
-        },
       ];
 
       await Promise.allSettled([

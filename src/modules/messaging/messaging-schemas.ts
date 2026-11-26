@@ -164,13 +164,6 @@ export const callSignalEnvelopeSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     ...signalBaseSchema,
-    kind: z.literal("call-timeout"),
-    callId: uuidSchema.optional(),
-    reason: z.enum(["missed", "timeout"]).default("missed"),
-    timedOutAt: z.string().min(1),
-  }),
-  z.object({
-    ...signalBaseSchema,
     kind: z.literal("hangup"),
   }),
 ]);

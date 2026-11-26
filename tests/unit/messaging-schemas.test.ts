@@ -149,6 +149,18 @@ describe("messaging-schemas", () => {
     ).toBe(true);
 
     expect(
+      callSignalEnvelopeSchema.safeParse({
+        conversationId: makeUuid(1),
+        fromUserId: makeUuid(2),
+        toUserId: makeUuid(3),
+        fromSessionId: "sess-1",
+        kind: "call-timeout",
+        reason: "missed",
+        timedOutAt: new Date().toISOString(),
+      }).success,
+    ).toBe(false);
+
+    expect(
       callTimeoutNoticeSchema.safeParse({
         callId: makeUuid(4),
         conversationId: makeUuid(1),

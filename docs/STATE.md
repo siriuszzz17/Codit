@@ -3,10 +3,10 @@
 ## Pronto no código
 - App Router e interface em Next.js/React/TypeScript; PWA e shells Tauri/Capacitor (`v0.1.14`, Android `versionCode 15`).
 - Auth/OAuth, perfis, aparência, projetos sandbox, comunidade, mensagens/WebRTC (voz, vídeo com alternância de câmera, tela, grid/PiP responsivo, ringtone de entrada/saída com timeout de 60s), notificações in-app/desktop e camada nativa Android + Bridge Capacitor (projeção `ScreenCaptureService`, `smallIcon`/`largeIcon`, resposta rápida `RemoteInput` sincronizada ao app e chamada persistente com controles de áudio/vídeo, encerrar e retornar).
-- Migrações Supabase versionadas em `supabase/migrations/` (incluindo `20261125000001_add_android_push_notifications.sql` e `20261125000002_add_call_sessions_and_push_reply.sql`); Edge Function `send-push` em FCM data-only com avatar (`largeIcon`), quick-reply (`reply`/`notification_reply`) e timeout server-side de 60s para chamadas `ringing` + sinalização WebRTC de câmera e screen share; testes unitários em `tests/unit/` (22 arquivos, 115 testes), `eslint`, `tsc --noEmit`, `next build --webpack` e `cap sync android` validados.
+- Migrações Supabase versionadas em `supabase/migrations/` (incluindo `20261125000001_add_android_push_notifications.sql`, `20261125000002_add_call_sessions_and_push_reply.sql` e `20261126000002_harden_realtime_rls_and_security_definers.sql` com canais Realtime privados + RLS em `realtime.messages`, revogação de `UPDATE` direto em `chat_conversation_members`, trava de grafo social em `SECURITY DEFINER` e GUCs blindadas); Edge Function `send-push` em FCM data-only com avatar (`largeIcon`), quick-reply (`reply`/`notification_reply`), broadcasts privados (`private: true`) e timeout server-side de 60s.
 
 ## Pendente / em andamento
-- Aplicar e validar migrações no projeto Supabase remoto (`20261123000001`..`20261125000002`), publicar Edge Function `send-push` com secrets Firebase/webhook, Custom SMTP e Redirect URLs no painel.
+- Aplicar e validar migrações no projeto Supabase remoto (`20261123000001`..`20261126000001`), publicar Edge Function `send-push` com secrets Firebase/webhook, Custom SMTP e Redirect URLs no painel.
 - Catálogo curricular e progresso de aulas (tracks, lessons, etc.).
 - Execução Python via Pyodide Worker.
 - Proxy server-side para tutor Octopy.

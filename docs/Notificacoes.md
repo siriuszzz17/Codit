@@ -6,7 +6,7 @@ Notificações no app, leitura, preferências de mudo, Push Android FCM e notifi
 ## Arquivos-chave
 - src/modules/notifications/notification-service.ts — listUserNotifications(), markAllNotificationsRead(), persistUserNotificationPrefs().
 - src/modules/notifications/notification-schemas.ts
-- src/modules/notifications/notifications-provider.tsx — NotificationsProvider().
+- src/modules/notifications/notifications-provider.tsx — NotificationsProvider() (canal privado `codit:notifications:<userId>`).
 - src/modules/notifications/system-notifications.ts, src/lib/codit-native-bridge.ts — bridge `window.CoditNative`.
 - src/modules/notifications/push-notification-service.ts — registro/desregistro FCM (`@capacitor/push-notifications`).
 - android/app/src/main/java/com/codit/app/ — `CoditNotificationHelper`, `NotificationAvatarLoader`, `CoditFirebaseMessagingService`, `NotificationActionReceiver`, `NativeSessionStore` e `CallForegroundService`.

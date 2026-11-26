@@ -349,3 +349,24 @@ export class CallRingingRegistry {
     }
   }
 }
+
+export interface RealtimeBroadcastEventInput {
+  topic: string;
+  event: string;
+  payload: Record<string, unknown>;
+}
+
+export function buildRealtimeBroadcastBody(
+  messages: ReadonlyArray<RealtimeBroadcastEventInput>,
+): {
+  messages: Array<RealtimeBroadcastEventInput & { private: true }>;
+} {
+  return {
+    messages: messages.map((message) => ({
+      topic: message.topic,
+      event: message.event,
+      payload: message.payload,
+      private: true,
+    })),
+  };
+}

@@ -133,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (result.session || result.user) {
+          void client.realtime.setAuth(result.session?.access_token ?? null);
           setSession(result.session);
           setUser(result.user);
           if (result.user) {
@@ -206,6 +207,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(activeSession);
         }
 
+        setSession(activeSession);
+        void client.realtime.setAuth(activeSession?.access_token ?? null);
         setUser(activeSession?.user ?? null);
 
         if (activeSession?.user) {
@@ -253,6 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      void client.realtime.setAuth(nextSession?.access_token ?? null);
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 

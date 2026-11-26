@@ -855,7 +855,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }
 
     const channel = client
-      .channel(`codit:notifications:${userId}`)
+      .channel(`codit:notifications:${userId}`, {
+        config: { private: true },
+      })
       .on(
         "postgres_changes",
         {

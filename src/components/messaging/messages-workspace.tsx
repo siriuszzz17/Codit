@@ -189,7 +189,6 @@ export function MessagesWorkspace() {
     switchCamera,
     toggleScreenShare,
     retryMicrophone,
-    notifyConversationParticipants,
     clearCallError,
   } = useVoiceCall();
   const notifications = useNotificationsOptional();
@@ -233,6 +232,11 @@ export function MessagesWorkspace() {
   > | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSentAtRef = useRef(0);
+  const conversationsRef = useRef<ConversationSummary[]>([]);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   const refreshWorkspace = useCallback(async () => {
     if (!userId || !isConfigured) {
@@ -419,7 +423,7 @@ export function MessagesWorkspace() {
 
     const channel = client
       .channel(`codit:conv:${selectedId}`, {
-        config: { broadcast: { self: false, ack: false } },
+        config: { private: true, broadcast: { self: false, ack: false } },
       })
       .on("broadcast", { event: "chat:message" }, () => {
         void loadSelectedMessages(selectedId);
@@ -430,10 +434,23 @@ export function MessagesWorkspace() {
           event && typeof event === "object" && "payload" in event
             ? (event.payload as { userId?: string; username?: string } | null)
             : null;
-        if (!raw || raw.userId === userId || !raw.username) {
+        if (!raw || typeof raw.userId !== "string" || raw.userId === userId) {
           return;
         }
-        setTypingLabel(`@${raw.username} está digitando...`);
+        const activeConv = conversationsRef.current.find(
+          (item) => item.conversation.id === selectedId,
+        );
+        const matchedMember = activeConv?.members.find(
+          (entry) => entry.member.user_id === raw.userId,
+        );
+        if (!matchedMember) {
+          return;
+        }
+        const verifiedUsername = matchedMember.profile?.username?.trim();
+        if (!verifiedUsername) {
+          return;
+        }
+        setTypingLabel(`@${verifiedUsername} está digitando...`);
         if (typingTimeoutRef.current !== null) {
           clearTimeout(typingTimeoutRef.current);
         }
@@ -677,27 +694,6 @@ export function MessagesWorkspace() {
           },
         });
       }
-
-      const recipientIds = selectedSummary.members
-        .map((item) => item.member.user_id)
-        .filter((id) => id !== userId);
-      const localSenderName =
-        profile?.full_name?.trim() ||
-        (typeof user?.user_metadata?.full_name === "string"
-          ? user.user_metadata.full_name
-          : "") ||
-        "Estudante Codit";
-      void notifyConversationParticipants(recipientIds, "message:notify", {
-        conversationId: selectedSummary.conversation.id,
-        conversationTitle: selectedSummary.displayTitle,
-        isGroup: selectedSummary.conversation.kind === "group",
-        senderId: userId,
-        senderName: localSenderName,
-        senderUsername: profile?.username ?? undefined,
-        senderAvatarUrl: profile?.avatar_url ?? null,
-        preview: trimmed.slice(0, 140),
-        sentAt: created.message.created_at,
-      });
 
       await refreshWorkspace();
       emitMessagesChanged();
