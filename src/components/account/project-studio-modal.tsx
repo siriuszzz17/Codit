@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { LanguageBadge, LanguageIcon } from "@/components/sandbox/language-icon";
 import { SandboxPreview } from "@/components/sandbox/sandbox-preview";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import type {
   SandboxLanguage,
   SandboxProjectRow,
@@ -99,23 +100,23 @@ export function ProjectStudioModal({
   );
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const meta = getLanguageMeta(language);
+
+  useDialogA11y({
+    open: true,
+    containerRef: dialogRef,
+    onClose,
+  });
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    function handleEscape(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", handleEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleEscape);
     };
-  }, [onClose]);
+  }, []);
 
   function handleSelectLanguage(nextLanguage: SandboxLanguage) {
     setLanguage(nextLanguage);
@@ -204,7 +205,10 @@ export function ProjectStudioModal({
       aria-labelledby="studio-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-0 backdrop-blur-xs sm:p-4"
     >
-      <div className="flex h-dvh w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 bg-surface-elevated shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border sm:border-border">
+      <div
+        ref={dialogRef}
+        className="flex h-dvh w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 bg-surface-elevated shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border sm:border-border"
+      >
         {/* Cabeçalho do Estúdio */}
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/60 pb-3 pt-[calc(0.75rem+var(--codit-safe-top))] pl-[calc(1rem+var(--codit-safe-left))] pr-[calc(1rem+var(--codit-safe-right))] sm:pt-3 sm:pl-[calc(1.5rem+var(--codit-safe-left))] sm:pr-[calc(1.5rem+var(--codit-safe-right))]">
           <div className="flex min-w-0 flex-1 items-center gap-3">

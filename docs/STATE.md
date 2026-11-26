@@ -3,10 +3,12 @@
 ## Pronto no código
 - App Router e interface em Next.js/React/TypeScript; PWA e shells Tauri/Capacitor (`v0.1.14`, Android `versionCode 15`).
 - Auth/OAuth, perfis, aparência, projetos sandbox, comunidade, mensagens/WebRTC (voz, vídeo com alternância de câmera, tela, grid/PiP responsivo, ringtone de entrada/saída com timeout de 60s), notificações in-app/desktop e camada nativa Android + Bridge Capacitor (projeção `ScreenCaptureService`, `smallIcon`/`largeIcon`, resposta rápida `RemoteInput` sincronizada ao app e chamada persistente com controles de áudio/vídeo, encerrar e retornar).
-- Migrações Supabase versionadas em `supabase/migrations/` (incluindo `20261125000001_add_android_push_notifications.sql`, `20261125000002_add_call_sessions_and_push_reply.sql` e `20261126000002_harden_realtime_rls_and_security_definers.sql` com canais Realtime privados + RLS em `realtime.messages`, revogação de `UPDATE` direto em `chat_conversation_members`, trava de grafo social em `SECURITY DEFINER` e GUCs blindadas); Edge Function `send-push` em FCM data-only com avatar (`largeIcon`), quick-reply (`reply`/`notification_reply`), broadcasts privados (`private: true`) e timeout server-side de 60s.
+- **Fase 1 (Qualidade, Segurança RLS & Base UX):** `.github/workflows/ci.yml`, `supabase/config.toml`, migrations `20261126000001_harden_rls_and_soft_deleted_messages.sql` e `20261126000002_harden_realtime_rls_and_security_definers.sql` (canais Realtime privados + RLS em `realtime.messages`, `REVOKE UPDATE` em `chat_conversation_members`, trava de grafo social em `SECURITY DEFINER`, redação em soft-delete e GUCs blindadas), Edge Function `send-push` com broadcasts privados (`private: true`), `tests/rls/rls-policies.integration.test.ts`, `ProblemDetails` client-safe + `app-toast.ts` + `errors.ts`, `useDialogA11y`, `SkeletonList`/`EmptyStateCard`, `camera=(self)` em `next.config.ts` e `RN-504`.
+- **`/verify`:** `typecheck`, `lint`, `test` e `build` validados; `npm run test:rls` configurado no CI (GitHub Actions).
+- **Próxima fase:** Fase 2 (Catálogo curricular, progresso de aulas e execução Python Pyodide Worker).
 
 ## Pendente / em andamento
-- Aplicar e validar migrações no projeto Supabase remoto (`20261123000001`..`20261126000001`), publicar Edge Function `send-push` com secrets Firebase/webhook, Custom SMTP e Redirect URLs no painel.
+- Aplicar e validar migrações no projeto Supabase remoto (`20261123000001`..`20261126000002`), publicar Edge Function `send-push` com secrets Firebase/webhook, Custom SMTP e Redirect URLs no painel.
 - Catálogo curricular e progresso de aulas (tracks, lessons, etc.).
 - Execução Python via Pyodide Worker.
 - Proxy server-side para tutor Octopy.

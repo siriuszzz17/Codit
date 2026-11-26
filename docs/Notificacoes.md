@@ -14,7 +14,8 @@ Notificações no app, leitura, preferências de mudo, Push Android FCM e notifi
 - supabase/functions/send-push/index.ts — Edge Function FCM HTTP v1 (OAuth2 RS256 server-side).
 - src/components/notifications/notifications-bell-menu.tsx
 - src/components/notifications/notification-preferences-panel.tsx
-- src/components/notifications/notification-toast-viewport.tsx
+- src/components/notifications/notification-toast-viewport.tsx — consome também `src/lib/app-toast.ts` (toasts efêmeros de erro/aviso via `ProblemDetails`).
+- src/components/notifications/notifications-bell-menu.tsx — `useDialogA11y`.
 
 ## Rotas
 Sem rota própria; provider, toast e controle global são montados em src/app/layout.tsx.

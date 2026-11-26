@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   buildSafeHtmlPreviewDoc,
   formatDatePtBr,
@@ -9,6 +9,7 @@ import {
   SANDBOX_VISIBILITY_LABELS,
 } from "@/components/social/social-labels";
 import { UserAvatar } from "@/components/social/user-avatar";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { SandboxProjectRow } from "@/lib/supabase/database.types";
 import {
@@ -72,23 +73,22 @@ export function ProjectViewerModal({
   );
 
   const loadingComments = loadedProjectId !== project.id;
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useDialogA11y({
+    open: true,
+    containerRef: dialogRef,
+    onClose,
+  });
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,7 +330,10 @@ export function ProjectViewerModal({
         className="fixed inset-0"
       />
 
-      <div className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-border bg-surface-elevated shadow-xl sm:rounded-2xl">
+      <div
+        ref={dialogRef}
+        className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-border bg-surface-elevated shadow-xl sm:rounded-2xl"
+      >
         <div
           aria-hidden="true"
           className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border sm:hidden"

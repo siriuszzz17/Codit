@@ -9,6 +9,7 @@ import {
 import { ProjectsShowcasePanel } from "@/components/account/projects-showcase-panel";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { LanguageIcon } from "@/components/sandbox/language-icon";
+import { SkeletonList } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type {
   SandboxLanguage,
@@ -417,13 +418,8 @@ export function ProjectsWorkspace() {
 
   if (isLoading) {
     return (
-      <main className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-6xl items-center justify-center px-4 py-10">
-        <div className="space-y-3 text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-border border-t-accent" />
-          <p className="text-sm text-muted">
-            Carregando seu estúdio de projetos...
-          </p>
-        </div>
+      <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-10">
+        <SkeletonList count={4} label="Carregando seu estúdio de projetos..." />
       </main>
     );
   }

@@ -1,13 +1,22 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { UserAvatar } from "@/components/social/user-avatar";
+import {
+  dismissAppToast,
+  getAppToastsSnapshot,
+  subscribeAppToasts,
+  type AppToastTone,
+} from "@/lib/app-toast";
 import type { NotificationCategory } from "@/lib/supabase/database.types";
 import { mapRowCategoryToPrefKey } from "@/modules/notifications/notification-schemas";
 import {
   useNotificationsOptional,
   type ActiveNotificationToast,
 } from "@/modules/notifications/notifications-provider";
+
+const EMPTY_APP_TOASTS: ReturnType<typeof getAppToastsSnapshot> = [];
 
 const TOAST_CATEGORY_LABELS: Record<NotificationCategory, string> = {
   message: "Nova mensagem",
@@ -19,43 +28,115 @@ const TOAST_CATEGORY_LABELS: Record<NotificationCategory, string> = {
   group_invite: "Convite de grupo",
 };
 
+const APP_TOAST_TONE_STYLES: Record<
+  AppToastTone,
+  { badge: string; label: string; border: string }
+> = {
+  error: {
+    badge: "bg-red-500/15 text-red-700 dark:text-red-300",
+    label: "Erro",
+    border: "border-red-500/35",
+  },
+  warning: {
+    badge: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
+    label: "Atenção",
+    border: "border-amber-500/35",
+  },
+  info: {
+    badge: "bg-accent-soft text-accent-strong",
+    label: "Aviso",
+    border: "border-border",
+  },
+  success: {
+    badge: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
+    label: "Concluído",
+    border: "border-emerald-500/35",
+  },
+};
+
 export function NotificationToastViewport() {
   const router = useRouter();
   const notifications = useNotificationsOptional();
+  const appToasts = useSyncExternalStore(
+    subscribeAppToasts,
+    getAppToastsSnapshot,
+    () => EMPTY_APP_TOASTS,
+  );
 
-  if (!notifications || notifications.toasts.length === 0) {
+  const notificationToasts = notifications?.toasts ?? [];
+
+  if (notificationToasts.length === 0 && appToasts.length === 0) {
     return null;
   }
 
-  const { toasts, dismissToast, setCategoryEnabled, toggleConversationMute } =
-    notifications;
-
   function handleOpenToast(toast: ActiveNotificationToast) {
-    dismissToast(toast.id);
+    notifications?.dismissToast(toast.id);
     if (toast.linkHref) {
       router.push(toast.linkHref);
     }
   }
 
   function handleMuteToastSource(toast: ActiveNotificationToast) {
+    if (!notifications) {
+      return;
+    }
     if (
       toast.conversationId &&
       (toast.category === "message" || toast.category === "voice_call")
     ) {
-      toggleConversationMute(toast.conversationId);
+      notifications.toggleConversationMute(toast.conversationId);
     } else {
-      setCategoryEnabled(mapRowCategoryToPrefKey(toast.category), false);
+      notifications.setCategoryEnabled(
+        mapRowCategoryToPrefKey(toast.category),
+        false,
+      );
     }
-    dismissToast(toast.id);
+    notifications.dismissToast(toast.id);
   }
 
   return (
     <div
       aria-live="polite"
-      aria-label="Notificações em tempo real"
+      aria-label="Notificações e avisos do sistema"
       className="pointer-events-none fixed inset-x-0 top-[calc(4rem+var(--codit-safe-top))] z-50 flex flex-col items-end gap-2 pl-[calc(0.75rem+var(--codit-safe-left))] pr-[calc(0.75rem+var(--codit-safe-right))] sm:left-auto sm:right-5 sm:w-96 sm:pl-0 sm:pr-0"
     >
-      {toasts.map((toast) => (
+      {appToasts.map((toast) => {
+        const toneStyle = APP_TOAST_TONE_STYLES[toast.tone];
+        const isAlert = toast.tone === "error" || toast.tone === "warning";
+
+        return (
+          <div
+            key={toast.id}
+            role={isAlert ? "alert" : "status"}
+            aria-live={isAlert ? "assertive" : "polite"}
+            className={`pointer-events-auto w-full rounded-2xl border ${toneStyle.border} bg-surface-elevated/95 p-3.5 shadow-xl backdrop-blur-md transition-opacity motion-reduce:transition-none`}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${toneStyle.badge}`}
+                >
+                  {toneStyle.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => dismissAppToast(toast.id)}
+                  aria-label="Fechar aviso"
+                  className="rounded px-1 text-[11px] font-medium text-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  Fechar
+                </button>
+              </div>
+              <p className="text-xs font-bold text-foreground">{toast.title}</p>
+              <p className="text-[11px] leading-relaxed text-muted">
+                {toast.detail}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+
+      {notificationToasts.map((toast) => (
         <div
           key={toast.id}
           role="status"
@@ -78,8 +159,9 @@ export function NotificationToastViewport() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => dismissToast(toast.id)}
-                  className="text-[11px] font-medium text-muted hover:text-foreground"
+                  onClick={() => notifications?.dismissToast(toast.id)}
+                  aria-label="Fechar notificação"
+                  className="rounded px-1 text-[11px] font-medium text-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   Fechar
                 </button>
@@ -88,7 +170,7 @@ export function NotificationToastViewport() {
               <button
                 type="button"
                 onClick={() => handleOpenToast(toast)}
-                className="block w-full text-left focus:outline-none"
+                className="block w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <p className="truncate text-xs font-bold text-foreground">
                   {toast.title}
@@ -105,7 +187,7 @@ export function NotificationToastViewport() {
                   <button
                     type="button"
                     onClick={() => handleOpenToast(toast)}
-                    className="text-[11px] font-semibold text-accent-strong hover:underline"
+                    className="rounded text-[11px] font-semibold text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     Abrir
                   </button>
@@ -115,7 +197,7 @@ export function NotificationToastViewport() {
                 <button
                   type="button"
                   onClick={() => handleMuteToastSource(toast)}
-                  className="text-[11px] font-medium text-muted hover:text-foreground hover:underline"
+                  className="rounded text-[11px] font-medium text-muted hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   {toast.conversationId && toast.category === "message"
                     ? "Mutar conversa"

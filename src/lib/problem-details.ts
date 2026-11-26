@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-
 export interface ProblemFieldError {
   field: string;
   message: string;
@@ -25,10 +23,20 @@ export interface CreateProblemDetailsInput {
   errors?: ReadonlyArray<ProblemFieldError>;
 }
 
+function generateTraceId(): string {
+  if (
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.randomUUID === "function"
+  ) {
+    return `req_${globalThis.crypto.randomUUID()}`;
+  }
+  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function createProblemDetails(
   input: CreateProblemDetailsInput,
 ): ProblemDetails {
-  const traceId = input.traceId ?? `req_${crypto.randomUUID()}`;
+  const traceId = input.traceId ?? generateTraceId();
 
   return {
     type: input.type,
@@ -41,16 +49,16 @@ export function createProblemDetails(
   };
 }
 
-export function problemResponse(
-  input: CreateProblemDetailsInput,
-): NextResponse<ProblemDetails> {
-  const body = createProblemDetails(input);
-
-  return NextResponse.json(body, {
-    status: body.status,
-    headers: {
-      "Content-Type": "application/problem+json; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
+export function isProblemDetails(value: unknown): value is ProblemDetails {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.type === "string" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.status === "number" &&
+    typeof candidate.detail === "string" &&
+    typeof candidate.traceId === "string"
+  );
 }

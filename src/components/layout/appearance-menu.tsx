@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import {
   APP_COLOR_MODES,
   APP_THEMES,
@@ -218,25 +219,15 @@ export function AppearanceInlinePanel() {
 export function AppearanceNavbarControl() {
   const { prefs } = useAppearance();
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   const hasCustomLook = !isDefaultAppearance(prefs);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+  useDialogA11y({
+    open,
+    containerRef: dialogRef,
+    onClose: () => setOpen(false),
+  });
 
   return (
     <div className="relative">
@@ -290,7 +281,10 @@ export function AppearanceNavbarControl() {
             className="absolute inset-0"
           />
 
-          <div className="relative z-10 max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface-elevated p-5 pb-[calc(1.25rem+var(--codit-safe-bottom))] shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[390px] md:rounded-2xl md:pb-5">
+          <div
+            ref={dialogRef}
+            className="relative z-10 max-h-[calc(100dvh-var(--codit-safe-top)-var(--codit-safe-bottom)-1.5rem)] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface-elevated p-5 pb-[calc(1.25rem+var(--codit-safe-bottom))] shadow-2xl md:mt-16 md:mr-6 md:max-h-[calc(100dvh-5.5rem)] md:w-[390px] md:rounded-2xl md:pb-5"
+          >
             <div className="mb-4 flex items-center justify-between gap-2 border-b border-border pb-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">
