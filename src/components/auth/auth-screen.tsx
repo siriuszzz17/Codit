@@ -111,6 +111,7 @@ export function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const [fieldErrors, setFieldErrors] = useState<
@@ -347,6 +348,7 @@ export function AuthScreen() {
       email,
       password,
       confirmPassword,
+      acceptedTerms,
     });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
@@ -909,6 +911,37 @@ export function AuthScreen() {
                         {fieldErrors.confirmPassword}
                       </p>
                     ) : null}
+
+                    <div className="space-y-1 pt-1">
+                      <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-muted">
+                        <input
+                          id="codit-auth-accept-terms"
+                          name="acceptedTerms"
+                          type="checkbox"
+                          checked={acceptedTerms}
+                          onChange={(event) =>
+                            setAcceptedTerms(event.target.checked)
+                          }
+                          aria-invalid={Boolean(fieldErrors.acceptedTerms)}
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-accent"
+                        />
+                        <span>
+                          Li e concordo com a{" "}
+                          <Link
+                            href="/privacidade"
+                            className="font-semibold text-accent-strong underline"
+                          >
+                            Política de Privacidade e Termos de Uso
+                          </Link>{" "}
+                          do Codit (LGPD).
+                        </span>
+                      </label>
+                      {fieldErrors.acceptedTerms ? (
+                        <p className="text-xs font-medium text-red-500">
+                          {fieldErrors.acceptedTerms}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
 

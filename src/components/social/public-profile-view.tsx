@@ -8,6 +8,7 @@ import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { LanguageBadge, LanguageIcon } from "@/components/sandbox/language-icon";
 import { FriendshipActionButton } from "@/components/social/friendship-action-button";
 import { ProjectViewerModal } from "@/components/social/project-viewer-modal";
+import { ReportBlockModal } from "@/components/social/report-block-modal";
 import {
   formatDatePtBr,
   getInitials,
@@ -92,6 +93,7 @@ export function PublicProfileView() {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] =
     useState<CommunityProjectCard | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const missingParams = !usernameParam?.trim() && !userIdParam?.trim();
   const isFetchingTarget =
@@ -600,6 +602,16 @@ export function PublicProfileView() {
                         }}
                         onError={setProfileError}
                       />
+                      {viewerId ? (
+                        <button
+                          type="button"
+                          onClick={() => setReportModalOpen(true)}
+                          disabled={!isOnline}
+                          className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/20 disabled:opacity-60"
+                        >
+                          Denunciar / Bloquear
+                        </button>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -932,6 +944,22 @@ export function PublicProfileView() {
           onClose={() => setSelectedProject(null)}
           onProjectMetaChange={handleProjectMetaChange}
           onMigrationMissing={() => setMigrationMissing(true)}
+        />
+      ) : null}
+
+      {viewerId && displayProfile && reportModalOpen ? (
+        <ReportBlockModal
+          isOpen={reportModalOpen}
+          viewerId={viewerId}
+          targetType="user"
+          targetId={displayProfile.id}
+          targetLabel={`${displayProfile.full_name} (@${displayProfile.username})`}
+          blockUserId={displayProfile.id}
+          isOnline={isOnline}
+          onClose={() => setReportModalOpen(false)}
+          onBlockedChange={() => {
+            void reloadBundle();
+          }}
         />
       ) : null}
     </main>

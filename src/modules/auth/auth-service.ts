@@ -13,6 +13,7 @@ import {
   mapSupabaseAuthError,
 } from "@/lib/supabase/errors";
 import {
+  CURRENT_PRIVACY_VERSION,
   emailFieldSchema,
   loginSchema,
   resolveEmailConfirmationRedirectUrl,
@@ -250,6 +251,12 @@ export async function signUpWithEmail(
       data: {
         full_name: parsed.data.fullName,
         ...(parsed.data.username ? { username: parsed.data.username } : {}),
+        ...(parsed.data.acceptedTerms
+          ? {
+              terms_accepted: "true",
+              privacy_version: CURRENT_PRIVACY_VERSION,
+            }
+          : {}),
       },
     },
   });

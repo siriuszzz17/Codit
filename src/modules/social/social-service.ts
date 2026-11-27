@@ -1,11 +1,15 @@
 import { requireSupabaseClient, type CoditSupabaseClient } from "@/lib/supabase/client";
 import type {
   FriendshipRow,
+  ModerationReportReason,
+  ModerationReportRow,
+  ModerationTargetType,
   ProfileRow,
   ProjectCommentRow,
   PublicProfileRow,
   SandboxLanguage,
   SandboxProjectRow,
+  UserBlockRow,
 } from "@/lib/supabase/database.types";
 import {
   extractSupabaseErrorMeta,
@@ -1323,4 +1327,297 @@ export async function cloneProjectToMySandbox(
     },
     client,
   );
+}
+
+export interface BlockedUserItem {
+  block: UserBlockRow;
+  profile: PublicProfileRow | null;
+}
+
+export async function blockUser(
+  userId: string,
+  targetUserId: string,
+  reason?: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<UserBlockRow> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validTargetId = assertValidUuid(
+    targetUserId,
+    "Identificador do usuário alvo",
+  );
+
+  if (validUserId === validTargetId) {
+    throw new SocialValidationError("Você não pode bloquear a si mesmo.");
+  }
+
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const cleanReason = reason?.trim().slice(0, 200) || null;
+
+  const { data, error, status } = await client
+    .from("user_blocks")
+    .upsert(
+      {
+        blocker_id: validUserId,
+        blocked_id: validTargetId,
+        reason: cleanReason,
+      },
+      { onConflict: "blocker_id,blocked_id" },
+    )
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw toSocialServiceError(
+      error ?? new Error("Não foi possível bloquear este usuário."),
+      {
+        status,
+        table: "user_blocks",
+        operation: "blockUser",
+      },
+    );
+  }
+
+  return data;
+}
+
+export async function unblockUser(
+  userId: string,
+  targetUserId: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<boolean> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validTargetId = assertValidUuid(
+    targetUserId,
+    "Identificador do usuário alvo",
+  );
+
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const { error, status } = await client
+    .from("user_blocks")
+    .delete()
+    .eq("blocker_id", validUserId)
+    .eq("blocked_id", validTargetId);
+
+  if (error) {
+    throw toSocialServiceError(error, {
+      status,
+      table: "user_blocks",
+      operation: "unblockUser",
+    });
+  }
+
+  return true;
+}
+
+export async function listBlockedUsers(
+  userId: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<BlockedUserItem[]> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const { data, error, status } = await client
+    .from("user_blocks")
+    .select("*")
+    .eq("blocker_id", validUserId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw toSocialServiceError(error, {
+      status,
+      table: "user_blocks",
+      operation: "listBlockedUsers",
+    });
+  }
+
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const targetIds = rows.map((row) => row.blocked_id);
+  const { data: profilesData } = await client
+    .from("public_profiles")
+    .select("*")
+    .in("id", targetIds);
+
+  const profileMap = new Map<string, PublicProfileRow>(
+    (profilesData ?? []).map((item) => [
+      item.id,
+      normalizePublicProfileRow(item as RawPublicProfileDbRow),
+    ]),
+  );
+
+  return rows.map((block) => ({
+    block,
+    profile: profileMap.get(block.blocked_id) ?? null,
+  }));
+}
+
+export async function checkUsersBlocked(
+  userId: string,
+  otherUserId: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<boolean> {
+  if (!userId || !otherUserId || userId === otherUserId) {
+    return false;
+  }
+
+  try {
+    const { data, error } = await client.rpc("are_users_blocked", {
+      p_user_a: userId,
+      p_user_b: otherUserId,
+    });
+    if (error) {
+      return false;
+    }
+    return Boolean(data);
+  } catch {
+    return false;
+  }
+}
+
+export async function submitModerationReport(
+  userId: string,
+  input: {
+    targetType: ModerationTargetType;
+    targetId: string;
+    reason: ModerationReportReason;
+    details?: string;
+  },
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<ModerationReportRow> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validTargetId = assertValidUuid(
+    input.targetId,
+    "Identificador do conteúdo denunciado",
+  );
+
+  await assertAuthenticatedUserMatches(
+    validUserId,
+    client,
+    (message) =>
+      new SocialServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const cleanDetails = input.details?.trim().slice(0, 1000) || null;
+
+  const { data, error, status } = await client
+    .from("moderation_reports")
+    .insert({
+      reporter_id: validUserId,
+      target_type: input.targetType,
+      target_id: validTargetId,
+      reason: input.reason,
+      details: cleanDetails,
+      status: "open",
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw toSocialServiceError(
+      error ?? new Error("Não foi possível enviar a denúncia."),
+      {
+        status,
+        table: "moderation_reports",
+        operation: "submitModerationReport",
+      },
+    );
+  }
+
+  return data;
+}
+
+export async function getCommunityProjectCardById(
+  projectId: string,
+  viewerId: string | null,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<CommunityProjectCard | null> {
+  const validProjectId = assertValidUuid(
+    projectId,
+    "Identificador do projeto",
+  );
+
+  const { data: rawProject, error, status } = await client
+    .from("sandbox_projects")
+    .select("*")
+    .eq("id", validProjectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw toSocialServiceError(error, {
+      status,
+      table: "sandbox_projects",
+      operation: "getCommunityProjectCardById",
+    });
+  }
+
+  if (!rawProject) {
+    return null;
+  }
+
+  const project = normalizeSandboxProjectRow(rawProject);
+
+  const [authorRes, likesRes, commentsRes] = await Promise.all([
+    client
+      .from("public_profiles")
+      .select("*")
+      .eq("id", project.user_id)
+      .maybeSingle(),
+    client
+      .from("project_likes")
+      .select("user_id")
+      .eq("project_id", project.id),
+    client
+      .from("project_comments")
+      .select("id")
+      .eq("project_id", project.id),
+  ]);
+
+  const likes = likesRes.data ?? [];
+  const comments = commentsRes.data ?? [];
+
+  return {
+    project,
+    author: authorRes.data
+      ? normalizePublicProfileRow(authorRes.data as RawPublicProfileDbRow)
+      : null,
+    likesCount: likes.length,
+    commentsCount: comments.length,
+    likedByViewer: Boolean(
+      viewerId && likes.some((like) => like.user_id === viewerId),
+    ),
+  };
 }

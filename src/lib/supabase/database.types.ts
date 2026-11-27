@@ -86,7 +86,44 @@ export type ChatConversationKind = "direct" | "group";
 
 export type ChatMemberRole = "owner" | "member";
 
-export type ChatMessageType = "text" | "system";
+export type ChatMessageType =
+  | "text"
+  | "system"
+  | "code"
+  | "image"
+  | "project_share";
+
+export type ChatReactionEmoji = "👍" | "❤️" | "🔥" | "😂" | "🚀" | "👀";
+
+export type ModerationTargetType = "user" | "project" | "message";
+
+export type ModerationReportReason =
+  | "spam"
+  | "harassment"
+  | "inappropriate_content"
+  | "impersonation"
+  | "copyright"
+  | "other";
+
+export type ModerationReportStatus =
+  | "open"
+  | "reviewing"
+  | "resolved"
+  | "dismissed";
+
+export type ChatMessageMetadataJson = {
+  language?: string;
+  filename?: string;
+  storage_path?: string;
+  mime_type?: string;
+  file_size?: number;
+  project_id?: string;
+  project_title?: string;
+  project_language?: SandboxLanguage;
+  project_visibility?: SandboxVisibility;
+  project_author_username?: string;
+  project_description?: string | null;
+};
 
 export type NotificationCategory =
   | "message"
@@ -144,6 +181,9 @@ export type ProfileRow = {
   last_activity_date?: string | null;
   badges?: string[];
   onboarding_completed_at?: string | null;
+  terms_accepted_at?: string | null;
+  privacy_version?: string | null;
+  last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -178,6 +218,9 @@ export type ProfileInsert = {
   last_activity_date?: string | null;
   badges?: string[];
   onboarding_completed_at?: string | null;
+  terms_accepted_at?: string | null;
+  privacy_version?: string | null;
+  last_seen_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -210,6 +253,9 @@ export type ProfileUpdate = {
   last_activity_date?: string | null;
   badges?: string[];
   onboarding_completed_at?: string | null;
+  terms_accepted_at?: string | null;
+  privacy_version?: string | null;
+  last_seen_at?: string | null;
   updated_at?: string;
 };
 
@@ -232,6 +278,7 @@ export type PublicProfileRow = {
   xp_total?: number;
   current_streak?: number;
   badges?: string[];
+  last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -463,6 +510,7 @@ export type ChatMessageRow = {
   sender_id: string;
   message_type: ChatMessageType;
   content: string;
+  metadata_json?: ChatMessageMetadataJson;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -474,6 +522,7 @@ export type ChatMessageInsert = {
   sender_id: string;
   message_type?: ChatMessageType;
   content: string;
+  metadata_json?: ChatMessageMetadataJson;
   created_at?: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -481,6 +530,58 @@ export type ChatMessageInsert = {
 
 export type ChatMessageUpdate = {
   deleted_at?: string | null;
+  updated_at?: string;
+};
+
+export type ChatMessageReactionRow = {
+  message_id: string;
+  user_id: string;
+  emoji: ChatReactionEmoji;
+  created_at: string;
+};
+
+export type ChatMessageReactionInsert = {
+  message_id: string;
+  user_id: string;
+  emoji: ChatReactionEmoji;
+  created_at?: string;
+};
+
+export type UserBlockRow = {
+  blocker_id: string;
+  blocked_id: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type UserBlockInsert = {
+  blocker_id: string;
+  blocked_id: string;
+  reason?: string | null;
+  created_at?: string;
+};
+
+export type ModerationReportRow = {
+  id: string;
+  reporter_id: string;
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: ModerationReportReason;
+  details: string | null;
+  status: ModerationReportStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ModerationReportInsert = {
+  id?: string;
+  reporter_id: string;
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: ModerationReportReason;
+  details?: string | null;
+  status?: ModerationReportStatus;
+  created_at?: string;
   updated_at?: string;
 };
 
@@ -618,6 +719,60 @@ export type ExerciseSubmissionRow = {
   hint_level_used: number;
   xp_earned: number;
   created_at: string;
+};
+
+export type ErrorEventRow = {
+  id: string;
+  user_id: string | null;
+  trace_id: string;
+  source: "frontend" | "api" | "worker";
+  severity: "warning" | "error" | "fatal";
+  title: string;
+  message: string;
+  stack: string | null;
+  route: string | null;
+  problem_type: string | null;
+  status_code: number | null;
+  context_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ErrorEventInsert = {
+  id?: string;
+  user_id?: string | null;
+  trace_id: string;
+  source?: "frontend" | "api" | "worker";
+  severity?: "warning" | "error" | "fatal";
+  title: string;
+  message: string;
+  stack?: string | null;
+  route?: string | null;
+  problem_type?: string | null;
+  status_code?: number | null;
+  context_json?: Record<string, unknown>;
+  created_at?: string;
+};
+
+export type LearningAnalyticsLessonBreakdown = {
+  lesson_id: string;
+  slug: string;
+  title: string;
+  status: LessonProgressStatus;
+  attempts_count: number;
+  max_hint_level_used: number;
+  total_execution_ms: number;
+};
+
+export type LearningAnalyticsSummaryRpcResult = {
+  total_attempts: number;
+  passed_attempts: number;
+  total_execution_ms: number;
+  avg_execution_ms: number;
+  max_hint_level_used: number;
+  total_lessons: number;
+  completed_lessons: number;
+  completion_rate_percent: number;
+  lessons: LearningAnalyticsLessonBreakdown[];
 };
 
 export type RecordLessonAttemptRpcResult = {
@@ -787,6 +942,68 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      chat_message_reactions: {
+        Row: ChatMessageReactionRow;
+        Insert: ChatMessageReactionInsert;
+        Update: Partial<ChatMessageReactionRow>;
+        Relationships: [
+          {
+            foreignKeyName: "fk_chat_message_reactions_message_id";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_messages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_chat_message_reactions_user_id";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      user_blocks: {
+        Row: UserBlockRow;
+        Insert: UserBlockInsert;
+        Update: Partial<UserBlockRow>;
+        Relationships: [
+          {
+            foreignKeyName: "fk_user_blocks_blocker_id";
+            columns: ["blocker_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_user_blocks_blocked_id";
+            columns: ["blocked_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      moderation_reports: {
+        Row: ModerationReportRow;
+        Insert: ModerationReportInsert;
+        Update: Partial<ModerationReportRow>;
+        Relationships: [
+          {
+            foreignKeyName: "fk_moderation_reports_reporter_id";
+            columns: ["reporter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      error_events: {
+        Row: ErrorEventRow;
+        Insert: ErrorEventInsert;
+        Update: Partial<ErrorEventRow>;
+        Relationships: [];
       };
       notifications: {
         Row: NotificationRow;
@@ -990,6 +1207,45 @@ export type Database = {
           p_hint_level_used?: number;
         };
         Returns: RecordLessonAttemptRpcResult;
+      };
+      are_users_blocked: {
+        Args: {
+          p_user_a: string;
+          p_user_b: string;
+        };
+        Returns: boolean;
+      };
+      touch_last_seen: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
+      search_conversation_messages: {
+        Args: {
+          p_conversation_id: string;
+          p_query: string;
+          p_limit?: number;
+        };
+        Returns: ChatMessageRow[];
+      };
+      accept_privacy_terms: {
+        Args: {
+          p_version?: string;
+        };
+        Returns: string;
+      };
+      export_my_account_data: {
+        Args: Record<string, never>;
+        Returns: Record<string, unknown>;
+      };
+      delete_my_account: {
+        Args: {
+          p_confirm_username: string;
+        };
+        Returns: boolean;
+      };
+      get_learning_analytics_summary: {
+        Args: Record<string, never>;
+        Returns: LearningAnalyticsSummaryRpcResult;
       };
     };
     Enums: Record<string, never>;

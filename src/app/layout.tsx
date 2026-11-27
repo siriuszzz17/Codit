@@ -5,6 +5,7 @@ import { GlobalCallOverlay } from "@/components/messaging/global-call-overlay";
 import { AppUpdateModal } from "@/components/native/app-update-modal";
 import { NativeInsetsSync } from "@/components/native/native-insets-sync";
 import { NotificationToastViewport } from "@/components/notifications/notification-toast-viewport";
+import { GlobalErrorObserver } from "@/components/observability/global-error-observer";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { AuthProvider } from "@/modules/auth/auth-provider";
@@ -84,6 +85,7 @@ export default function RootLayout({
               <VoiceCallProvider>
                 <div className="codit-app-content flex min-h-dvh flex-col">
                   <NativeInsetsSync />
+                  <GlobalErrorObserver />
                   <ServiceWorkerRegister />
                   <TopNavbar />
                   <OfflineBanner />

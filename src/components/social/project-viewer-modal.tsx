@@ -9,6 +9,7 @@ import {
   SANDBOX_VISIBILITY_LABELS,
 } from "@/components/social/social-labels";
 import { UserAvatar } from "@/components/social/user-avatar";
+import { ReportBlockModal } from "@/components/social/report-block-modal";
 import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { SandboxProjectRow } from "@/lib/supabase/database.types";
@@ -71,6 +72,7 @@ export function ProjectViewerModal({
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
     null,
   );
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const loadingComments = loadedProjectId !== project.id;
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -429,14 +431,24 @@ export function ProjectViewerModal({
             </button>
 
             {viewerId && viewerId !== project.user_id ? (
-              <button
-                type="button"
-                onClick={() => void handleCloneProject()}
-                disabled={cloning || !isOnline}
-                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-3.5 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-              >
-                {cloning ? "Clonando..." : "Clonar para meus projetos"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleCloneProject()}
+                  disabled={cloning || !isOnline}
+                  className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-3.5 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {cloning ? "Clonando..." : "Clonar para meus projetos"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  disabled={!isOnline}
+                  className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/20 disabled:opacity-60"
+                >
+                  Denunciar projeto
+                </button>
+              </>
             ) : null}
           </div>
 
@@ -677,6 +689,19 @@ export function ProjectViewerModal({
           </section>
         </div>
       </div>
+
+      {viewerId && reportModalOpen ? (
+        <ReportBlockModal
+          isOpen={reportModalOpen}
+          viewerId={viewerId}
+          targetType="project"
+          targetId={project.id}
+          targetLabel={project.title}
+          blockUserId={project.user_id}
+          isOnline={isOnline}
+          onClose={() => setReportModalOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

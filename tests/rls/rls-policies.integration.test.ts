@@ -365,4 +365,101 @@ describe("Supabase RLS & SECURITY DEFINER integration suite", () => {
       .eq("user_id", userA.id);
     expect(cReadsPush ?? []).toHaveLength(0);
   });
+
+  it("enforces bilateral user_blocks on DM creation and chat_messages insert", async () => {
+    // Cria DM enquanto A e B ainda são amigos
+    const { data: convId, error: dmErr } = await userA.client.rpc(
+      "get_or_create_direct_conversation",
+      { p_friend_id: userB.id },
+    );
+    expect(dmErr).toBeNull();
+    expect(typeof convId).toBe("string");
+
+    // userA bloqueia userB -> trigger remove amizade
+    const { error: blockErr } = await userA.client.from("user_blocks").insert({
+      blocker_id: userA.id,
+      blocked_id: userB.id,
+      reason: "Teste RLS bloqueio bilateral",
+    });
+    expect(blockErr).toBeNull();
+
+    // userB (bloqueado) falha ao abrir DM com userA
+    const { error: blockedDmErr } = await userB.client.rpc(
+      "get_or_create_direct_conversation",
+      { p_friend_id: userA.id },
+    );
+    expect(blockedDmErr).not.toBeNull();
+
+    // userB (bloqueado) falha ao enviar mensagem na DM existente
+    const { error: blockedMsgErr } = await userB.client
+      .from("chat_messages")
+      .insert({
+        conversation_id: convId,
+        sender_id: userB.id,
+        message_type: "text",
+        content: "Mensagem bloqueada",
+      });
+    expect(blockedMsgErr).not.toBeNull();
+
+    // userA também falha ao enviar DM enquanto bloqueio existir (bilateral)
+    const { error: blockerMsgErr } = await userA.client
+      .from("chat_messages")
+      .insert({
+        conversation_id: convId,
+        sender_id: userA.id,
+        message_type: "text",
+        content: "Mensagem bilateral bloqueada",
+      });
+    expect(blockerMsgErr).not.toBeNull();
+  });
+
+  it("deletes profiles, public_profiles, sandbox_projects and push_devices via delete_my_account", async () => {
+    const disposable = await createSignedInActor("del");
+
+    const { data: prof } = await disposable.client
+      .from("profiles")
+      .select("username")
+      .eq("id", disposable.id)
+      .single();
+    expect(prof?.username).toBeTruthy();
+
+    await disposable.client.from("sandbox_projects").insert({
+      user_id: disposable.id,
+      title: "Projeto para exclusão LGPD",
+      language: "javascript",
+      source_code: "console.log('lgpd');",
+      visibility: "private",
+    });
+
+    await disposable.client.rpc("register_push_device", {
+      p_token: `fcm_lgpd_test_token_${Date.now()}_0123456789`,
+    });
+
+    // Username errado falha
+    const { error: wrongErr } = await disposable.client.rpc(
+      "delete_my_account",
+      { p_confirm_username: "usuario_errado" },
+    );
+    expect(wrongErr).not.toBeNull();
+
+    // Username correto remove tudo
+    const { data: deletedOk, error: deleteErr } = await disposable.client.rpc(
+      "delete_my_account",
+      { p_confirm_username: prof!.username },
+    );
+    expect(deleteErr).toBeNull();
+    expect(deletedOk).toBe(true);
+
+    const [pRes, pubRes, projRes, pushRes] = await Promise.all([
+      admin.from("profiles").select("id").eq("id", disposable.id),
+      admin.from("public_profiles").select("id").eq("id", disposable.id),
+      admin.from("sandbox_projects").select("id").eq("user_id", disposable.id),
+      admin.from("push_devices").select("id").eq("user_id", disposable.id),
+    ]);
+
+    expect(pRes.data ?? []).toHaveLength(0);
+    expect(pubRes.data ?? []).toHaveLength(0);
+    expect(projRes.data ?? []).toHaveLength(0);
+    expect(pushRes.data ?? []).toHaveLength(0);
+  });
 });

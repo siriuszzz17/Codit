@@ -5,9 +5,13 @@ import {
 import type {
   ChatConversationMemberRow,
   ChatConversationRow,
+  ChatMessageMetadataJson,
+  ChatMessageReactionRow,
   ChatMessageRow,
+  ChatReactionEmoji,
   FriendshipRow,
   PublicProfileRow,
+  SandboxProjectRow,
 } from "@/lib/supabase/database.types";
 import {
   extractSupabaseErrorMeta,
@@ -17,10 +21,14 @@ import {
 } from "@/lib/supabase/errors";
 import { assertAuthenticatedUserMatches } from "@/lib/supabase/session-guard";
 import {
+  chatReactionEmojiSchema,
   createGroupConversationSchema,
   groupTitleSchema,
   MAX_GROUP_MEMBERS,
+  searchConversationQuerySchema,
   sendChatMessageSchema,
+  sendCodeMessageSchema,
+  validateChatImageFile,
   validateGroupMemberAddition,
 } from "@/modules/messaging/messaging-schemas";
 import { uuidSchema } from "@/modules/social/social-schemas";
@@ -45,6 +53,7 @@ export interface ConversationSummary {
 export interface ChatMessageItem {
   message: ChatMessageRow;
   sender: PublicProfileRow | null;
+  reactions?: ChatMessageReactionRow[] | undefined;
 }
 
 export interface MessagingServiceErrorDetails {
@@ -437,9 +446,29 @@ export async function listConversationMessages(
     (sendersData ?? []).map((item) => [item.id, item]),
   );
 
+  const messageIds = rows.map((item) => item.id);
+  const reactionsByMessage = new Map<string, ChatMessageReactionRow[]>();
+  try {
+    const { data: reactionsData, error: reactionsError } = await client
+      .from("chat_message_reactions")
+      .select("*")
+      .in("message_id", messageIds);
+
+    if (!reactionsError && reactionsData) {
+      for (const reaction of reactionsData) {
+        const list = reactionsByMessage.get(reaction.message_id) ?? [];
+        list.push(reaction);
+        reactionsByMessage.set(reaction.message_id, list);
+      }
+    }
+  } catch {
+    // Tabela de reações opcional antes da migração Fase 3.
+  }
+
   return rows.map((message) => ({
     message,
     sender: senderMap.get(message.sender_id) ?? null,
+    reactions: reactionsByMessage.get(message.id) ?? [],
   }));
 }
 
@@ -954,4 +983,459 @@ export async function markConversationRead(
   }
 
   return true;
+}
+
+async function assertCanSendInConversation(
+  validUserId: string,
+  validConversationId: string,
+  client: CoditSupabaseClient,
+): Promise<void> {
+  const [conversationResult, membersResult] = await Promise.all([
+    client
+      .from("chat_conversations")
+      .select("id, kind")
+      .eq("id", validConversationId)
+      .maybeSingle(),
+    client
+      .from("chat_conversation_members")
+      .select("user_id")
+      .eq("conversation_id", validConversationId)
+      .is("left_at", null),
+  ]);
+
+  if (conversationResult.error) {
+    throw toMessagingServiceError(conversationResult.error, {
+      status: conversationResult.status,
+      table: "chat_conversations",
+      operation: "assertCanSendInConversation.conversation",
+    });
+  }
+
+  if (membersResult.error) {
+    throw toMessagingServiceError(membersResult.error, {
+      status: membersResult.status,
+      table: "chat_conversation_members",
+      operation: "assertCanSendInConversation.members",
+    });
+  }
+
+  const conversation = conversationResult.data;
+  const activeMembers = membersResult.data ?? [];
+
+  if (!conversation) {
+    throw new MessagingValidationError("Conversa não encontrada.");
+  }
+
+  if (!activeMembers.some((item) => item.user_id === validUserId)) {
+    throw new MessagingValidationError(
+      "Você não participa mais desta conversa.",
+    );
+  }
+
+  if (conversation.kind === "direct") {
+    const otherMember = activeMembers.find(
+      (item) => item.user_id !== validUserId,
+    );
+    if (!otherMember) {
+      throw new MessagingValidationError(
+        "Destinatário da conversa não encontrado.",
+      );
+    }
+
+    const acceptedFriends = await fetchAcceptedFriendIds(validUserId, client);
+    if (!acceptedFriends.has(otherMember.user_id)) {
+      throw new MessagingValidationError(
+        "Apenas amigos aceitos podem enviar mensagens entre si no Codit.",
+      );
+    }
+  }
+}
+
+export async function sendCodeConversationMessage(
+  userId: string,
+  conversationId: string,
+  input: { code: string; language?: string; filename?: string },
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<ChatMessageItem> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validConversationId = assertValidUuid(
+    conversationId,
+    "Identificador da conversa",
+  );
+
+  await assertAuthenticatedUserMatches(validUserId, client, (message) => {
+    return new MessagingServiceError(message, {
+      code: "AUTH_USER_MISMATCH",
+      status: 403,
+    });
+  });
+
+  const parsed = sendCodeMessageSchema.safeParse(input);
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    throw new MessagingValidationError(
+      firstIssue?.message ?? "Informe um trecho de código válido.",
+    );
+  }
+
+  await assertCanSendInConversation(validUserId, validConversationId, client);
+
+  const metadata: ChatMessageMetadataJson = {
+    language: parsed.data.language,
+    ...(parsed.data.filename ? { filename: parsed.data.filename } : {}),
+  };
+
+  const { data, error, status } = await client
+    .from("chat_messages")
+    .insert({
+      conversation_id: validConversationId,
+      sender_id: validUserId,
+      message_type: "code",
+      content: parsed.data.code,
+      metadata_json: metadata,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw toMessagingServiceError(
+      error ?? new Error("Falha ao enviar bloco de código."),
+      {
+        status,
+        table: "chat_messages",
+        operation: "sendCodeConversationMessage.insert",
+      },
+    );
+  }
+
+  const { data: senderData } = await client
+    .from("public_profiles")
+    .select("*")
+    .eq("id", validUserId)
+    .maybeSingle();
+
+  return {
+    message: data,
+    sender: senderData ?? null,
+    reactions: [],
+  };
+}
+
+export async function sendImageConversationMessage(
+  userId: string,
+  conversationId: string,
+  file: File,
+  caption?: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<ChatMessageItem> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validConversationId = assertValidUuid(
+    conversationId,
+    "Identificador da conversa",
+  );
+
+  await assertAuthenticatedUserMatches(validUserId, client, (message) => {
+    return new MessagingServiceError(message, {
+      code: "AUTH_USER_MISMATCH",
+      status: 403,
+    });
+  });
+
+  const validation = validateChatImageFile(file);
+  if (!validation.ok) {
+    throw new MessagingValidationError(validation.message);
+  }
+
+  await assertCanSendInConversation(validUserId, validConversationId, client);
+
+  const randomId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const storagePath = `${validConversationId}/${randomId}.${validation.extension}`;
+
+  const { error: uploadError } = await client.storage
+    .from("chat-attachments")
+    .upload(storagePath, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    throw toMessagingServiceError(uploadError, {
+      table: "chat-attachments",
+      operation: "sendImageConversationMessage.upload",
+    });
+  }
+
+  const cleanCaption = caption?.trim() || file.name || "Imagem anexada";
+  const metadata: ChatMessageMetadataJson = {
+    storage_path: storagePath,
+    mime_type: file.type,
+    file_size: file.size,
+    filename: file.name,
+  };
+
+  const { data, error, status } = await client
+    .from("chat_messages")
+    .insert({
+      conversation_id: validConversationId,
+      sender_id: validUserId,
+      message_type: "image",
+      content: cleanCaption.slice(0, 2000),
+      metadata_json: metadata,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw toMessagingServiceError(
+      error ?? new Error("Falha ao enviar imagem."),
+      {
+        status,
+        table: "chat_messages",
+        operation: "sendImageConversationMessage.insert",
+      },
+    );
+  }
+
+  const { data: senderData } = await client
+    .from("public_profiles")
+    .select("*")
+    .eq("id", validUserId)
+    .maybeSingle();
+
+  return {
+    message: data,
+    sender: senderData ?? null,
+    reactions: [],
+  };
+}
+
+export async function getSignedChatAttachmentUrl(
+  storagePath: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<string | null> {
+  if (!storagePath.trim()) {
+    return null;
+  }
+
+  const { data, error } = await client.storage
+    .from("chat-attachments")
+    .createSignedUrl(storagePath, 3600);
+
+  if (error || !data?.signedUrl) {
+    return null;
+  }
+
+  return data.signedUrl;
+}
+
+export async function sendProjectShareConversationMessage(
+  userId: string,
+  conversationId: string,
+  project: Pick<
+    SandboxProjectRow,
+    "id" | "title" | "primary_language" | "visibility" | "description"
+  >,
+  caption?: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<ChatMessageItem> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validConversationId = assertValidUuid(
+    conversationId,
+    "Identificador da conversa",
+  );
+  const validProjectId = assertValidUuid(
+    project.id,
+    "Identificador do projeto",
+  );
+
+  await assertAuthenticatedUserMatches(validUserId, client, (message) => {
+    return new MessagingServiceError(message, {
+      code: "AUTH_USER_MISMATCH",
+      status: 403,
+    });
+  });
+
+  await assertCanSendInConversation(validUserId, validConversationId, client);
+
+  const content =
+    caption?.trim() || `Compartilhou o mini-projeto "${project.title}"`;
+  const metadata: ChatMessageMetadataJson = {
+    project_id: validProjectId,
+    project_title: project.title,
+    project_language: project.primary_language,
+    project_visibility: project.visibility,
+    project_description: project.description,
+  };
+
+  const { data, error, status } = await client
+    .from("chat_messages")
+    .insert({
+      conversation_id: validConversationId,
+      sender_id: validUserId,
+      message_type: "project_share",
+      content: content.slice(0, 2000),
+      metadata_json: metadata,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw toMessagingServiceError(
+      error ?? new Error("Falha ao compartilhar projeto."),
+      {
+        status,
+        table: "chat_messages",
+        operation: "sendProjectShareConversationMessage.insert",
+      },
+    );
+  }
+
+  const { data: senderData } = await client
+    .from("public_profiles")
+    .select("*")
+    .eq("id", validUserId)
+    .maybeSingle();
+
+  return {
+    message: data,
+    sender: senderData ?? null,
+    reactions: [],
+  };
+}
+
+export async function toggleMessageReaction(
+  userId: string,
+  messageId: string,
+  emoji: ChatReactionEmoji,
+  currentlyReacted: boolean,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<boolean> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validMessageId = assertValidUuid(
+    messageId,
+    "Identificador da mensagem",
+  );
+
+  const parsedEmoji = chatReactionEmojiSchema.safeParse(emoji);
+  if (!parsedEmoji.success) {
+    throw new MessagingValidationError("Reação não suportada.");
+  }
+
+  await assertAuthenticatedUserMatches(validUserId, client, (message) => {
+    return new MessagingServiceError(message, {
+      code: "AUTH_USER_MISMATCH",
+      status: 403,
+    });
+  });
+
+  if (currentlyReacted) {
+    const { error, status } = await client
+      .from("chat_message_reactions")
+      .delete()
+      .eq("message_id", validMessageId)
+      .eq("user_id", validUserId)
+      .eq("emoji", parsedEmoji.data);
+
+    if (error) {
+      throw toMessagingServiceError(error, {
+        status,
+        table: "chat_message_reactions",
+        operation: "toggleMessageReaction.delete",
+      });
+    }
+    return false;
+  }
+
+  const { error, status } = await client.from("chat_message_reactions").insert({
+    message_id: validMessageId,
+    user_id: validUserId,
+    emoji: parsedEmoji.data,
+  });
+
+  if (error) {
+    throw toMessagingServiceError(error, {
+      status,
+      table: "chat_message_reactions",
+      operation: "toggleMessageReaction.insert",
+    });
+  }
+
+  return true;
+}
+
+export async function searchConversationMessages(
+  userId: string,
+  conversationId: string,
+  rawQuery: string,
+  limit = 30,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<ChatMessageItem[]> {
+  const validUserId = assertValidUuid(userId, "Identificador do usuário");
+  const validConversationId = assertValidUuid(
+    conversationId,
+    "Identificador da conversa",
+  );
+
+  const parsedQuery = searchConversationQuerySchema.safeParse(rawQuery);
+  if (!parsedQuery.success) {
+    return [];
+  }
+
+  await assertAuthenticatedUserMatches(validUserId, client, (message) => {
+    return new MessagingServiceError(message, {
+      code: "AUTH_USER_MISMATCH",
+      status: 403,
+    });
+  });
+
+  const { data, error, status } = await client.rpc(
+    "search_conversation_messages",
+    {
+      p_conversation_id: validConversationId,
+      p_query: parsedQuery.data,
+      p_limit: Math.min(Math.max(limit, 1), 100),
+    },
+  );
+
+  if (error) {
+    throw toMessagingServiceError(error, {
+      status,
+      table: "chat_messages",
+      operation: "searchConversationMessages",
+    });
+  }
+
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const senderIds = Array.from(new Set(rows.map((item) => item.sender_id)));
+  const { data: sendersData } = await client
+    .from("public_profiles")
+    .select("*")
+    .in("id", senderIds);
+
+  const senderMap = new Map<string, PublicProfileRow>(
+    (sendersData ?? []).map((item) => [item.id, item]),
+  );
+
+  return rows.map((message) => ({
+    message,
+    sender: senderMap.get(message.sender_id) ?? null,
+    reactions: [],
+  }));
+}
+
+export async function touchUserLastSeen(
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<void> {
+  try {
+    await client.rpc("touch_last_seen");
+  } catch {
+    // Indicador de atividade não deve interromper o fluxo do usuário.
+  }
 }

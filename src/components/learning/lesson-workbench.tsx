@@ -14,6 +14,10 @@ import {
   runLessonAssertions,
   type AssertRunSummary,
 } from "@/modules/learning/assert-runner";
+import {
+  runPythonLessonAssertions,
+  type PyodideLoadProgress,
+} from "@/modules/learning/pyodide-runner";
 import { getBadgeMeta } from "@/modules/learning/learning-schemas";
 import {
   getLessonBySlug,
@@ -39,6 +43,8 @@ export function LessonWorkbench() {
   const [running, setRunning] = useState(false);
   const [savingAttempt, setSavingAttempt] = useState(false);
   const [runSummary, setRunSummary] = useState<AssertRunSummary | null>(null);
+  const [pyodideProgress, setPyodideProgress] =
+    useState<PyodideLoadProgress | null>(null);
   const [lastRpcResult, setLastRpcResult] =
     useState<RecordLessonAttemptRpcResult | null>(null);
 
@@ -103,8 +109,16 @@ export function LessonWorkbench() {
 
     setRunning(true);
     try {
-      const summary = await runLessonAssertions(code, bundle.lesson.test_cases);
+      const isPython = bundle.lesson.language.toLowerCase() === "python";
+      const summary = isPython
+        ? await runPythonLessonAssertions(code, bundle.lesson.test_cases, {
+            onProgress: (progress) => setPyodideProgress(progress),
+          })
+        : await runLessonAssertions(code, bundle.lesson.test_cases);
       setRunSummary(summary);
+      if (isPython) {
+        setPyodideProgress(null);
+      }
 
       if (summary.timedOut) {
         emitAppToast({
@@ -303,6 +317,26 @@ export function LessonWorkbench() {
                 </span>
               ) : null}
             </div>
+
+            {pyodideProgress && pyodideProgress.stage !== "ready" ? (
+              <div
+                role="status"
+                className="mt-3 space-y-1.5 rounded-xl border border-accent/35 bg-accent-soft/40 p-3 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2 font-medium text-foreground">
+                  <span>{pyodideProgress.label}</span>
+                  <span className="font-mono text-[11px] text-accent-strong">
+                    {pyodideProgress.percent}%
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
+                  <div
+                    className="h-full rounded-full bg-accent transition-all duration-300"
+                    style={{ width: `${pyodideProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {runSummary?.runtimeError ? (
               <div

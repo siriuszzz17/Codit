@@ -1,5 +1,6 @@
 import { requireSupabaseClient, type CoditSupabaseClient } from "@/lib/supabase/client";
 import type {
+  LearningAnalyticsSummaryRpcResult,
   LessonProgressStatus,
   LessonRow,
   RecordLessonAttemptRpcResult,
@@ -385,4 +386,15 @@ export async function markOnboardingCompleted(
       missing,
     );
   }
+}
+
+export async function getLearningAnalyticsSummary(
+  client?: CoditSupabaseClient,
+): Promise<LearningAnalyticsSummaryRpcResult | null> {
+  const supabase = client ?? requireSupabaseClient();
+  const { data, error } = await supabase.rpc("get_learning_analytics_summary");
+  if (error || !data) {
+    return null;
+  }
+  return data;
 }

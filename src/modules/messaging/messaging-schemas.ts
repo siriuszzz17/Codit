@@ -6,6 +6,22 @@ export const MAX_GROUP_INVITEES = MAX_GROUP_MEMBERS - 1;
 export const MIN_GROUP_INVITEES = 1;
 export const MAX_GROUP_TITLE_LENGTH = 80;
 export const MAX_MESSAGE_LENGTH = 2000;
+export const MAX_CODE_MESSAGE_LENGTH = 8000;
+export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
+export const ALLOWED_CHAT_IMAGE_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+] as const;
+export const CHAT_REACTION_EMOJIS = [
+  "👍",
+  "❤️",
+  "🔥",
+  "😂",
+  "🚀",
+  "👀",
+] as const;
 export const CALL_RINGING_TIMEOUT_SECONDS = 60;
 export const CALL_RINGING_TIMEOUT_MS = CALL_RINGING_TIMEOUT_SECONDS * 1000;
 
@@ -31,6 +47,68 @@ export const sendChatMessageSchema = z.object({
       `A mensagem pode ter no máximo ${MAX_MESSAGE_LENGTH} caracteres.`,
     ),
 });
+
+export const sendCodeMessageSchema = z.object({
+  code: z
+    .string({ error: "Informe o código antes de enviar." })
+    .trim()
+    .min(1, "Informe o código antes de enviar.")
+    .max(
+      MAX_CODE_MESSAGE_LENGTH,
+      `O bloco de código pode ter no máximo ${MAX_CODE_MESSAGE_LENGTH} caracteres.`,
+    ),
+  language: z
+    .string()
+    .trim()
+    .min(1)
+    .max(32)
+    .default("javascript"),
+  filename: z
+    .string()
+    .trim()
+    .max(80, "Nome de arquivo muito longo.")
+    .optional(),
+});
+
+export const chatReactionEmojiSchema = z.enum(CHAT_REACTION_EMOJIS);
+
+export const searchConversationQuerySchema = z
+  .string()
+  .trim()
+  .min(1, "Digite um termo para buscar.")
+  .max(120, "Termo de busca muito longo.");
+
+export function validateChatImageFile(file: {
+  type: string;
+  size: number;
+  name?: string;
+}): { ok: true; extension: string } | { ok: false; message: string } {
+  const mime = file.type.toLowerCase();
+  if (
+    !ALLOWED_CHAT_IMAGE_MIME_TYPES.includes(
+      mime as (typeof ALLOWED_CHAT_IMAGE_MIME_TYPES)[number],
+    )
+  ) {
+    return {
+      ok: false,
+      message: "Envie apenas imagens PNG, JPG, WEBP ou GIF.",
+    };
+  }
+  if (file.size <= 0 || file.size > MAX_CHAT_IMAGE_BYTES) {
+    return {
+      ok: false,
+      message: "A imagem deve ter no máximo 5 MB.",
+    };
+  }
+
+  const extMap: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+  };
+  return { ok: true, extension: extMap[mime] ?? "png" };
+}
 
 export const groupTitleSchema = z
   .string({ error: "Informe um nome para o grupo." })

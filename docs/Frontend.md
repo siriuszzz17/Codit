@@ -14,7 +14,7 @@ Rotas App Router, layout compartilhado, navegação e interface.
 - src/app/comunidade/page.tsx
 - src/app/comunidade/perfil/page.tsx
 - src/app/mensagens/page.tsx
-- src/app/offline/page.tsx, src/app/not-found.tsx
+- src/app/offline/page.tsx, src/app/not-found.tsx, src/app/privacidade/page.tsx — política de privacidade e direitos LGPD.
 - src/hooks/use-dialog-a11y.ts — focus trap, Escape e retorno de foco nos modais.
 - src/components/ui/skeleton.tsx, src/components/ui/empty-state-card.tsx — estados de carregamento e vazio com CTA.
 - src/components/layout/top-navbar.tsx
@@ -23,7 +23,7 @@ Rotas App Router, layout compartilhado, navegação e interface.
 - src/components/messaging/global-call-overlay.tsx — modal de chamada recebida (voz/vídeo/recusar com contagem), áudio WebRTC persistente e barra flutuante.
 
 ## Rotas
-/, /trilhas, /trilhas/licao, /auth, /conta, /projetos, /comunidade, /comunidade/perfil, /mensagens, /offline.
+/, /trilhas, /trilhas/licao, /auth, /conta, /projetos, /comunidade, /comunidade/perfil, /mensagens, /privacidade, /offline.
 
 ## Dependências
 [[Auth]], [[Perfis]], [[Sandbox]], [[Comunidade]], [[Mensagens]], [[Notificacoes]] e [[design-system]].

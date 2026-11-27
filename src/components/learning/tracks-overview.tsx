@@ -9,7 +9,9 @@ import { SkeletonList } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/modules/auth/auth-provider";
 import { getBadgeMeta } from "@/modules/learning/learning-schemas";
+import type { LearningAnalyticsSummaryRpcResult } from "@/lib/supabase/database.types";
 import {
+  getLearningAnalyticsSummary,
   LearningServiceError,
   listPublishedTracksWithProgress,
   type TrackWithLessonsAndProgress,
@@ -41,6 +43,8 @@ const STATUS_META = {
 export function TracksOverview() {
   const { user, profile, isLoading: isAuthLoading, isConfigured } = useAuth();
   const [tracks, setTracks] = useState<TrackWithLessonsAndProgress[]>([]);
+  const [analytics, setAnalytics] =
+    useState<LearningAnalyticsSummaryRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
@@ -65,9 +69,13 @@ export function TracksOverview() {
 
       setLoading(true);
       try {
-        const result = await listPublishedTracksWithProgress(userId, client);
+        const [result, analyticsData] = await Promise.all([
+          listPublishedTracksWithProgress(userId, client),
+          userId ? getLearningAnalyticsSummary(client) : Promise.resolve(null),
+        ]);
         if (cancelled) return;
         setTracks(result);
+        setAnalytics(analyticsData);
         setErrorMessage(null);
         setMigrationMissing(false);
       } catch (err) {
@@ -365,6 +373,58 @@ export function TracksOverview() {
           })}
         </div>
       )}
+
+      {user && analytics ? (
+        <section
+          aria-labelledby="codit-learning-analytics-title"
+          className="codit-panel space-y-4 p-5 shadow-xs sm:p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2
+                id="codit-learning-analytics-title"
+                className="text-base font-bold text-foreground sm:text-lg"
+              >
+                Analytics de Aprendizado (TCC)
+              </h2>
+              <p className="text-xs text-muted">
+                Tentativas, tempo de execução, dicas do Octopy e conclusão por
+                lição.
+              </p>
+            </div>
+            <span className="rounded-full bg-accent-soft px-3 py-1 font-mono text-xs font-bold text-accent-strong">
+              {analytics.completion_rate_percent}% concluído
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-2xl border border-border bg-surface-muted/45 p-3">
+              <p className="text-[11px] text-muted">Tentativas</p>
+              <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+                {analytics.total_attempts}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border bg-surface-muted/45 p-3">
+              <p className="text-[11px] text-muted">Aprovações</p>
+              <p className="mt-0.5 font-mono text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                {analytics.passed_attempts}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border bg-surface-muted/45 p-3">
+              <p className="text-[11px] text-muted">Tempo médio</p>
+              <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+                {analytics.avg_execution_ms}ms
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border bg-surface-muted/45 p-3">
+              <p className="text-[11px] text-muted">Maior dica Octopy</p>
+              <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+                Nível {analytics.max_hint_level_used}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }
