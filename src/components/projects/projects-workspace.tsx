@@ -8,6 +8,7 @@ import {
 } from "@/components/account/project-studio-modal";
 import { ProjectsShowcasePanel } from "@/components/account/projects-showcase-panel";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import { LearningAnalyticsDrawer } from "@/components/learning/learning-analytics-drawer";
 import { LanguageIcon } from "@/components/sandbox/language-icon";
 import { SkeletonList } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -73,6 +74,7 @@ export function ProjectsWorkspace() {
   );
 
   const [studioOpen, setStudioOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [studioSessionKey, setStudioSessionKey] = useState(1);
   const [studioInitialLanguage, setStudioInitialLanguage] =
     useState<SandboxLanguage>("html_css_js");
@@ -528,6 +530,13 @@ export function ProjectsWorkspace() {
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
           <button
             type="button"
+            onClick={() => setAnalyticsOpen(true)}
+            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent sm:text-sm"
+          >
+            Métricas TCC
+          </button>
+          <button
+            type="button"
             onClick={() => void loadProjects(userId)}
             disabled={loadingProjects || !isOnline}
             className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent disabled:opacity-60 sm:text-sm"
@@ -665,6 +674,11 @@ export function ProjectsWorkspace() {
         onDuplicateProject={handleDuplicateProject}
         onDeleteProject={handleDeleteProject}
         onRefresh={() => loadProjects(userId)}
+      />
+
+      <LearningAnalyticsDrawer
+        isOpen={analyticsOpen}
+        onClose={() => setAnalyticsOpen(false)}
       />
 
       {studioOpen ? (

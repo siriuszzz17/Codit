@@ -524,6 +524,98 @@ export type PushDeviceUpdate = {
   last_seen_at?: string;
 };
 
+export type ClientErrorLogRow = {
+  id: string;
+  user_id: string | null;
+  trace_id: string;
+  source:
+    | "window_error"
+    | "unhandled_rejection"
+    | "problem_details"
+    | "pyodide_worker"
+    | "manual";
+  error_type: string;
+  message: string;
+  status_code: number | null;
+  route: string;
+  app_version: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ClientErrorLogInsert = {
+  id?: string;
+  user_id?: string | null;
+  trace_id: string;
+  source:
+    | "window_error"
+    | "unhandled_rejection"
+    | "problem_details"
+    | "pyodide_worker"
+    | "manual";
+  error_type: string;
+  message: string;
+  status_code?: number | null;
+  route?: string;
+  app_version?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+};
+
+export type ClientErrorLogUpdate = {
+  metadata?: Record<string, unknown>;
+};
+
+export type LearningLessonAttemptRow = {
+  id: string;
+  user_id: string;
+  lesson_id: string;
+  passed: boolean;
+  duration_seconds: number;
+  hint_level_used: number;
+  failed_assertion_id: string | null;
+  failed_assertion_label: string | null;
+  runtime_target: SandboxRuntimeTarget;
+  created_at: string;
+};
+
+export type LearningLessonAttemptInsert = {
+  id?: string;
+  user_id: string;
+  lesson_id: string;
+  passed: boolean;
+  duration_seconds?: number;
+  hint_level_used?: number;
+  failed_assertion_id?: string | null;
+  failed_assertion_label?: string | null;
+  runtime_target?: SandboxRuntimeTarget;
+  created_at?: string;
+};
+
+export type LearningLessonAttemptUpdate = {
+  passed?: boolean;
+};
+
+export type LearningRetentionAnalyticsRow = {
+  track_slug: string;
+  track_title: string;
+  lesson_id: string;
+  lesson_slug: string;
+  lesson_title: string;
+  order_index: number;
+  total_learners: number;
+  completed_learners: number;
+  completion_rate: number;
+  total_attempts: number;
+  avg_attempts_to_pass: number;
+  avg_duration_seconds: number;
+  avg_hint_level: number;
+  max_hint_level_used: number;
+  top_failed_assertion_id: string | null;
+  top_failed_assertion_label: string | null;
+  top_failed_assertion_count: number;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -715,6 +807,34 @@ export type Database = {
           },
         ];
       };
+      client_error_logs: {
+        Row: ClientErrorLogRow;
+        Insert: ClientErrorLogInsert;
+        Update: ClientErrorLogUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "client_error_logs_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      learning_lesson_attempts: {
+        Row: LearningLessonAttemptRow;
+        Insert: LearningLessonAttemptInsert;
+        Update: LearningLessonAttemptUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "learning_lesson_attempts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -804,6 +924,12 @@ export type Database = {
           p_token: string;
         };
         Returns: undefined;
+      };
+      get_learning_retention_analytics: {
+        Args: {
+          p_track_slug?: string | null;
+        };
+        Returns: LearningRetentionAnalyticsRow[];
       };
     };
     Enums: Record<string, never>;

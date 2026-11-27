@@ -5,6 +5,14 @@ import { LanguageBadge } from "@/components/sandbox/language-icon";
 import type { SandboxLanguage } from "@/lib/supabase/database.types";
 import { getLanguageMeta } from "@/modules/sandbox/language-catalog";
 import {
+  createPyodideRunner,
+  PYODIDE_TIMEOUT_MS,
+  type PyodideProgressEvent,
+  type PyodideRunResult,
+  type PyodideRunner,
+  type PythonAssertionSpec,
+} from "@/modules/sandbox/pyodide-runner";
+import {
   buildSandboxedPreviewDocument,
   SANDBOX_EXECUTION_TIMEOUT_MS,
 } from "@/modules/sandbox/sandbox-runner";
@@ -19,6 +27,8 @@ interface SandboxPreviewProps {
   language: SandboxLanguage;
   sourceCode: string;
   projectTitle?: string;
+  pythonAssertions?: ReadonlyArray<PythonAssertionSpec>;
+  onPythonResult?: (result: PyodideRunResult) => void;
 }
 
 function getRuntimeLabel(language: SandboxLanguage): string {
@@ -27,7 +37,7 @@ function getRuntimeLabel(language: SandboxLanguage): string {
     return "Sandbox Iframe Isolado";
   }
   if (meta.defaultRuntimeTarget === "client_pyodide") {
-    return "Pyodide WASM (Fase 3+)";
+    return "Pyodide WASM (Web Worker)";
   }
   if (meta.defaultRuntimeTarget === "client_iframe") {
     return "Inspeção Estática (Build em breve)";
@@ -51,10 +61,14 @@ export function SandboxPreview({
   language,
   sourceCode,
   projectTitle = "",
+  pythonAssertions,
+  onPythonResult,
 }: SandboxPreviewProps) {
   const meta = getLanguageMeta(language);
+  const isPython = language === "python";
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const nextLogIdRef = useRef(1);
+  const pyodideRunnerRef = useRef<PyodideRunner | null>(null);
 
   const [executedCode, setExecutedCode] = useState(sourceCode);
   const [runCounter, setRunCounter] = useState(1);
@@ -62,6 +76,58 @@ export function SandboxPreview({
   const [readyRunId, setReadyRunId] = useState<string | null>(null);
   const [timedOutRunId, setTimedOutRunId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const [pyRunning, setPyRunning] = useState(false);
+  const [pyProgress, setPyProgress] = useState<PyodideProgressEvent | null>(
+    null,
+  );
+  const [pyResult, setPyResult] = useState<PyodideRunResult | null>(null);
+
+  useEffect(() => {
+    return () => {
+      pyodideRunnerRef.current?.terminate();
+      pyodideRunnerRef.current = null;
+    };
+  }, []);
+
+  async function handleRunPython() {
+    if (pyRunning) {
+      return;
+    }
+
+    if (!pyodideRunnerRef.current) {
+      pyodideRunnerRef.current = createPyodideRunner();
+    }
+
+    setPyRunning(true);
+    setPyProgress({
+      runId: "pending",
+      stage: "downloading",
+      progress: 10,
+      message: "Preparando Web Worker Python (Pyodide)...",
+    });
+
+    try {
+      const result = await pyodideRunnerRef.current.run(sourceCode, {
+        assertions: pythonAssertions,
+        timeoutMs: PYODIDE_TIMEOUT_MS,
+        onProgress: (event) => {
+          setPyProgress(event);
+        },
+      });
+      setPyResult(result);
+      onPythonResult?.(result);
+    } finally {
+      setPyRunning(false);
+    }
+  }
+
+  function handleTerminatePythonWorker() {
+    pyodideRunnerRef.current?.terminate();
+    pyodideRunnerRef.current = null;
+    setPyRunning(false);
+    setPyProgress(null);
+  }
 
   // Debounce automático quando usuário edita código no estúdio
   useEffect(() => {
@@ -173,6 +239,191 @@ export function SandboxPreview({
     } catch {
       setCopied(false);
     }
+  }
+
+  if (isPython) {
+    const lineCount = sourceCode ? sourceCode.split(/\r?\n/).length : 0;
+    const progressPercent = pyProgress
+      ? Math.min(100, Math.max(0, pyProgress.progress))
+      : 0;
+
+    return (
+      <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-[#0f0d1d] text-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <LanguageBadge language={language} size="xs" showFileName />
+            <span className="rounded-full border border-sky-400/30 bg-sky-500/15 px-2.5 py-0.5 text-[11px] font-medium text-sky-200">
+              {getRuntimeLabel(language)}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleCopyCode()}
+              className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-100 transition-colors hover:bg-white/15"
+            >
+              {copied ? "Copiado!" : "Copiar"}
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadSourceFile(meta.fileName, sourceCode)}
+              className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-100 transition-colors hover:bg-white/15"
+            >
+              Baixar
+            </button>
+            {pyRunning ? (
+              <button
+                type="button"
+                onClick={handleTerminatePythonWorker}
+                className="rounded-lg bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                Interromper
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void handleRunPython()}
+                className="rounded-lg bg-accent px-3 py-1 text-[11px] font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+              >
+                Executar Python
+              </button>
+            )}
+          </div>
+        </div>
+
+        {pyRunning && pyProgress ? (
+          <div className="space-y-1.5 border-b border-white/10 bg-sky-950/40 px-3.5 py-2.5">
+            <div className="flex items-center justify-between text-[11px] text-sky-200">
+              <span>{pyProgress.message}</span>
+              <span className="font-mono font-semibold">{progressPercent}%</span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label="Progresso do runtime Pyodide"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progressPercent}
+              className="h-1.5 w-full overflow-hidden rounded-full bg-white/10"
+            >
+              <div
+                className="h-full rounded-full bg-sky-400 transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex-1 space-y-3 overflow-auto p-3.5 font-mono text-xs leading-relaxed">
+          {!pyResult && !pyRunning ? (
+            <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2.5 text-center text-slate-300">
+              <p className="text-sm font-semibold text-white">
+                Python isolado sob demanda (Web Worker)
+              </p>
+              <p className="max-w-sm font-sans text-xs leading-relaxed text-slate-400">
+                Clique em &ldquo;Executar Python&rdquo; para baixar o Pyodide WASM
+                em segundo plano sem travar a interface. Limite de 5s e 16 KB de saída.
+              </p>
+            </div>
+          ) : null}
+
+          {pyResult?.timedOut ? (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-amber-200">
+              <p className="font-sans text-xs font-semibold">
+                Execução interrompida pelo watchdog de segurança (5s)
+              </p>
+              <p className="mt-1 font-sans text-xs text-amber-100/80">
+                {pyResult.error}
+              </p>
+            </div>
+          ) : null}
+
+          {pyResult && !pyResult.timedOut ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                <span
+                  className={
+                    pyResult.ok
+                      ? "font-semibold text-emerald-300"
+                      : "font-semibold text-red-300"
+                  }
+                >
+                  {pyResult.ok ? "Execução concluída" : "Execução com erro"}
+                </span>
+                <span>{pyResult.durationMs} ms</span>
+              </div>
+
+              {pyResult.stdout ? (
+                <div className="space-y-1">
+                  <p className="font-sans text-[11px] font-semibold text-slate-400">
+                    Saída (stdout)
+                  </p>
+                  <pre className="whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/35 p-3 text-emerald-300">
+                    {pyResult.stdout}
+                  </pre>
+                </div>
+              ) : null}
+
+              {pyResult.stderr || pyResult.error ? (
+                <div className="space-y-1">
+                  <p className="font-sans text-[11px] font-semibold text-red-300">
+                    Erros (stderr)
+                  </p>
+                  <pre className="whitespace-pre-wrap break-words rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-red-300">
+                    {pyResult.stderr || pyResult.error}
+                  </pre>
+                </div>
+              ) : null}
+
+              {!pyResult.stdout && !pyResult.stderr && !pyResult.error ? (
+                <p className="font-sans text-xs text-slate-400">
+                  Código executado sem saídas. Use <code>print(...)</code> para exibir valores.
+                </p>
+              ) : null}
+
+              {pyResult.assertions.length > 0 ? (
+                <div className="space-y-1.5 border-t border-white/10 pt-2.5">
+                  <p className="font-sans text-[11px] font-semibold text-slate-300">
+                    Validação de critérios (
+                    {pyResult.assertions.filter((a) => a.passed).length}/
+                    {pyResult.assertions.length})
+                  </p>
+                  <ul className="space-y-1">
+                    {pyResult.assertions.map((item) => (
+                      <li
+                        key={item.id}
+                        className={`rounded-lg border px-2.5 py-1.5 font-sans text-xs ${
+                          item.passed
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                            : "border-red-500/30 bg-red-500/10 text-red-200"
+                        }`}
+                      >
+                        <span className="font-semibold">
+                          {item.passed ? "OK" : "Falhou"}:
+                        </span>{" "}
+                        {item.label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-white/5 px-3.5 py-2 text-[11px] text-slate-300">
+          <span>
+            {lineCount} {lineCount === 1 ? "linha" : "linhas"} ·{" "}
+            {sourceCode.length.toLocaleString("pt-BR")} caracteres
+          </span>
+          <span className="text-slate-400">
+            {pyResult?.truncated
+              ? "Saída limitada a 16 KB (RN-202)"
+              : "Watchdog ativo: 5s · Worker isolado"}
+          </span>
+        </div>
+      </div>
+    );
   }
 
   if (!meta.supportsLivePreview) {

@@ -8,7 +8,7 @@ A API própria contém apenas o health check. Os serviços de domínio usam Supa
 - src/lib/supabase/client.ts — cliente Supabase.
 - src/modules/*/*-service.ts — acesso aos dados por domínio.
 - supabase/functions/send-push/index.ts e helpers.ts — Edge Function FCM HTTP v1 data-only (avatar/`largeIcon`, resposta autenticada, notificações `Ongoing` de chamada e timeout server-side de 60s com broadcast privado `private: true` em `codit:user-inbox:<uid>`).
-- supabase/migrations/*.sql — schema, funções, políticas RLS (`realtime.messages`, `chat_conversation_members`, `public.call_sessions`) e hardening `20261126000002_harden_realtime_rls_and_security_definers.sql`.
+- supabase/migrations/*.sql — schema, funções, políticas RLS (`realtime.messages`, `chat_conversation_members`, `public.call_sessions`, `client_error_logs`, `learning_lesson_attempts`), hardening `20261126000002_harden_realtime_rls_and_security_definers.sql` e Fase 4 `20261126000004_add_python_track_and_telemetry.sql` (seed Python + RPC `get_learning_retention_analytics`).
 
 ## Funções e rotas
 - GET() em src/app/api/v1/health/route.ts.

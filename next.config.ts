@@ -5,12 +5,13 @@ import packageJson from "./package.json";
 function buildGlobalCsp(isDev: boolean): string {
   const directives = [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net${isDev ? " 'unsafe-eval'" : ""}`,
+    "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data: https://*.supabase.co https://lh3.googleusercontent.com https://avatars.githubusercontent.com",
     "font-src 'self' data:",
     "media-src 'self' blob:",
-    `connect-src 'self' https://*.supabase.co wss://*.supabase.co${isDev ? " ws: wss:" : ""}`,
+    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net${isDev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

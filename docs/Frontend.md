@@ -16,6 +16,8 @@ Rotas App Router, layout compartilhado, navegação e interface.
 - src/app/offline/page.tsx, src/app/not-found.tsx
 - src/hooks/use-dialog-a11y.ts — focus trap, Escape e retorno de foco nos modais.
 - src/components/ui/skeleton.tsx, src/components/ui/empty-state-card.tsx — estados de carregamento e vazio com CTA.
+- src/components/telemetry/global-error-observer.tsx — hook global de observabilidade montado no `RootLayout`.
+- src/components/learning/learning-analytics-drawer.tsx — painel TCC de funil de retenção e gargalos por lição.
 - src/components/layout/top-navbar.tsx
 - src/components/home/hero-workbench.tsx
 - src/components/messaging/call-stage-panel.tsx — palco responsivo de voz, vídeo e tela com grid, PiP local ajustável, troca de câmera e tela de chamada efetuada.

@@ -8,7 +8,9 @@ Configuração, acesso a dados, contratos compartilhados, segurança, PWA e empa
 - src/lib/supabase/client.ts — getSupabaseClient(), requireSupabaseClient().
 - src/lib/supabase/config.ts
 - src/lib/supabase/database.types.ts
-- src/lib/problem-details.ts, src/lib/problem-response.ts, src/lib/app-toast.ts — contratos RFC 9457 client-safe e barramento de toasts efêmeros.
+- src/lib/problem-details.ts, src/lib/problem-response.ts, src/lib/app-toast.ts — contratos RFC 9457 client-safe, observer de observabilidade e barramento de toasts efêmeros.
+- src/lib/telemetry/error-reporter.ts + src/components/telemetry/global-error-observer.tsx — captura global sanitizada zero-PII (throttle 5/sessão) persistida em `client_error_logs`.
+- src/modules/learning/learning-analytics-service.ts + src/components/learning/learning-analytics-drawer.tsx — métricas de retenção por lição via RPC `get_learning_retention_analytics`.
 - src/lib/supabase/errors.ts — mapeamento de erros + emissão automática de toast amigável.
 - .github/workflows/ci.yml, supabase/config.toml, vitest.rls.config.ts — CI e testes de integração RLS (`tests/rls/`).
 - src/lib/supabase/session-guard.ts

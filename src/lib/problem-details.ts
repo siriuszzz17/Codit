@@ -33,12 +33,22 @@ function generateTraceId(): string {
   return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export type ProblemDetailsObserver = (problem: ProblemDetails) => void;
+
+let problemDetailsObserver: ProblemDetailsObserver | null = null;
+
+export function setProblemDetailsObserver(
+  observer: ProblemDetailsObserver | null,
+): void {
+  problemDetailsObserver = observer;
+}
+
 export function createProblemDetails(
   input: CreateProblemDetailsInput,
 ): ProblemDetails {
   const traceId = input.traceId ?? generateTraceId();
 
-  return {
+  const problem: ProblemDetails = {
     type: input.type,
     title: input.title,
     status: input.status,
@@ -47,6 +57,19 @@ export function createProblemDetails(
     traceId,
     ...(input.errors !== undefined ? { errors: input.errors } : {}),
   };
+
+  if (
+    problemDetailsObserver &&
+    (problem.status >= 500 || problem.status === 0)
+  ) {
+    try {
+      problemDetailsObserver(problem);
+    } catch {
+      // Observabilidade nunca deve interromper o fluxo principal de erro.
+    }
+  }
+
+  return problem;
 }
 
 export function isProblemDetails(value: unknown): value is ProblemDetails {

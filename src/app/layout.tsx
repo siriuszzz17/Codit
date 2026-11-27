@@ -7,6 +7,7 @@ import { NativeInsetsSync } from "@/components/native/native-insets-sync";
 import { NotificationToastViewport } from "@/components/notifications/notification-toast-viewport";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
+import { GlobalErrorObserver } from "@/components/telemetry/global-error-observer";
 import { AuthProvider } from "@/modules/auth/auth-provider";
 import { VoiceCallProvider } from "@/modules/messaging/voice-call-provider";
 import { NotificationsProvider } from "@/modules/notifications/notifications-provider";
@@ -83,6 +84,7 @@ export default function RootLayout({
             <NotificationsProvider>
               <VoiceCallProvider>
                 <div className="codit-app-content flex min-h-dvh flex-col">
+                  <GlobalErrorObserver />
                   <NativeInsetsSync />
                   <ServiceWorkerRegister />
                   <TopNavbar />
