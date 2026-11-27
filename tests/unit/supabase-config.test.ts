@@ -165,6 +165,25 @@ describe("supabase error mappers", () => {
     expect(mapSupabaseDatabaseError(phase4TableError)).toContain(
       "20261123000002_add_social_network.sql",
     );
+
+    const analyticsRpcError = {
+      code: "PGRST202",
+      message: "Could not find the function public.get_learning_retention_analytics in the schema cache",
+    };
+    expect(detectMissingMigrationName(analyticsRpcError)).toBe(
+      "20261126000004_add_python_track_and_telemetry.sql",
+    );
+    expect(mapSupabaseDatabaseError(analyticsRpcError)).toContain(
+      "20261126000004_add_python_track_and_telemetry.sql",
+    );
+
+    const incomingCallRpcError = {
+      code: "PGRST202",
+      message: "Could not find the function public.notify_incoming_call in the schema cache",
+    };
+    expect(detectMissingMigrationName(incomingCallRpcError)).toBe(
+      "20261126000002_harden_realtime_rls_and_security_definers.sql",
+    );
   });
 
   it("maps username cooldown, expired JWT, PostgreSQL constraints, and safe diagnostic fallback", () => {

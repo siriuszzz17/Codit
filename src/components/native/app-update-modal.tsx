@@ -49,6 +49,9 @@ export function AppUpdateModal() {
     onClose: () => {
       if (update && phase !== "downloading" && phase !== "installing") {
         saveDismissedVersion(update.version);
+        if (update.platform === "desktop" && update.mode === "native") {
+          void update.dismiss();
+        }
         setUpdate(null);
       }
     },
@@ -117,29 +120,6 @@ export function AppUpdateModal() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
-
-  useEffect(() => {
-    if (!update || phase === "downloading" || phase === "installing") {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || !update) {
-        return;
-      }
-
-      saveDismissedVersion(update.version);
-      if (update.platform === "desktop" && update.mode === "native") {
-        void update.dismiss();
-      }
-      setUpdate(null);
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [update, phase]);
 
   if (!update) {
     return null;

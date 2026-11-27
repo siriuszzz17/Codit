@@ -10,8 +10,12 @@ export type MissingMigrationFile =
   | "20261123000002_add_social_network.sql"
   | "20261123000003_fix_grants_rls_and_username_cooldown.sql"
   | "20261124000002_add_embedded_messaging.sql"
+  | "20261124000003_add_app_appearance_preferences.sql"
   | "20261124000004_add_notifications_system.sql"
-  | "20261125000001_add_android_push_notifications.sql";
+  | "20261125000001_add_android_push_notifications.sql"
+  | "20261125000002_add_call_sessions_and_push_reply.sql"
+  | "20261126000002_harden_realtime_rls_and_security_definers.sql"
+  | "20261126000004_add_python_track_and_telemetry.sql";
 
 export interface SupabaseErrorContext {
   status?: number | null;
@@ -210,11 +214,40 @@ export function detectMissingMigrationName(
   const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
 
   if (
+    combinedLower.includes("client_error_logs") ||
+    combinedLower.includes("learning_lesson_attempts") ||
+    combinedLower.includes("get_learning_retention_analytics") ||
+    /(?:^|[\s.'"])(tracks|lessons)(?:[\s.'"]|$)/.test(combinedLower)
+  ) {
+    return "20261126000004_add_python_track_and_telemetry.sql";
+  }
+
+  if (
+    combinedLower.includes("notify_incoming_call") ||
+    combinedLower.includes("try_parse_uuid")
+  ) {
+    return "20261126000002_harden_realtime_rls_and_security_definers.sql";
+  }
+
+  if (combinedLower.includes("call_sessions")) {
+    return "20261125000002_add_call_sessions_and_push_reply.sql";
+  }
+
+  if (
     combinedLower.includes("push_devices") ||
     combinedLower.includes("register_push_device") ||
     combinedLower.includes("unregister_push_device")
   ) {
     return "20261125000001_add_android_push_notifications.sql";
+  }
+
+  if (
+    combinedLower.includes("color_mode") ||
+    combinedLower.includes("app_theme") ||
+    combinedLower.includes("wallpaper_preset") ||
+    combinedLower.includes("wallpaper_intensity")
+  ) {
+    return "20261124000003_add_app_appearance_preferences.sql";
   }
 
   if (
@@ -605,9 +638,40 @@ function resolveSupabaseDatabaseErrorMessage(
     const missingMigration = detectMissingMigrationName(error);
     const codeSuffix = codeUpper ? ` (código ${codeUpper})` : "";
 
+    if (missingMigration === "20261126000004_add_python_track_and_telemetry.sql") {
+      return {
+        detail: `A estrutura de trilhas Python, telemetria e analytics ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261126000004_add_python_track_and_telemetry.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
+    if (
+      missingMigration ===
+      "20261126000002_harden_realtime_rls_and_security_definers.sql"
+    ) {
+      return {
+        detail: `A estrutura de sinalização privada e hardening Realtime ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261126000002_harden_realtime_rls_and_security_definers.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
+    if (
+      missingMigration === "20261125000002_add_call_sessions_and_push_reply.sql"
+    ) {
+      return {
+        detail: `A estrutura de sessões de chamada ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261125000002_add_call_sessions_and_push_reply.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
     if (missingMigration === "20261125000001_add_android_push_notifications.sql") {
       return {
         detail: `A estrutura de push Android ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261125000001_add_android_push_notifications.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
+    if (
+      missingMigration === "20261124000003_add_app_appearance_preferences.sql"
+    ) {
+      return {
+        detail: `A estrutura de preferências de aparência ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261124000003_add_app_appearance_preferences.sql no SQL Editor do projeto.`,
         meta,
       };
     }
@@ -635,8 +699,14 @@ function resolveSupabaseDatabaseErrorMessage(
         meta,
       };
     }
+    if (missingMigration === "20261123000002_add_social_network.sql") {
+      return {
+        detail: `A estrutura da rede social ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261123000002_add_social_network.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
     return {
-      detail: `A estrutura da rede social ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261123000002_add_social_network.sql no SQL Editor do projeto.`,
+      detail: `O esquema do banco de dados está desatualizado no Supabase${codeSuffix}. Aplique as migrações pendentes de supabase/migrations/ no projeto.`,
       meta,
     };
   }

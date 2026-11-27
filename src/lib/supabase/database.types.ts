@@ -524,6 +524,131 @@ export type PushDeviceUpdate = {
   last_seen_at?: string;
 };
 
+export type CallSessionStatus =
+  | "ringing"
+  | "active"
+  | "ended"
+  | "missed"
+  | "cancelled";
+
+export type CallSessionRow = {
+  id: string;
+  conversation_id: string;
+  caller_id: string;
+  answered_by: string | null;
+  status: CallSessionStatus;
+  has_video: boolean;
+  ringing_timeout_seconds: number;
+  started_at: string;
+  expires_at: string;
+  answered_at: string | null;
+  ended_at: string | null;
+  end_reason: string | null;
+};
+
+export type CallSessionInsert = {
+  id?: string;
+  conversation_id: string;
+  caller_id: string;
+  answered_by?: string | null;
+  status?: CallSessionStatus;
+  has_video?: boolean;
+  ringing_timeout_seconds?: number;
+  started_at?: string;
+  expires_at?: string;
+  answered_at?: string | null;
+  ended_at?: string | null;
+  end_reason?: string | null;
+};
+
+export type CallSessionUpdate = {
+  answered_by?: string | null;
+  status?: CallSessionStatus;
+  answered_at?: string | null;
+  ended_at?: string | null;
+  end_reason?: string | null;
+};
+
+export type TrackRow = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  category: string;
+  level: string;
+  order_index: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TrackInsert = {
+  id?: string;
+  slug: string;
+  title: string;
+  description?: string | null;
+  category?: string;
+  level?: string;
+  order_index?: number;
+  is_published?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type TrackUpdate = {
+  slug?: string;
+  title?: string;
+  description?: string | null;
+  category?: string;
+  level?: string;
+  order_index?: number;
+  is_published?: boolean;
+  updated_at?: string;
+};
+
+export type LessonRow = {
+  id: string;
+  track_id: string | null;
+  slug: string;
+  title: string;
+  language: string;
+  starter_code: string;
+  assertions_json: unknown;
+  estimated_minutes: number;
+  order_index: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LessonInsert = {
+  id?: string;
+  track_id?: string | null;
+  slug: string;
+  title: string;
+  language?: string;
+  starter_code?: string;
+  assertions_json?: unknown;
+  estimated_minutes?: number;
+  order_index?: number;
+  is_published?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type LessonUpdate = {
+  track_id?: string | null;
+  slug?: string;
+  title?: string;
+  language?: string;
+  starter_code?: string;
+  assertions_json?: unknown;
+  estimated_minutes?: number;
+  order_index?: number;
+  is_published?: boolean;
+  updated_at?: string;
+};
+
 export type ClientErrorLogRow = {
   id: string;
   user_id: string | null;
@@ -807,6 +932,54 @@ export type Database = {
           },
         ];
       };
+      call_sessions: {
+        Row: CallSessionRow;
+        Insert: CallSessionInsert;
+        Update: CallSessionUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fk_call_sessions_conversation_id";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_conversations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_call_sessions_caller_id";
+            columns: ["caller_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_call_sessions_answered_by";
+            columns: ["answered_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      tracks: {
+        Row: TrackRow;
+        Insert: TrackInsert;
+        Update: TrackUpdate;
+        Relationships: [];
+      };
+      lessons: {
+        Row: LessonRow;
+        Insert: LessonInsert;
+        Update: LessonUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "lessons_track_id_fkey";
+            columns: ["track_id"];
+            isOneToOne: false;
+            referencedRelation: "tracks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       client_error_logs: {
         Row: ClientErrorLogRow;
         Insert: ClientErrorLogInsert;
@@ -833,6 +1006,13 @@ export type Database = {
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "learning_lesson_attempts_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
         ];
       };
     };
@@ -844,12 +1024,43 @@ export type Database = {
         };
         Returns: number;
       };
+      is_friend_with_current_user: {
+        Args: {
+          target_user_id: string;
+        };
+        Returns: boolean;
+      };
+      can_view_sandbox_project: {
+        Args: {
+          p_project_id: string;
+        };
+        Returns: boolean;
+      };
+      is_reserved_or_impersonation_username: {
+        Args: {
+          p_username: string;
+        };
+        Returns: boolean;
+      };
       are_users_friends: {
         Args: {
           p_user_a: string;
           p_user_b: string;
         };
         Returns: boolean;
+      };
+      is_active_chat_member: {
+        Args: {
+          p_conversation_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      try_parse_uuid: {
+        Args: {
+          p_raw: string;
+        };
+        Returns: string | null;
       };
       can_send_chat_message: {
         Args: {

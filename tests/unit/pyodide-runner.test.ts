@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createPyodideRunner,
+  PYODIDE_INIT_TIMEOUT_MS,
   PYODIDE_MAX_OUTPUT_BYTES,
   PYODIDE_TIMEOUT_MS,
   truncateUtf8Output,
@@ -202,5 +203,60 @@ describe("pyodide-runner (Web Worker + Watchdog RN-202)", () => {
     expect(result.timedOut).toBe(false);
     expect(result.error).toContain("WASM out of memory");
     expect(created[0]?.terminated).toBe(true);
+  });
+
+  it("allows up to 45s for cold WASM download/init and resets to 5s watchdog once stage=running", async () => {
+    vi.useFakeTimers();
+    try {
+      let capturedWorker: FakeWorker | null = null;
+      let currentRunId = "";
+
+      const runner = createPyodideRunner({
+        workerFactory: () => {
+          capturedWorker = new FakeWorker((msg, w) => {
+            const payload = msg as { runId: string; type: string };
+            if (payload.type !== "run") return;
+            currentRunId = payload.runId;
+            w.emitMessage({
+              type: "status",
+              runId: payload.runId,
+              stage: "downloading",
+              progress: 20,
+              message: "Baixando runtime Python...",
+            });
+          });
+          return capturedWorker;
+        },
+      });
+
+      expect(PYODIDE_INIT_TIMEOUT_MS).toBe(45000);
+
+      const pendingRun = runner.run("while True:\n    pass");
+
+      // 12s em download frio (> 5s) NÃO deve matar o worker
+      await vi.advanceTimersByTimeAsync(12000);
+      expect(capturedWorker!.terminated).toBe(false);
+
+      // Assim que o worker entra em `running`, o watchdog volta para 5s estritos
+      capturedWorker!.emitMessage({
+        type: "status",
+        runId: currentRunId,
+        stage: "running",
+        progress: 100,
+        message: "Executando código Python...",
+      });
+
+      await vi.advanceTimersByTimeAsync(PYODIDE_TIMEOUT_MS - 1);
+      expect(capturedWorker!.terminated).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const timedOutResult = await pendingRun;
+
+      expect(timedOutResult.timedOut).toBe(true);
+      expect(timedOutResult.error).toContain("5s");
+      expect(capturedWorker!.terminated).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,5 +1,6 @@
 export const PYODIDE_WORKER_URL = "/workers/pyodide-runner.worker.js";
 export const PYODIDE_TIMEOUT_MS = 5000;
+export const PYODIDE_INIT_TIMEOUT_MS = 45000;
 export const PYODIDE_MAX_OUTPUT_BYTES = 16 * 1024;
 const PYODIDE_TRUNCATION_SUFFIX = "\n[saída truncada em 16 KB por segurança]";
 
@@ -33,6 +34,7 @@ export interface PyodideProgressEvent {
 export interface PyodideRunOptions {
   assertions?: ReadonlyArray<PythonAssertionSpec>;
   timeoutMs?: number;
+  initTimeoutMs?: number;
   indexUrl?: string;
   onProgress?: (event: PyodideProgressEvent) => void;
 }
@@ -151,6 +153,10 @@ export class PyodideRunner {
       100,
       options?.timeoutMs ?? PYODIDE_TIMEOUT_MS,
     );
+    const initTimeoutMs = Math.max(
+      timeoutMs,
+      options?.initTimeoutMs ?? PYODIDE_INIT_TIMEOUT_MS,
+    );
     const startedAt = Date.now();
 
     let worker: WorkerLike;
@@ -175,16 +181,44 @@ export class PyodideRunner {
 
     return new Promise<PyodideRunResult>((resolve) => {
       let settled = false;
+      let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const clearWatchdog = () => {
+        if (watchdogTimer !== null) {
+          clearTimeout(watchdogTimer);
+          watchdogTimer = null;
+        }
+      };
 
       const finish = (result: PyodideRunResult) => {
         if (settled) {
           return;
         }
         settled = true;
-        clearTimeout(watchdogTimer);
+        clearWatchdog();
         worker.removeEventListener("message", handleMessage);
         worker.removeEventListener("error", handleError);
         resolve(result);
+      };
+
+      const armWatchdog = (ms: number, isInitPhase: boolean) => {
+        clearWatchdog();
+        watchdogTimer = setTimeout(() => {
+          this.terminate();
+          finish({
+            runId,
+            ok: false,
+            timedOut: true,
+            stdout: "",
+            stderr: "",
+            truncated: false,
+            durationMs: Date.now() - startedAt,
+            assertions: [],
+            error: isInitPhase
+              ? `Tempo limite excedido ao baixar ou inicializar o runtime Python (${Math.round(ms / 1000)}s). Verifique sua conexão e tente novamente.`
+              : `Execução interrompida pelo watchdog de segurança (${Math.round(ms / 1000)}s). Verifique loops infinitos no código Python.`,
+          });
+        }, ms);
       };
 
       const handleMessage = (event: MessageEvent | ErrorEvent) => {
@@ -195,6 +229,11 @@ export class PyodideRunner {
         }
 
         if (data.type === "status") {
+          if (data.stage === "downloading" || data.stage === "initializing") {
+            armWatchdog(initTimeoutMs, true);
+          } else {
+            armWatchdog(timeoutMs, false);
+          }
           options?.onProgress?.({
             runId: data.runId,
             stage: data.stage,
@@ -247,20 +286,7 @@ export class PyodideRunner {
         });
       };
 
-      const watchdogTimer = setTimeout(() => {
-        this.terminate();
-        finish({
-          runId,
-          ok: false,
-          timedOut: true,
-          stdout: "",
-          stderr: "",
-          truncated: false,
-          durationMs: Date.now() - startedAt,
-          assertions: [],
-          error: `Execução interrompida pelo watchdog de segurança (${Math.round(timeoutMs / 1000)}s). Verifique loops infinitos no código Python.`,
-        });
-      }, timeoutMs);
+      armWatchdog(timeoutMs, false);
 
       worker.addEventListener("message", handleMessage);
       worker.addEventListener("error", handleError);

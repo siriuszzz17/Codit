@@ -22,6 +22,8 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
   );
 }
 
+const activeDialogStack: symbol[] = [];
+
 export interface UseDialogA11yOptions {
   open: boolean;
   containerRef: RefObject<HTMLElement | null>;
@@ -47,12 +49,20 @@ export function useDialogA11y({
       return;
     }
 
+    const dialogToken = Symbol("codit-dialog");
+    activeDialogStack.push(dialogToken);
+    const isTopMostDialog = () =>
+      activeDialogStack[activeDialogStack.length - 1] === dialogToken;
+
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
 
     const frame = window.requestAnimationFrame(() => {
+      if (!isTopMostDialog()) {
+        return;
+      }
       const container = containerRef.current;
       if (!container) {
         return;
@@ -76,6 +86,9 @@ export function useDialogA11y({
     });
 
     function handleKeyDown(event: KeyboardEvent) {
+      if (!isTopMostDialog()) {
+        return;
+      }
       const container = containerRef.current;
       if (!container) {
         return;
@@ -119,6 +132,10 @@ export function useDialogA11y({
     document.addEventListener("keydown", handleKeyDown, true);
 
     return () => {
+      const idx = activeDialogStack.lastIndexOf(dialogToken);
+      if (idx !== -1) {
+        activeDialogStack.splice(idx, 1);
+      }
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown, true);
 

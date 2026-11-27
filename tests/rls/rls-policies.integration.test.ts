@@ -388,4 +388,115 @@ describe("Supabase RLS & SECURITY DEFINER integration suite", () => {
       .eq("user_id", userA.id);
     expect(cReadsPush ?? []).toHaveLength(0);
   });
+
+  it("enforces Phase 4 RLS on tracks, lessons, telemetry and executes get_learning_retention_analytics", async () => {
+    const { data: tracks, error: tracksErr } = await anon
+      .from("tracks")
+      .select("id, slug")
+      .eq("slug", "python-fundamentos");
+    expect(tracksErr).toBeNull();
+    expect(tracks?.length).toBeGreaterThanOrEqual(1);
+
+    const { data: lessons, error: lessonsErr } = await userA.client
+      .from("lessons")
+      .select("id, slug")
+      .eq("track_id", tracks![0]!.id)
+      .order("order_index", { ascending: true });
+    expect(lessonsErr).toBeNull();
+    expect(lessons?.length).toBeGreaterThanOrEqual(1);
+
+    const targetLessonId = lessons![0]!.id as string;
+
+    // Escrita direta no catálogo curricular permanece bloqueada para clientes
+    const { error: userWritesTrackErr } = await userA.client
+      .from("tracks")
+      .insert({ slug: "idor-track", title: "Track Indevida" });
+    expect(userWritesTrackErr).not.toBeNull();
+
+    // Telemetria isolada por user_id
+    const { error: aLogErr } = await userA.client
+      .from("client_error_logs")
+      .insert({
+        user_id: userA.id,
+        trace_id: "req_rls_test_1",
+        source: "manual",
+        error_type: "TestError",
+        message: "Erro sanitizado de teste",
+        route: "/projetos",
+      });
+    expect(aLogErr).toBeNull();
+
+    const { error: bForgetsLogOwnerErr } = await userB.client
+      .from("client_error_logs")
+      .insert({
+        user_id: userA.id,
+        trace_id: "req_rls_idor",
+        source: "manual",
+        error_type: "IdorError",
+        message: "Tentativa IDOR",
+        route: "/projetos",
+      });
+    expect(bForgetsLogOwnerErr).not.toBeNull();
+
+    const { data: bReadsALogs } = await userB.client
+      .from("client_error_logs")
+      .select("id")
+      .eq("user_id", userA.id);
+    expect(bReadsALogs ?? []).toHaveLength(0);
+
+    // Tentativas de lição isoladas por user_id + RPC get_learning_retention_analytics
+    const { error: attemptFailErr } = await userA.client
+      .from("learning_lesson_attempts")
+      .insert({
+        user_id: userA.id,
+        lesson_id: targetLessonId,
+        passed: false,
+        duration_seconds: 18,
+        hint_level_used: 1,
+        failed_assertion_id: "var-nome",
+        failed_assertion_label: "Variável nome deve ser string não vazia",
+        runtime_target: "client_pyodide",
+      });
+    expect(attemptFailErr).toBeNull();
+
+    const { error: bForgesAttemptErr } = await userB.client
+      .from("learning_lesson_attempts")
+      .insert({
+        user_id: userA.id,
+        lesson_id: targetLessonId,
+        passed: true,
+        duration_seconds: 5,
+      });
+    expect(bForgesAttemptErr).not.toBeNull();
+
+    const { data: bReadsAAttempts } = await userB.client
+      .from("learning_lesson_attempts")
+      .select("id")
+      .eq("user_id", userA.id);
+    expect(bReadsAAttempts ?? []).toHaveLength(0);
+
+    const { error: anonAnalyticsErr } = await anon.rpc(
+      "get_learning_retention_analytics",
+      { p_track_slug: "python-fundamentos" },
+    );
+    expect(anonAnalyticsErr).not.toBeNull();
+
+    const { data: aAnalytics, error: aAnalyticsErr } = await userA.client.rpc(
+      "get_learning_retention_analytics",
+      { p_track_slug: "python-fundamentos" },
+    );
+    expect(aAnalyticsErr).toBeNull();
+    expect(Array.isArray(aAnalytics)).toBe(true);
+    const firstRow = (
+      aAnalytics as Array<{
+        lesson_id: string;
+        total_attempts: number;
+        top_failed_assertion_label: string | null;
+      }>
+    ).find((row) => row.lesson_id === targetLessonId);
+    expect(Number(firstRow?.total_attempts)).toBe(1);
+    expect(firstRow?.top_failed_assertion_label).toBe(
+      "Variável nome deve ser string não vazia",
+    );
+  });
 });

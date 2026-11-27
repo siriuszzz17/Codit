@@ -1188,7 +1188,7 @@ async function handleQuickReply(
   }
   const { conversationId, content } = validated;
 
-  const [conversations, activeMembers, senderProfiles] = await Promise.all([
+  const [conversations, activeMembers] = await Promise.all([
     fetchSupabaseRest<Array<{ id: string; kind: string; title: string | null }>>(
       supabaseUrl,
       serviceKey,
@@ -1198,17 +1198,6 @@ async function handleQuickReply(
       supabaseUrl,
       serviceKey,
       `chat_conversation_members?conversation_id=eq.${encodeURIComponent(conversationId)}&left_at=is.null&select=user_id`,
-    ),
-    fetchSupabaseRest<
-      Array<{
-        full_name: string | null;
-        username: string | null;
-        avatar_url: string | null;
-      }>
-    >(
-      supabaseUrl,
-      serviceKey,
-      `public_profiles?id=eq.${encodeURIComponent(senderId)}&select=full_name,username,avatar_url&limit=1`,
     ),
   ]);
 
@@ -1275,48 +1264,8 @@ async function handleQuickReply(
   }>;
   const created = insertedRows[0];
 
-  const nowIso = created?.created_at ?? new Date().toISOString();
-  const senderProfile = senderProfiles[0];
-  const senderName = formatActorDisplayName(senderProfile, "Estudante Codit");
-
-  await Promise.allSettled([
-    fetch(
-      `${supabaseUrl.replace(/\/$/, "")}/rest/v1/chat_conversation_members?conversation_id=eq.${encodeURIComponent(conversationId)}&user_id=eq.${encodeURIComponent(senderId)}&left_at=is.null`,
-      {
-        method: "PATCH",
-        headers: {
-          ...supabaseHeaders(serviceKey),
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({ last_read_at: nowIso }),
-      },
-    ),
-    recipientIds.length > 0
-      ? broadcastRealtimeEvents(
-          supabaseUrl,
-          serviceKey,
-          recipientIds.map((rid) => ({
-            topic: `codit:user-inbox:${rid}`,
-            event: "message:notify",
-            payload: {
-              conversationId,
-              conversationTitle:
-                conversation.kind === "group"
-                  ? conversation.title?.trim() || "Grupo Codit"
-                  : senderName,
-              isGroup: conversation.kind === "group",
-              senderId,
-              senderName,
-              senderUsername: senderProfile?.username ?? "codit",
-              senderAvatarUrl: senderProfile?.avatar_url ?? null,
-              preview: content.slice(0, 180),
-              sentAt: nowIso,
-            },
-          })),
-        )
-      : Promise.resolve(),
-  ]);
-
+  // O trigger `on_chat_message_inserted` já atualiza `last_read_at` do remetente
+  // e publica `message:notify` via `realtime.send` privado para os destinatários.
   return jsonResponse({
     ok: true,
     kind: "reply",

@@ -419,8 +419,8 @@ BEGIN
   failed_assertions AS (
     SELECT
       sa.lesson_id,
-      sa.failed_assertion_id,
-      MAX(sa.failed_assertion_label) AS failed_assertion_label,
+      sa.failed_assertion_id::VARCHAR(80) AS failed_assertion_id,
+      MAX(sa.failed_assertion_label)::VARCHAR(180) AS failed_assertion_label,
       COUNT(*)::BIGINT AS fail_count,
       ROW_NUMBER() OVER (
         PARTITION BY sa.lesson_id
@@ -450,8 +450,8 @@ BEGIN
     COALESCE(aa.avg_duration_seconds, 0::NUMERIC(8, 2)) AS avg_duration_seconds,
     COALESCE(aa.avg_hint_level, 0::NUMERIC(4, 2)) AS avg_hint_level,
     COALESCE(aa.max_hint_level_used, 0::SMALLINT) AS max_hint_level_used,
-    fa.failed_assertion_id AS top_failed_assertion_id,
-    fa.failed_assertion_label AS top_failed_assertion_label,
+    fa.failed_assertion_id::VARCHAR(80) AS top_failed_assertion_id,
+    fa.failed_assertion_label::VARCHAR(180) AS top_failed_assertion_label,
     COALESCE(fa.fail_count, 0::BIGINT) AS top_failed_assertion_count
   FROM public.lessons l
   INNER JOIN public.tracks t ON t.id = l.track_id
