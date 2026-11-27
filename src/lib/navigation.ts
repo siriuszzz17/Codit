@@ -1,4 +1,10 @@
-export type NavIconKey = "home" | "projects" | "community" | "messages" | "profile";
+export type NavIconKey =
+  | "home"
+  | "tracks"
+  | "projects"
+  | "community"
+  | "messages"
+  | "profile";
 
 export interface PrimaryNavItem {
   href: string;
@@ -15,6 +21,13 @@ export const PRIMARY_NAV_ITEMS: readonly PrimaryNavItem[] = [
     shortLabel: "Início",
     description: "Visão geral do Codit",
     icon: "home",
+  },
+  {
+    href: "/trilhas",
+    label: "Trilhas",
+    shortLabel: "Trilhas",
+    description: "Trilhas práticas com testes e Octopy",
+    icon: "tracks",
   },
   {
     href: "/projetos",

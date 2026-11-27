@@ -13,8 +13,13 @@ import {
 } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { CallStagePanel } from "@/components/messaging/call-stage-panel";
+import { ChatImageAttachment } from "@/components/messaging/chat-image-attachment";
+import { CodeMessageBlock } from "@/components/messaging/code-message-block";
 import { CreateGroupModal } from "@/components/messaging/create-group-modal";
 import { GroupMembersModal } from "@/components/messaging/group-members-modal";
+import { ProjectViewerModal } from "@/components/social/project-viewer-modal";
+import { ReportBlockModal } from "@/components/social/report-block-modal";
+import { SANDBOX_LANGUAGE_LABELS } from "@/components/social/social-labels";
 import { UserAvatar } from "@/components/social/user-avatar";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { SkeletonList } from "@/components/ui/skeleton";
@@ -28,7 +33,14 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useIsOnline } from "@/lib/use-is-online";
 import { useAuth } from "@/modules/auth/auth-provider";
+import type {
+  ChatReactionEmoji,
+  ModerationTargetType,
+  SandboxProjectRow,
+} from "@/lib/supabase/database.types";
 import {
+  CHAT_REACTION_EMOJIS,
+  MAX_CODE_MESSAGE_LENGTH,
   MAX_GROUP_MEMBERS,
   MAX_MESSAGE_LENGTH,
 } from "@/modules/messaging/messaging-schemas";
@@ -42,15 +54,24 @@ import {
   markConversationRead,
   MessagingServiceError,
   renameGroupConversation,
+  searchConversationMessages,
+  sendCodeConversationMessage,
   sendConversationMessage,
+  sendImageConversationMessage,
+  sendProjectShareConversationMessage,
   softDeleteConversationMessage,
+  toggleMessageReaction,
+  touchUserLastSeen,
   type ChatMessageItem,
   type ConversationSummary,
 } from "@/modules/messaging/messaging-service";
 import { useVoiceCall } from "@/modules/messaging/voice-call-provider";
 import { useNotificationsOptional } from "@/modules/notifications/notifications-provider";
+import { listUserSandboxProjects } from "@/modules/sandbox/sandbox-project-service";
 import {
+  getCommunityProjectCardById,
   listUserFriendships,
+  type CommunityProjectCard,
   type FriendshipListItem,
 } from "@/modules/social/social-service";
 
@@ -163,6 +184,21 @@ function getFirstName(fullName: string | null | undefined, username?: string): s
   return username ? `@${username}` : "Amigo";
 }
 
+function formatLastSeenLabel(iso: string | null | undefined): string | null {
+  if (!iso) {
+    return null;
+  }
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 120_000) {
+    return "Ativo agora";
+  }
+  return `Visto por último ${formatInboxTimestamp(iso)}`;
+}
+
 export function MessagesWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -229,6 +265,37 @@ export function MessagesWorkspace() {
   const [newDirectSearch, setNewDirectSearch] = useState("");
   const [createGroupModalOpen, setCreateGroupModalOpen] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
+
+  // Fase 3: mensagens ricas, busca na conversa, reações e moderação
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ChatMessageItem[]>([]);
+  const [searchingMessages, setSearchingMessages] = useState(false);
+
+  const [codeComposerOpen, setCodeComposerOpen] = useState(false);
+  const [codeLanguage, setCodeLanguage] = useState("javascript");
+  const [codeFilename, setCodeFilename] = useState("");
+  const [codeContent, setCodeContent] = useState("");
+
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const [myProjects, setMyProjects] = useState<SandboxProjectRow[]>([]);
+  const [loadingMyProjects, setLoadingMyProjects] = useState(false);
+  const [viewingSharedProject, setViewingSharedProject] =
+    useState<CommunityProjectCard | null>(null);
+  const [loadingSharedProjectId, setLoadingSharedProjectId] = useState<
+    string | null
+  >(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [openReactionPickerId, setOpenReactionPickerId] = useState<
+    string | null
+  >(null);
+  const [reportTarget, setReportTarget] = useState<{
+    targetType: ModerationTargetType;
+    targetId: string;
+    targetLabel: string;
+    blockUserId?: string | undefined;
+  } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
@@ -763,6 +830,291 @@ export function MessagesWorkspace() {
         error instanceof Error
           ? error.message
           : "Não foi possível apagar esta mensagem.",
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (!userId || !isConfigured || !isOnline) {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    void touchUserLastSeen(client);
+    const interval = setInterval(() => {
+      void touchUserLastSeen(client);
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [isConfigured, isOnline, userId]);
+
+  function broadcastMessageUpdate() {
+    void convChannelRef.current?.send({
+      type: "broadcast",
+      event: "chat:message",
+      payload: { senderId: userId, sentAt: new Date().toISOString() },
+    });
+  }
+
+  async function handleSearchMessages(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (!userId || !selectedSummary || !isOnline) {
+      return;
+    }
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    setSearchingMessages(true);
+    try {
+      const results = await searchConversationMessages(
+        userId,
+        selectedSummary.conversation.id,
+        trimmed,
+        30,
+        client,
+      );
+      setSearchResults(results);
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível pesquisar mensagens.",
+      );
+    } finally {
+      setSearchingMessages(false);
+    }
+  }
+
+  async function handleSendCodeMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId || !selectedSummary || !isOnline || sendingMessage) {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    setSendingMessage(true);
+    setWorkspaceError(null);
+    try {
+      const created = await sendCodeConversationMessage(
+        userId,
+        selectedSummary.conversation.id,
+        {
+          code: codeContent,
+          language: codeLanguage,
+          filename: codeFilename.trim() || undefined,
+        },
+        client,
+      );
+      setMessages((current) => [...current, created]);
+      setCodeContent("");
+      setCodeFilename("");
+      setCodeComposerOpen(false);
+      broadcastMessageUpdate();
+      await refreshWorkspace();
+      emitMessagesChanged();
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar o bloco de código.",
+      );
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
+  async function handleImageFileSelected(file: File | null) {
+    if (!file || !userId || !selectedSummary || !isOnline) {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    setUploadingImage(true);
+    setWorkspaceError(null);
+    try {
+      const created = await sendImageConversationMessage(
+        userId,
+        selectedSummary.conversation.id,
+        file,
+        messageInput.trim() || undefined,
+        client,
+      );
+      setMessages((current) => [...current, created]);
+      setMessageInput("");
+      broadcastMessageUpdate();
+      await refreshWorkspace();
+      emitMessagesChanged();
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a imagem.",
+      );
+    } finally {
+      setUploadingImage(false);
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+    }
+  }
+
+  async function handleOpenProjectPicker() {
+    if (projectPickerOpen) {
+      setProjectPickerOpen(false);
+      return;
+    }
+    setCodeComposerOpen(false);
+    setShowEmojiTray(false);
+    setProjectPickerOpen(true);
+
+    if (!userId || myProjects.length > 0) {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    setLoadingMyProjects(true);
+    try {
+      const list = await listUserSandboxProjects(userId, client);
+      setMyProjects(list);
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível carregar seus mini-projetos.",
+      );
+    } finally {
+      setLoadingMyProjects(false);
+    }
+  }
+
+  async function handleShareProject(project: SandboxProjectRow) {
+    if (!userId || !selectedSummary || !isOnline || sendingMessage) {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    setSendingMessage(true);
+    setWorkspaceError(null);
+    try {
+      const created = await sendProjectShareConversationMessage(
+        userId,
+        selectedSummary.conversation.id,
+        project,
+        messageInput.trim() || undefined,
+        client,
+      );
+      setMessages((current) => [...current, created]);
+      setMessageInput("");
+      setProjectPickerOpen(false);
+      broadcastMessageUpdate();
+      await refreshWorkspace();
+      emitMessagesChanged();
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível compartilhar o projeto.",
+      );
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
+  async function handleOpenSharedProject(projectId: string) {
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    setLoadingSharedProjectId(projectId);
+    setWorkspaceError(null);
+    try {
+      const card = await getCommunityProjectCardById(projectId, userId, client);
+      if (!card) {
+        setWorkspaceError(
+          "Este mini-projeto não está mais disponível ou é privado.",
+        );
+        return;
+      }
+      setViewingSharedProject(card);
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível abrir o mini-projeto compartilhado.",
+      );
+    } finally {
+      setLoadingSharedProjectId(null);
+    }
+  }
+
+  async function handleToggleReaction(
+    messageId: string,
+    emoji: ChatReactionEmoji,
+  ) {
+    if (!userId || !isOnline) {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+
+    const targetItem = messages.find((item) => item.message.id === messageId);
+    const existing = targetItem?.reactions ?? [];
+    const alreadyReacted = existing.some(
+      (r) => r.user_id === userId && r.emoji === emoji,
+    );
+
+    setOpenReactionPickerId(null);
+    try {
+      await toggleMessageReaction(
+        userId,
+        messageId,
+        emoji,
+        alreadyReacted,
+        client,
+      );
+      setMessages((current) =>
+        current.map((item) => {
+          if (item.message.id !== messageId) {
+            return item;
+          }
+          const list = item.reactions ?? [];
+          const nextReactions = alreadyReacted
+            ? list.filter((r) => !(r.user_id === userId && r.emoji === emoji))
+            : [
+                ...list,
+                {
+                  message_id: messageId,
+                  user_id: userId,
+                  emoji,
+                  created_at: new Date().toISOString(),
+                },
+              ];
+          return { ...item, reactions: nextReactions };
+        }),
+      );
+      broadcastMessageUpdate();
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar a reação.",
       );
     }
   }
@@ -1338,7 +1690,9 @@ export function MessagesWorkspace() {
                         : selectedSummary.directPeer
                           ? `@${selectedSummary.directPeer.username} · ${
                               selectedSummary.isDirectFriendActive
-                                ? "Amigo no Codit"
+                                ? (formatLastSeenLabel(
+                                    selectedSummary.directPeer.last_seen_at,
+                                  ) ?? "Amigo no Codit")
                                 : "Amizade encerrada"
                             }`
                           : "Conversa direta"}
@@ -1347,6 +1701,39 @@ export function MessagesWorkspace() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchOpen((prev) => !prev);
+                      if (searchOpen) {
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }
+                    }}
+                    title="Buscar mensagens nesta conversa"
+                    aria-label="Buscar mensagens nesta conversa"
+                    className={`inline-flex min-h-9 min-w-9 items-center justify-center rounded-full border px-2.5 text-xs font-semibold transition-colors ${
+                      searchOpen
+                        ? "border-accent bg-accent-soft text-accent-strong"
+                        : "border-border bg-surface-muted text-muted hover:border-accent hover:text-foreground"
+                    }`}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.1"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.3-4.3" />
+                    </svg>
+                  </button>
+
                   {notifications ? (
                     <button
                       type="button"
@@ -1498,15 +1885,86 @@ export function MessagesWorkspace() {
                       {MAX_GROUP_MEMBERS})
                     </button>
                   ) : selectedSummary.directPeer ? (
-                    <Link
-                      href={`/comunidade/perfil?u=${encodeURIComponent(selectedSummary.directPeer.username)}`}
-                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent"
-                    >
-                      Perfil
-                    </Link>
+                    <>
+                      <Link
+                        href={`/comunidade/perfil?u=${encodeURIComponent(selectedSummary.directPeer.username)}`}
+                        className="inline-flex min-h-9 items-center justify-center rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-foreground hover:border-accent"
+                      >
+                        Perfil
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selectedSummary.directPeer) {
+                            return;
+                          }
+                          setReportTarget({
+                            targetType: "user",
+                            targetId: selectedSummary.directPeer.id,
+                            targetLabel: `${selectedSummary.directPeer.full_name} (@${selectedSummary.directPeer.username})`,
+                            blockUserId: selectedSummary.directPeer.id,
+                          });
+                        }}
+                        title="Denunciar ou bloquear usuário"
+                        aria-label="Denunciar ou bloquear usuário"
+                        className="inline-flex min-h-9 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-500/20"
+                      >
+                        Moderar
+                      </button>
+                    </>
                   ) : null}
                 </div>
               </header>
+
+              {/* Busca textual dentro da conversa */}
+              {searchOpen ? (
+                <div className="border-b border-border bg-surface-muted/45 px-3 py-2 sm:px-4">
+                  <form
+                    onSubmit={(event) => void handleSearchMessages(event)}
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="Buscar texto nesta conversa..."
+                      aria-label="Buscar texto nesta conversa"
+                      className="min-h-9 flex-1 rounded-full border border-border bg-background px-3.5 py-1.5 text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none sm:text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={searchingMessages || !searchQuery.trim()}
+                      className="inline-flex min-h-9 items-center justify-center rounded-full bg-accent px-3.5 text-xs font-semibold text-accent-foreground disabled:opacity-60"
+                    >
+                      {searchingMessages ? "Buscando..." : "Buscar"}
+                    </button>
+                  </form>
+                  {searchResults.length > 0 ? (
+                    <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto">
+                      {searchResults.map(({ message: hit, sender: hitSender }) => (
+                        <li
+                          key={hit.id}
+                          className="rounded-xl border border-border bg-surface px-3 py-2 text-xs"
+                        >
+                          <div className="flex items-center justify-between gap-2 text-[10px] text-muted">
+                            <span className="font-semibold text-foreground">
+                              {hitSender?.full_name ?? "Participante"}
+                            </span>
+                            <span>{formatInboxTimestamp(hit.created_at)}</span>
+                          </div>
+                          <p className="mt-0.5 line-clamp-2 text-foreground">
+                            {hit.content}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : searchQuery.trim() && !searchingMessages ? (
+                    <p className="mt-1.5 text-[11px] text-muted">
+                      Nenhuma mensagem encontrada para &ldquo;{searchQuery.trim()}&rdquo;.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {/* Painel de chamada de voz, vídeo e compartilhamento de tela */}
               {activeCallInSelected ? (
@@ -1609,7 +2067,7 @@ export function MessagesWorkspace() {
                     Envie um oi ou comece uma chamada de voz acima!
                   </div>
                 ) : (
-                  messages.map(({ message, sender }, index) => {
+                  messages.map(({ message, sender, reactions }, index) => {
                     const prev = messages[index - 1]?.message;
                     const next = messages[index + 1]?.message;
                     const showDateDivider =
@@ -1637,9 +2095,36 @@ export function MessagesWorkspace() {
                     }
 
                     const isOwn = message.sender_id === userId;
+                    const meta = message.metadata_json;
+                    const msgCreatedMs = Date.parse(message.created_at);
+                    const readByOthers = isOwn
+                      ? selectedSummary.members.some(
+                          (entry) =>
+                            entry.member.user_id !== userId &&
+                            !Number.isNaN(msgCreatedMs) &&
+                            Date.parse(entry.member.last_read_at) >= msgCreatedMs,
+                        )
+                      : false;
+
+                    const reactionCounts = new Map<
+                      ChatReactionEmoji,
+                      { count: number; byMe: boolean }
+                    >();
+                    for (const reaction of reactions ?? []) {
+                      const prevCount = reactionCounts.get(reaction.emoji) ?? {
+                        count: 0,
+                        byMe: false,
+                      };
+                      reactionCounts.set(reaction.emoji, {
+                        count: prevCount.count + 1,
+                        byMe: prevCount.byMe || reaction.user_id === userId,
+                      });
+                    }
+
                     const prevSameSender =
                       Boolean(prev) &&
                       prev?.message_type === "text" &&
+                      message.message_type === "text" &&
                       prev?.sender_id === message.sender_id &&
                       !showDateDivider &&
                       Math.abs(
@@ -1650,6 +2135,7 @@ export function MessagesWorkspace() {
                     const nextSameSender =
                       Boolean(next) &&
                       next?.message_type === "text" &&
+                      message.message_type === "text" &&
                       next?.sender_id === message.sender_id &&
                       getDayKey(next.created_at) ===
                         getDayKey(message.created_at) &&
@@ -1696,7 +2182,7 @@ export function MessagesWorkspace() {
                           ) : null}
 
                           <div
-                            className={`max-w-[78%] space-y-0.5 sm:max-w-[66%] ${
+                            className={`max-w-[82%] space-y-1 sm:max-w-[68%] ${
                               isOwn ? "items-end" : "items-start"
                             } flex flex-col`}
                           >
@@ -1713,42 +2199,188 @@ export function MessagesWorkspace() {
                               </p>
                             ) : null}
 
-                            <div
-                              className={`px-3.5 py-2 ${bubbleRadius} ${
-                                isOwn
-                                  ? "bg-accent text-accent-foreground"
-                                  : "bg-surface-muted text-foreground"
-                              }`}
-                            >
-                              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                                {message.content}
-                              </p>
-                            </div>
-
-                            {!nextSameSender || isOwn ? (
+                            {message.message_type === "code" ? (
+                              <CodeMessageBlock
+                                code={message.content}
+                                language={meta?.language ?? "javascript"}
+                                filename={meta?.filename}
+                                compact
+                              />
+                            ) : message.message_type === "image" ? (
                               <div
-                                className={`flex items-center gap-2 px-1.5 text-[10px] text-muted ${
-                                  nextSameSender
-                                    ? "opacity-0 transition-opacity group-hover:opacity-100"
-                                    : ""
+                                className={`p-2 ${bubbleRadius} ${
+                                  isOwn
+                                    ? "bg-accent text-accent-foreground"
+                                    : "bg-surface-muted text-foreground"
                                 }`}
                               >
-                                <span>
-                                  {formatShortTime(message.created_at)}
-                                </span>
-                                {isOwn ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleDeleteMessage(message.id)
-                                    }
-                                    className="font-medium hover:text-foreground hover:underline"
-                                  >
-                                    Apagar
-                                  </button>
+                                <ChatImageAttachment
+                                  storagePath={meta?.storage_path}
+                                  caption={message.content}
+                                />
+                              </div>
+                            ) : message.message_type === "project_share" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (meta?.project_id) {
+                                    void handleOpenSharedProject(meta.project_id);
+                                  }
+                                }}
+                                disabled={
+                                  !meta?.project_id ||
+                                  loadingSharedProjectId === meta?.project_id
+                                }
+                                className="w-full min-w-[230px] rounded-2xl border border-border bg-surface-elevated p-3 text-left shadow-xs transition-colors hover:border-accent disabled:opacity-65"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent-strong">
+                                    {meta?.project_language
+                                      ? (SANDBOX_LANGUAGE_LABELS[
+                                          meta.project_language
+                                        ] ?? meta.project_language)
+                                      : "Mini-projeto"}
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-accent-strong">
+                                    {loadingSharedProjectId === meta?.project_id
+                                      ? "Abrindo..."
+                                      : "Abrir preview"}
+                                  </span>
+                                </div>
+                                <p className="mt-1.5 text-sm font-bold text-foreground">
+                                  {meta?.project_title ?? "Mini-projeto Sandbox"}
+                                </p>
+                                {meta?.project_description ? (
+                                  <p className="mt-0.5 line-clamp-2 text-xs text-muted">
+                                    {meta.project_description}
+                                  </p>
                                 ) : null}
+                                {message.content ? (
+                                  <p className="mt-1.5 text-xs text-foreground/85">
+                                    {message.content}
+                                  </p>
+                                ) : null}
+                              </button>
+                            ) : (
+                              <div
+                                className={`px-3.5 py-2 ${bubbleRadius} ${
+                                  isOwn
+                                    ? "bg-accent text-accent-foreground"
+                                    : "bg-surface-muted text-foreground"
+                                }`}
+                              >
+                                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                                  {message.content}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Reações existentes */}
+                            {reactionCounts.size > 0 ? (
+                              <div className="flex flex-wrap items-center gap-1 px-1">
+                                {Array.from(reactionCounts.entries()).map(
+                                  ([emoji, info]) => (
+                                    <button
+                                      key={emoji}
+                                      type="button"
+                                      onClick={() =>
+                                        void handleToggleReaction(
+                                          message.id,
+                                          emoji,
+                                        )
+                                      }
+                                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                                        info.byMe
+                                          ? "border-accent bg-accent-soft text-accent-strong"
+                                          : "border-border bg-surface text-foreground hover:border-accent"
+                                      }`}
+                                    >
+                                      <span>{emoji}</span>
+                                      <span className="font-semibold">
+                                        {info.count}
+                                      </span>
+                                    </button>
+                                  ),
+                                )}
                               </div>
                             ) : null}
+
+                            {/* Seletor rápido de reações */}
+                            {openReactionPickerId === message.id ? (
+                              <div className="flex items-center gap-1 rounded-full border border-border bg-surface-elevated px-2 py-1 shadow-sm">
+                                {CHAT_REACTION_EMOJIS.map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() =>
+                                      void handleToggleReaction(
+                                        message.id,
+                                        emoji,
+                                      )
+                                    }
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-sm transition-transform hover:scale-115 hover:bg-surface-muted"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+
+                            <div
+                              className={`flex items-center gap-2 px-1.5 text-[10px] text-muted ${
+                                nextSameSender
+                                  ? "opacity-0 transition-opacity group-hover:opacity-100"
+                                  : ""
+                              }`}
+                            >
+                              <span>
+                                {formatShortTime(message.created_at)}
+                              </span>
+                              {isOwn ? (
+                                <span className="font-medium text-accent-strong">
+                                  {readByOthers ? "✓✓ Lida" : "✓ Enviada"}
+                                </span>
+                              ) : null}
+                              {selectedSummary.canSendMessages ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setOpenReactionPickerId((cur) =>
+                                      cur === message.id ? null : message.id,
+                                    )
+                                  }
+                                  className="font-medium hover:text-foreground hover:underline"
+                                >
+                                  Reagir
+                                </button>
+                              ) : null}
+                              {isOwn ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void handleDeleteMessage(message.id)
+                                  }
+                                  className="font-medium hover:text-foreground hover:underline"
+                                >
+                                  Apagar
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setReportTarget({
+                                      targetType: "message",
+                                      targetId: message.id,
+                                      targetLabel: `Mensagem de ${sender?.full_name ?? "Participante"}`,
+                                      blockUserId: message.sender_id,
+                                    })
+                                  }
+                                  className="font-medium hover:text-red-500 hover:underline"
+                                >
+                                  Denunciar
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1801,13 +2433,147 @@ export function MessagesWorkspace() {
                       </div>
                     ) : null}
 
+                    {codeComposerOpen ? (
+                      <form
+                        onSubmit={(event) => void handleSendCodeMessage(event)}
+                        className="space-y-2 rounded-2xl border border-border bg-surface-muted/75 p-3"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            aria-label="Linguagem do código"
+                            value={codeLanguage}
+                            onChange={(event) =>
+                              setCodeLanguage(event.target.value)
+                            }
+                            className="min-h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground focus:border-accent focus:outline-none"
+                          >
+                            <option value="javascript">JavaScript</option>
+                            <option value="typescript">TypeScript</option>
+                            <option value="python">Python</option>
+                            <option value="html">HTML</option>
+                            <option value="css">CSS</option>
+                            <option value="sql">SQL</option>
+                            <option value="java">Java</option>
+                            <option value="cpp">C++</option>
+                            <option value="go">Go</option>
+                            <option value="rust">Rust</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={codeFilename}
+                            onChange={(event) =>
+                              setCodeFilename(event.target.value)
+                            }
+                            maxLength={80}
+                            placeholder="Arquivo (opcional, ex.: app.ts)"
+                            className="min-h-8 flex-1 rounded-lg border border-border bg-background px-2.5 font-mono text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setCodeComposerOpen(false)}
+                            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-muted hover:text-foreground"
+                          >
+                            Fechar
+                          </button>
+                        </div>
+                        <textarea
+                          rows={4}
+                          maxLength={MAX_CODE_MESSAGE_LENGTH}
+                          value={codeContent}
+                          onChange={(event) =>
+                            setCodeContent(event.target.value)
+                          }
+                          placeholder="Cole ou escreva seu trecho de código aqui..."
+                          className="w-full rounded-xl border border-border bg-background p-2.5 font-mono text-xs text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-muted">
+                            {codeContent.length}/{MAX_CODE_MESSAGE_LENGTH}
+                          </span>
+                          <button
+                            type="submit"
+                            disabled={
+                              !isOnline || sendingMessage || !codeContent.trim()
+                            }
+                            className="inline-flex min-h-8 items-center justify-center rounded-full bg-accent px-3.5 text-xs font-semibold text-accent-foreground disabled:opacity-60"
+                          >
+                            {sendingMessage ? "Enviando..." : "Enviar código"}
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+
+                    {projectPickerOpen ? (
+                      <div className="space-y-2 rounded-2xl border border-border bg-surface-muted/75 p-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-foreground">
+                            Compartilhar mini-projeto do Sandbox
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setProjectPickerOpen(false)}
+                            className="text-xs font-semibold text-muted hover:text-foreground"
+                          >
+                            Fechar
+                          </button>
+                        </div>
+                        {loadingMyProjects ? (
+                          <p className="text-xs text-muted">
+                            Carregando seus projetos...
+                          </p>
+                        ) : myProjects.length === 0 ? (
+                          <p className="text-xs text-muted">
+                            Você ainda não possui mini-projetos salvos.
+                          </p>
+                        ) : (
+                          <ul className="max-h-44 space-y-1.5 overflow-y-auto">
+                            {myProjects.map((proj) => (
+                              <li key={proj.id}>
+                                <button
+                                  type="button"
+                                  disabled={sendingMessage || !isOnline}
+                                  onClick={() => void handleShareProject(proj)}
+                                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-left text-xs transition-colors hover:border-accent disabled:opacity-60"
+                                >
+                                  <span className="min-w-0 truncate font-semibold text-foreground">
+                                    {proj.title}
+                                  </span>
+                                  <span className="shrink-0 rounded bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent-strong">
+                                    {SANDBOX_LANGUAGE_LABELS[
+                                      proj.primary_language
+                                    ] ?? proj.primary_language}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ) : null}
+
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(event) =>
+                        void handleImageFileSelected(
+                          event.target.files?.[0] ?? null,
+                        )
+                      }
+                    />
+
                     <form
                       onSubmit={(event) => void handleSendMessage(event)}
-                      className="flex items-end gap-2 rounded-3xl border border-border bg-surface-muted/65 px-2.5 py-1.5 focus-within:border-accent"
+                      className="flex items-end gap-1.5 rounded-3xl border border-border bg-surface-muted/65 px-2.5 py-1.5 focus-within:border-accent"
                     >
                       <button
                         type="button"
-                        onClick={() => setShowEmojiTray((prev) => !prev)}
+                        onClick={() => {
+                          setCodeComposerOpen(false);
+                          setProjectPickerOpen(false);
+                          setShowEmojiTray((prev) => !prev);
+                        }}
                         aria-label="Inserir emoji"
                         title="Emojis rápidos"
                         className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface hover:text-foreground"
@@ -1827,6 +2593,88 @@ export function MessagesWorkspace() {
                           <path d="M8 14s1.5 2 4 2 4-2 4-2" />
                           <line x1="9" x2="9.01" y1="9" y2="9" />
                           <line x1="15" x2="15.01" y1="9" y2="9" />
+                        </svg>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEmojiTray(false);
+                          setProjectPickerOpen(false);
+                          setCodeComposerOpen((prev) => !prev);
+                        }}
+                        aria-label="Enviar bloco de código"
+                        title="Bloco de código"
+                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold transition-colors ${
+                          codeComposerOpen
+                            ? "bg-accent-soft text-accent-strong"
+                            : "text-muted hover:bg-surface hover:text-foreground"
+                        }`}
+                      >
+                        {"</>"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!isOnline || uploadingImage}
+                        onClick={() => imageInputRef.current?.click()}
+                        aria-label="Anexar imagem"
+                        title="Enviar imagem (até 5 MB)"
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface hover:text-foreground disabled:opacity-50"
+                      >
+                        {uploadingImage ? (
+                          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent" />
+                        ) : (
+                          <svg
+                            width="17"
+                            height="17"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <rect
+                              width="18"
+                              height="18"
+                              x="3"
+                              y="3"
+                              rx="2"
+                              ry="2"
+                            />
+                            <circle cx="9" cy="9" r="2" />
+                            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                          </svg>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenProjectPicker()}
+                        aria-label="Compartilhar mini-projeto"
+                        title="Compartilhar mini-projeto do Sandbox"
+                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
+                          projectPickerOpen
+                            ? "bg-accent-soft text-accent-strong"
+                            : "text-muted hover:bg-surface hover:text-foreground"
+                        }`}
+                      >
+                        <svg
+                          width="17"
+                          height="17"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                          <path d="m3.3 7 8.7 5 8.7-5" />
+                          <path d="M12 22V12" />
                         </svg>
                       </button>
 
@@ -2069,6 +2917,31 @@ export function MessagesWorkspace() {
             setSelectedId(null);
             setMobileView("list");
             await refreshWorkspace();
+          }}
+        />
+      ) : null}
+      {viewingSharedProject ? (
+        <ProjectViewerModal
+          key={viewingSharedProject.project.id}
+          item={viewingSharedProject}
+          viewerId={userId}
+          isOnline={isOnline}
+          onClose={() => setViewingSharedProject(null)}
+        />
+      ) : null}
+
+      {userId && reportTarget ? (
+        <ReportBlockModal
+          isOpen={Boolean(reportTarget)}
+          viewerId={userId}
+          targetType={reportTarget.targetType}
+          targetId={reportTarget.targetId}
+          targetLabel={reportTarget.targetLabel}
+          blockUserId={reportTarget.blockUserId}
+          isOnline={isOnline}
+          onClose={() => setReportTarget(null)}
+          onBlockedChange={() => {
+            void refreshWorkspace();
           }}
         />
       ) : null}

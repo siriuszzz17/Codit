@@ -6,7 +6,7 @@ import {
 } from "./desktop-updater";
 
 export const CURRENT_APP_VERSION =
-  process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.13";
+  process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.15";
 
 export const RELEASE_MANIFEST_URL =
   "https://github.com/siriuszzz17/Codit/releases/latest/download/latest.json";

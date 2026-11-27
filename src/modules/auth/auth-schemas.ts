@@ -26,6 +26,8 @@ export const loginSchema = z.object({
     .min(1, "Informe sua senha."),
 });
 
+export const CURRENT_PRIVACY_VERSION = "2026-11";
+
 export const signUpSchema = z
   .object({
     fullName: z
@@ -49,6 +51,13 @@ export const signUpSchema = z
     confirmPassword: z
       .string({ error: "Confirme sua senha." })
       .min(1, "Confirme sua senha."),
+    acceptedTerms: z
+      .boolean()
+      .optional()
+      .refine(
+        (value) => value !== false,
+        "Você precisa aceitar a Política de Privacidade e os Termos de Uso.",
+      ),
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],

@@ -9,9 +9,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .on_permission_request(|_webview, kind| match kind {
-            PermissionKind::Microphone => PermissionResponse::Allow,
-            // RN-504: câmera de vídeo permanece estritamente bloqueada no Codit.
-            PermissionKind::Camera => PermissionResponse::Deny,
+            PermissionKind::Microphone | PermissionKind::Camera => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
         });
 

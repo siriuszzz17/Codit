@@ -86,7 +86,44 @@ export type ChatConversationKind = "direct" | "group";
 
 export type ChatMemberRole = "owner" | "member";
 
-export type ChatMessageType = "text" | "system";
+export type ChatMessageType =
+  | "text"
+  | "system"
+  | "code"
+  | "image"
+  | "project_share";
+
+export type ChatReactionEmoji = "👍" | "❤️" | "🔥" | "😂" | "🚀" | "👀";
+
+export type ModerationTargetType = "user" | "project" | "message";
+
+export type ModerationReportReason =
+  | "spam"
+  | "harassment"
+  | "inappropriate_content"
+  | "impersonation"
+  | "copyright"
+  | "other";
+
+export type ModerationReportStatus =
+  | "open"
+  | "reviewing"
+  | "resolved"
+  | "dismissed";
+
+export type ChatMessageMetadataJson = {
+  language?: string;
+  filename?: string;
+  storage_path?: string;
+  mime_type?: string;
+  file_size?: number;
+  project_id?: string;
+  project_title?: string;
+  project_language?: SandboxLanguage;
+  project_visibility?: SandboxVisibility;
+  project_author_username?: string;
+  project_description?: string | null;
+};
 
 export type NotificationCategory =
   | "message"
@@ -139,6 +176,14 @@ export type ProfileRow = {
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
   notification_prefs?: NotificationPreferencesJson;
+  xp_total?: number;
+  current_streak?: number;
+  last_activity_date?: string | null;
+  badges?: string[];
+  onboarding_completed_at?: string | null;
+  terms_accepted_at?: string | null;
+  privacy_version?: string | null;
+  last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -168,6 +213,14 @@ export type ProfileInsert = {
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
   notification_prefs?: NotificationPreferencesJson;
+  xp_total?: number;
+  current_streak?: number;
+  last_activity_date?: string | null;
+  badges?: string[];
+  onboarding_completed_at?: string | null;
+  terms_accepted_at?: string | null;
+  privacy_version?: string | null;
+  last_seen_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -195,6 +248,14 @@ export type ProfileUpdate = {
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
   notification_prefs?: NotificationPreferencesJson;
+  xp_total?: number;
+  current_streak?: number;
+  last_activity_date?: string | null;
+  badges?: string[];
+  onboarding_completed_at?: string | null;
+  terms_accepted_at?: string | null;
+  privacy_version?: string | null;
+  last_seen_at?: string | null;
   updated_at?: string;
 };
 
@@ -214,6 +275,10 @@ export type PublicProfileRow = {
   avatar_frame: ProfileAvatarFrame;
   octopy_companion: OctopyCompanionMood;
   skills: string[];
+  xp_total?: number;
+  current_streak?: number;
+  badges?: string[];
+  last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -445,6 +510,7 @@ export type ChatMessageRow = {
   sender_id: string;
   message_type: ChatMessageType;
   content: string;
+  metadata_json?: ChatMessageMetadataJson;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -456,6 +522,7 @@ export type ChatMessageInsert = {
   sender_id: string;
   message_type?: ChatMessageType;
   content: string;
+  metadata_json?: ChatMessageMetadataJson;
   created_at?: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -463,6 +530,58 @@ export type ChatMessageInsert = {
 
 export type ChatMessageUpdate = {
   deleted_at?: string | null;
+  updated_at?: string;
+};
+
+export type ChatMessageReactionRow = {
+  message_id: string;
+  user_id: string;
+  emoji: ChatReactionEmoji;
+  created_at: string;
+};
+
+export type ChatMessageReactionInsert = {
+  message_id: string;
+  user_id: string;
+  emoji: ChatReactionEmoji;
+  created_at?: string;
+};
+
+export type UserBlockRow = {
+  blocker_id: string;
+  blocked_id: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type UserBlockInsert = {
+  blocker_id: string;
+  blocked_id: string;
+  reason?: string | null;
+  created_at?: string;
+};
+
+export type ModerationReportRow = {
+  id: string;
+  reporter_id: string;
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: ModerationReportReason;
+  details: string | null;
+  status: ModerationReportStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ModerationReportInsert = {
+  id?: string;
+  reporter_id: string;
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: ModerationReportReason;
+  details?: string | null;
+  status?: ModerationReportStatus;
+  created_at?: string;
   updated_at?: string;
 };
 
@@ -569,13 +688,33 @@ export type CallSessionUpdate = {
   end_reason?: string | null;
 };
 
+export type TrackDifficulty = "beginner" | "intermediate" | "advanced";
+
+export type LessonProgressStatus = "not_started" | "in_progress" | "completed";
+
+export type LessonHintJson = {
+  level: 1 | 2 | 3;
+  title: string;
+  content: string;
+};
+
+export type LessonTestCaseJson = {
+  id: string;
+  label: string;
+  expression: string;
+  expected: unknown;
+};
+
 export type TrackRow = {
   id: string;
   slug: string;
   title: string;
-  description: string | null;
+  description: string;
   category: string;
   level: string;
+  difficulty: TrackDifficulty;
+  language: string;
+  estimated_minutes: number;
   order_index: number;
   is_published: boolean;
   created_at: string;
@@ -589,6 +728,9 @@ export type TrackInsert = {
   description?: string | null;
   category?: string;
   level?: string;
+  difficulty?: TrackDifficulty;
+  language?: string;
+  estimated_minutes?: number;
   order_index?: number;
   is_published?: boolean;
   created_at?: string;
@@ -601,6 +743,9 @@ export type TrackUpdate = {
   description?: string | null;
   category?: string;
   level?: string;
+  difficulty?: TrackDifficulty;
+  language?: string;
+  estimated_minutes?: number;
   order_index?: number;
   is_published?: boolean;
   updated_at?: string;
@@ -608,45 +753,32 @@ export type TrackUpdate = {
 
 export type LessonRow = {
   id: string;
-  track_id: string | null;
+  track_id: string;
   slug: string;
   title: string;
-  language: string;
+  summary: string;
+  content_md: string;
   starter_code: string;
+  solution_code: string;
+  language: string;
   assertions_json: unknown;
   estimated_minutes: number;
   order_index: number;
+  xp_reward: number;
+  hints: LessonHintJson[];
+  test_cases: LessonTestCaseJson[];
   is_published: boolean;
   created_at: string;
   updated_at: string;
 };
 
-export type LessonInsert = {
-  id?: string;
-  track_id?: string | null;
-  slug: string;
-  title: string;
-  language?: string;
-  starter_code?: string;
-  assertions_json?: unknown;
-  estimated_minutes?: number;
-  order_index?: number;
-  is_published?: boolean;
-  created_at?: string;
-  updated_at?: string;
-};
+export type LessonInsert = Partial<LessonRow> &
+  Pick<LessonRow, "slug" | "title"> & {
+    track_id?: string | null;
+  };
 
-export type LessonUpdate = {
+export type LessonUpdate = Partial<LessonRow> & {
   track_id?: string | null;
-  slug?: string;
-  title?: string;
-  language?: string;
-  starter_code?: string;
-  assertions_json?: unknown;
-  estimated_minutes?: number;
-  order_index?: number;
-  is_published?: boolean;
-  updated_at?: string;
 };
 
 export type ClientErrorLogRow = {
@@ -739,6 +871,100 @@ export type LearningRetentionAnalyticsRow = {
   top_failed_assertion_id: string | null;
   top_failed_assertion_label: string | null;
   top_failed_assertion_count: number;
+};
+
+export type UserLessonProgressRow = {
+  user_id: string;
+  lesson_id: string;
+  status: LessonProgressStatus;
+  best_code: string | null;
+  attempts_count: number;
+  max_hint_level_used: number;
+  xp_awarded: number;
+  completed_at: string | null;
+  last_attempt_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExerciseSubmissionRow = {
+  id: string;
+  user_id: string;
+  lesson_id: string;
+  code: string;
+  passed: boolean;
+  passed_cases: number;
+  total_cases: number;
+  execution_ms: number;
+  hint_level_used: number;
+  xp_earned: number;
+  created_at: string;
+};
+
+export type ErrorEventRow = {
+  id: string;
+  user_id: string | null;
+  trace_id: string;
+  source: "frontend" | "api" | "worker";
+  severity: "warning" | "error" | "fatal";
+  title: string;
+  message: string;
+  stack: string | null;
+  route: string | null;
+  problem_type: string | null;
+  status_code: number | null;
+  context_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ErrorEventInsert = {
+  id?: string;
+  user_id?: string | null;
+  trace_id: string;
+  source?: "frontend" | "api" | "worker";
+  severity?: "warning" | "error" | "fatal";
+  title: string;
+  message: string;
+  stack?: string | null;
+  route?: string | null;
+  problem_type?: string | null;
+  status_code?: number | null;
+  context_json?: Record<string, unknown>;
+  created_at?: string;
+};
+
+export type LearningAnalyticsLessonBreakdown = {
+  lesson_id: string;
+  slug: string;
+  title: string;
+  status: LessonProgressStatus;
+  attempts_count: number;
+  max_hint_level_used: number;
+  total_execution_ms: number;
+};
+
+export type LearningAnalyticsSummaryRpcResult = {
+  total_attempts: number;
+  passed_attempts: number;
+  total_execution_ms: number;
+  avg_execution_ms: number;
+  max_hint_level_used: number;
+  total_lessons: number;
+  completed_lessons: number;
+  completion_rate_percent: number;
+  lessons: LearningAnalyticsLessonBreakdown[];
+};
+
+export type RecordLessonAttemptRpcResult = {
+  status: LessonProgressStatus;
+  already_completed: boolean;
+  xp_earned: number;
+  xp_total: number;
+  current_streak: number;
+  badges: string[];
+  newly_unlocked_badges: string[];
+  attempts_count: number;
+  completed_at: string | null;
 };
 
 export type Database = {
@@ -897,6 +1123,68 @@ export type Database = {
           },
         ];
       };
+      chat_message_reactions: {
+        Row: ChatMessageReactionRow;
+        Insert: ChatMessageReactionInsert;
+        Update: Partial<ChatMessageReactionRow>;
+        Relationships: [
+          {
+            foreignKeyName: "fk_chat_message_reactions_message_id";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_messages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_chat_message_reactions_user_id";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      user_blocks: {
+        Row: UserBlockRow;
+        Insert: UserBlockInsert;
+        Update: Partial<UserBlockRow>;
+        Relationships: [
+          {
+            foreignKeyName: "fk_user_blocks_blocker_id";
+            columns: ["blocker_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_user_blocks_blocked_id";
+            columns: ["blocked_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      moderation_reports: {
+        Row: ModerationReportRow;
+        Insert: ModerationReportInsert;
+        Update: Partial<ModerationReportRow>;
+        Relationships: [
+          {
+            foreignKeyName: "fk_moderation_reports_reporter_id";
+            columns: ["reporter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      error_events: {
+        Row: ErrorEventRow;
+        Insert: ErrorEventInsert;
+        Update: Partial<ErrorEventRow>;
+        Relationships: [];
+      };
       notifications: {
         Row: NotificationRow;
         Insert: NotificationInsert;
@@ -1008,6 +1296,50 @@ export type Database = {
           },
           {
             foreignKeyName: "learning_lesson_attempts_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      user_lesson_progress: {
+        Row: UserLessonProgressRow;
+        Insert: Partial<UserLessonProgressRow> &
+          Pick<UserLessonProgressRow, "user_id" | "lesson_id">;
+        Update: Partial<UserLessonProgressRow>;
+        Relationships: [
+          {
+            foreignKeyName: "user_lesson_progress_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      exercise_submissions: {
+        Row: ExerciseSubmissionRow;
+        Insert: Partial<ExerciseSubmissionRow> &
+          Pick<ExerciseSubmissionRow, "user_id" | "lesson_id" | "code">;
+        Update: Partial<ExerciseSubmissionRow>;
+        Relationships: [
+          {
+            foreignKeyName: "exercise_submissions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "exercise_submissions_lesson_id_fkey";
             columns: ["lesson_id"];
             isOneToOne: false;
             referencedRelation: "lessons";
@@ -1141,6 +1473,57 @@ export type Database = {
           p_track_slug?: string | null;
         };
         Returns: LearningRetentionAnalyticsRow[];
+      };
+      record_lesson_attempt: {
+        Args: {
+          p_lesson_id: string;
+          p_code: string;
+          p_passed: boolean;
+          p_passed_cases: number;
+          p_total_cases: number;
+          p_execution_ms?: number;
+          p_hint_level_used?: number;
+        };
+        Returns: RecordLessonAttemptRpcResult;
+      };
+      are_users_blocked: {
+        Args: {
+          p_user_a: string;
+          p_user_b: string;
+        };
+        Returns: boolean;
+      };
+      touch_last_seen: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
+      search_conversation_messages: {
+        Args: {
+          p_conversation_id: string;
+          p_query: string;
+          p_limit?: number;
+        };
+        Returns: ChatMessageRow[];
+      };
+      accept_privacy_terms: {
+        Args: {
+          p_version?: string;
+        };
+        Returns: string;
+      };
+      export_my_account_data: {
+        Args: Record<string, never>;
+        Returns: Record<string, unknown>;
+      };
+      delete_my_account: {
+        Args: {
+          p_confirm_username: string;
+        };
+        Returns: boolean;
+      };
+      get_learning_analytics_summary: {
+        Args: Record<string, never>;
+        Returns: LearningAnalyticsSummaryRpcResult;
       };
     };
     Enums: Record<string, never>;

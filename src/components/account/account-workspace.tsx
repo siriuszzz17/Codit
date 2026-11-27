@@ -6,6 +6,7 @@ import {
   ProfileCustomizerPanel,
   type ProfileDraftState,
 } from "@/components/account/profile-customizer-panel";
+import { PrivacyDataPanel } from "@/components/account/privacy-data-panel";
 import { ProfileHeroCard } from "@/components/account/profile-hero-card";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -28,6 +29,7 @@ export function AccountWorkspace() {
     isConfigured,
     authError,
     refreshProfile,
+    signOut,
   } = useAuth();
   const userId = user?.id ?? null;
 
@@ -335,6 +337,14 @@ export function AccountWorkspace() {
           setProfileMessage(null);
         }}
         onSave={handleSaveProfile}
+      />
+
+      <PrivacyDataPanel
+        userId={user.id}
+        profile={previewProfile}
+        isOnline={isOnline}
+        onRefreshProfile={refreshProfile}
+        onSignOut={signOut}
       />
     </main>
   );

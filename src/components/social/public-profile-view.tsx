@@ -8,6 +8,7 @@ import { OctopyBadge } from "@/components/brand/octopy-badge";
 import { LanguageBadge, LanguageIcon } from "@/components/sandbox/language-icon";
 import { FriendshipActionButton } from "@/components/social/friendship-action-button";
 import { ProjectViewerModal } from "@/components/social/project-viewer-modal";
+import { ReportBlockModal } from "@/components/social/report-block-modal";
 import {
   formatDatePtBr,
   getInitials,
@@ -33,6 +34,7 @@ import {
   computeLanguageBreakdown,
   getLanguageMeta,
 } from "@/modules/sandbox/language-catalog";
+import { getBadgeMeta } from "@/modules/learning/learning-schemas";
 import {
   getPublicProfileBundle,
   mergeSelfPublicProfileFallback,
@@ -91,6 +93,7 @@ export function PublicProfileView() {
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] =
     useState<CommunityProjectCard | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const missingParams = !usernameParam?.trim() && !userIdParam?.trim();
   const isFetchingTarget =
@@ -599,6 +602,16 @@ export function PublicProfileView() {
                         }}
                         onError={setProfileError}
                       />
+                      {viewerId ? (
+                        <button
+                          type="button"
+                          onClick={() => setReportModalOpen(true)}
+                          disabled={!isOnline}
+                          className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/20 disabled:opacity-60"
+                        >
+                          Denunciar / Bloquear
+                        </button>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -704,7 +717,19 @@ export function PublicProfileView() {
               </div>
 
               {/* Métricas públicas integradas em faixa única */}
-              <div className="mt-5 grid grid-cols-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-muted/35 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="mt-5 grid grid-cols-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-muted/35 sm:grid-cols-5 sm:divide-x sm:divide-y-0">
+                <div className="px-4 py-3">
+                  <p className="text-[11px] font-medium text-muted">XP total</p>
+                  <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+                    {displayProfile.xp_total ?? 0}
+                  </p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-[11px] font-medium text-muted">Sequência</p>
+                  <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+                    {displayProfile.current_streak ?? 0}d
+                  </p>
+                </div>
                 <div className="px-4 py-3">
                   <p className="text-[11px] font-medium text-muted">Amigos</p>
                   <p className="mt-0.5 text-lg font-bold text-foreground">
@@ -742,6 +767,23 @@ export function PublicProfileView() {
                   </div>
                 </div>
               </div>
+
+              {(displayProfile.badges?.length ?? 0) > 0 ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {(displayProfile.badges ?? []).map((badgeId) => {
+                    const meta = getBadgeMeta(badgeId);
+                    return (
+                      <span
+                        key={badgeId}
+                        title={meta.description}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.toneClass}`}
+                      >
+                        {meta.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
 
               {breakdown.length > 0 ? (
                 <div className="mt-4 space-y-2">
@@ -902,6 +944,22 @@ export function PublicProfileView() {
           onClose={() => setSelectedProject(null)}
           onProjectMetaChange={handleProjectMetaChange}
           onMigrationMissing={() => setMigrationMissing(true)}
+        />
+      ) : null}
+
+      {viewerId && displayProfile && reportModalOpen ? (
+        <ReportBlockModal
+          isOpen={reportModalOpen}
+          viewerId={viewerId}
+          targetType="user"
+          targetId={displayProfile.id}
+          targetLabel={`${displayProfile.full_name} (@${displayProfile.username})`}
+          blockUserId={displayProfile.id}
+          isOnline={isOnline}
+          onClose={() => setReportModalOpen(false)}
+          onBlockedChange={() => {
+            void reloadBundle();
+          }}
         />
       ) : null}
     </main>

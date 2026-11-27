@@ -64,6 +64,24 @@ function NavItemIcon({
           <path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5Z" />
         </svg>
       );
+    case "tracks":
+      return (
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+          <path d="M8 7h8" />
+          <path d="M8 11h6" />
+        </svg>
+      );
     case "projects":
       return (
         <svg
@@ -459,7 +477,7 @@ export function TopNavbar() {
         aria-label="Navegação móvel"
         className="codit-safe-bottom codit-safe-x fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-surface-elevated/95 backdrop-blur-md md:hidden"
       >
-        <div className="grid grid-cols-5 gap-1 px-2 py-1.5">
+        <div className="grid grid-cols-6 gap-1 px-2 py-1.5">
           {PRIMARY_NAV_ITEMS.map((item) => {
             const active = isNavItemActive(pathname, item.href);
             const isMessages = item.icon === "messages";

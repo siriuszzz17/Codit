@@ -2,12 +2,12 @@
 
 ## Versões Suportadas
 
-O projeto encontra-se em desenvolvimento ativo na branch `master` (Fase 1). Correções de segurança são aplicadas diretamente na linha principal antes da publicação de versões estáveis.
+O projeto encontra-se ativo na branch `master` (`v0.1.15`). Correções de segurança são publicadas diretamente na linha principal e distribuídas via atualizador assinado (Desktop Tauri) e GitHub Releases (Android APK).
 
 | Canal / Versão | Status | Suporte a Correções de Segurança |
 | :--- | :--- | :--- |
-| `master` (atual) | Em desenvolvimento | Sim |
-| Pré-releases anteriores (`Apk`) | Apenas testes iniciais | Não |
+| `master` / `v0.1.15` | Atual (estável) | Sim |
+| Versões `<= 0.1.14` | Substituídas | Atualizar para `v0.1.15` |
 
 ## Como Reportar uma Vulnerabilidade
 
@@ -15,14 +15,12 @@ O projeto encontra-se em desenvolvimento ativo na branch `master` (Fase 1). Corr
 
 1. Utilize o canal privado do **GitHub Security Advisories**:
    `https://github.com/siriuszzz17/Codit/security/advisories/new`
-2. Inclua na descrição:
-   - Passos claros para reprodução e componente afetado (Web/PWA, API, Sandbox, Desktop Tauri ou Android Capacitor).
-   - Impacto potencial (exposição de `user_id`, XSS no Sandbox, bypass de CSP, vazamento em logs).
-   - Versão ou commit analisado.
+2. Inclua passos de reprodução, camada afetada (Web/PWA, Edge Function, Sandbox/Pyodide, Tauri Desktop ou Android Capacitor), impacto potencial e versão analisada.
 
-## Garantias e Princípios de Segurança do Codit
+## Garantias e Controles Ativos (`v0.1.15`)
 
-- **Zero segredos no cliente ou no Git:** variáveis como `DATABASE_URL`, `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `AI_PROVIDER_API_KEY` e `SANDBOX_API_KEY` existem apenas no servidor (`.env` ignorado pelo Git) e jamais recebem prefixo `NEXT_PUBLIC_*`.
-- **Isolamento do Sandbox:** código de alunos executa exclusivamente no navegador (`iframe` sandboxed sem `allow-same-origin` e Pyodide WASM em Web Worker) ou, em fases futuras, via provedor remoto isolado (`CodeExecutionProvider`), nunca no processo principal do servidor Next.js/Node.
-- **Isolamento estrito por `user_id`:** todos os dados privados em banco de dados e APIs exigirão `user_id` validado da sessão no servidor e Row-Level Security (RLS) no PostgreSQL.
-- **Atualizações assinadas no Desktop:** o atualizador do Tauri v2 verifica assinaturas criptográficas Ed25519/Minisign utilizando apenas a chave pública embarcada em `src-tauri/tauri.conf.json`.
+- **Zero segredos no cliente ou no Git:** chaves privadas (`FIREBASE_PRIVATE_KEY`, `PUSH_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `AUTH_SECRET`, `AI_PROVIDER_API_KEY`) residem apenas no servidor/Supabase Secrets, nunca em `NEXT_PUBLIC_*`.
+- **Execução de código 100% isolada no cliente:** HTML/CSS/JS roda em `<iframe sandbox="allow-scripts">` sem `allow-same-origin` (watchdog `4s`), e Python roda em Web Worker WebAssembly isolado (Pyodide) com terminação forçada em timeout.
+- **Isolamento estrito por `user_id` e Realtime privado:** todas as tabelas possuem Row-Level Security (`auth.uid()`), funções `SECURITY DEFINER` usam `SET search_path = public` com checagens explícitas anti-enumeração, e canais Supabase Realtime operam em modo privado (`codit_realtime_messages_*`).
+- **Moderação & LGPD:** bloqueio bilateral imediato (`public.user_blocks`), denúncias (`public.moderation_reports`), aceite versionado de privacidade (`/privacidade`), exportação portável (`export_my_account_data`) e exclusão completa de conta (`delete_my_account`).
+- **Atualizações assinadas no Desktop:** o Tauri v2 valida assinaturas criptográficas Minisign com a chave pública fixa em `src-tauri/tauri.conf.json`.

@@ -15,7 +15,10 @@ export type MissingMigrationFile =
   | "20261125000001_add_android_push_notifications.sql"
   | "20261125000002_add_call_sessions_and_push_reply.sql"
   | "20261126000002_harden_realtime_rls_and_security_definers.sql"
-  | "20261126000004_add_python_track_and_telemetry.sql";
+  | "20261126000004_add_python_track_and_telemetry.sql"
+  | "20261126000005_add_learning_mvp_and_gamification.sql"
+  | "20261126000006_add_rich_chat_moderation_and_lgpd.sql"
+  | "20261126000007_add_observability_and_learning_analytics.sql";
 
 export interface SupabaseErrorContext {
   status?: number | null;
@@ -212,6 +215,34 @@ export function detectMissingMigrationName(
 
   const { message, details, hint } = extractSupabaseErrorMeta(error);
   const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
+
+  if (
+    combinedLower.includes("error_events") ||
+    combinedLower.includes("get_learning_analytics_summary")
+  ) {
+    return "20261126000007_add_observability_and_learning_analytics.sql";
+  }
+
+  if (
+    combinedLower.includes("user_blocks") ||
+    combinedLower.includes("moderation_reports") ||
+    combinedLower.includes("chat_message_reactions") ||
+    combinedLower.includes("search_conversation_messages") ||
+    combinedLower.includes("accept_privacy_terms") ||
+    combinedLower.includes("export_my_account_data") ||
+    combinedLower.includes("delete_my_account")
+  ) {
+    return "20261126000006_add_rich_chat_moderation_and_lgpd.sql";
+  }
+
+  if (
+    combinedLower.includes("record_lesson_attempt") ||
+    combinedLower.includes("user_lesson_progress") ||
+    combinedLower.includes("exercise_submissions") ||
+    combinedLower.includes("onboarding_completed_at")
+  ) {
+    return "20261126000005_add_learning_mvp_and_gamification.sql";
+  }
 
   if (
     combinedLower.includes("client_error_logs") ||
@@ -638,6 +669,32 @@ function resolveSupabaseDatabaseErrorMessage(
     const missingMigration = detectMissingMigrationName(error);
     const codeSuffix = codeUpper ? ` (código ${codeUpper})` : "";
 
+    if (
+      missingMigration ===
+      "20261126000007_add_observability_and_learning_analytics.sql"
+    ) {
+      return {
+        detail: `A estrutura de observabilidade e resumo analítico ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261126000007_add_observability_and_learning_analytics.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
+    if (
+      missingMigration ===
+      "20261126000006_add_rich_chat_moderation_and_lgpd.sql"
+    ) {
+      return {
+        detail: `A estrutura de chat rico, moderação e LGPD ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261126000006_add_rich_chat_moderation_and_lgpd.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
+    if (
+      missingMigration === "20261126000005_add_learning_mvp_and_gamification.sql"
+    ) {
+      return {
+        detail: `A estrutura de trilhas e gamificação ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261126000005_add_learning_mvp_and_gamification.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
     if (missingMigration === "20261126000004_add_python_track_and_telemetry.sql") {
       return {
         detail: `A estrutura de trilhas Python, telemetria e analytics ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261126000004_add_python_track_and_telemetry.sql no SQL Editor do projeto.`,

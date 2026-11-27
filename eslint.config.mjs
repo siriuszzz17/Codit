@@ -35,6 +35,7 @@ const eslintConfig = defineConfig([
     "coverage/**",
     "src-tauri/**",
     "android/**",
+    "docs/.obsidian/**",
     "next-env.d.ts",
   ]),
 ]);
