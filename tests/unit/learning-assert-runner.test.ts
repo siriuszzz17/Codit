@@ -36,6 +36,8 @@ describe("learning assert-runner", () => {
     expect(script).toContain('"run-1"');
     expect(script).toContain(LESSON_RUNNER_SOURCE);
     expect(script).toContain("soma(2, 3)");
+    expect(script).not.toContain("new Function");
+    expect(script).not.toContain("eval(");
   });
 
   it("builds a sandboxed iframe document with CSP and escapes closing script tags", () => {

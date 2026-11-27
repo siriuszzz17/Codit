@@ -42,7 +42,8 @@ function createRunId(): string {
 
 /**
  * Monta o script de avaliação isolado usado dentro do Web Worker ou do iframe sandboxed.
- * Usa comparação estrutural profunda determinística (JSON-safe + NaN/Object/Array).
+ * Usa comparação estrutural profunda determinística (JSON-safe + NaN/Object/Array)
+ * e executa sem eval()/new Function() para compatibilidade estrita com CSP sem 'unsafe-eval'.
  */
 export function buildAssertHarnessCode(
   userCode: string,
@@ -59,13 +60,45 @@ export function buildAssertHarnessCode(
       expected: tc.expected,
     })),
   );
-  const serializedUserCode = JSON.stringify(userCode);
+
+  const caseEvaluators = testCases
+    .map((tc) => {
+      const id = JSON.stringify(tc.id);
+      const label = JSON.stringify(tc.label);
+      const exprText = JSON.stringify(tc.expression);
+      const expected = JSON.stringify(tc.expected);
+      return `      (function() {
+        var __expected = ${expected};
+        try {
+          var __actual = (${tc.expression});
+          var __ok = __coditDeepEqual(__actual, __expected);
+          return {
+            id: ${id},
+            label: ${label},
+            expression: ${exprText},
+            passed: __ok,
+            expectedFormatted: __coditFormatValue(__expected),
+            actualFormatted: __coditFormatValue(__actual)
+          };
+        } catch (err) {
+          return {
+            id: ${id},
+            label: ${label},
+            expression: ${exprText},
+            passed: false,
+            expectedFormatted: __coditFormatValue(__expected),
+            actualFormatted: "erro",
+            errorMessage: err && err.message ? String(err.message) : String(err)
+          };
+        }
+      })()`;
+    })
+    .join(",\n");
 
   return `
 (function() {
   var RUN_ID = ${serializedRunId};
   var CASES = ${serializedCases};
-  var USER_CODE = ${serializedUserCode};
   var consoleLines = [];
   var MAX_LOGS = 40;
 
@@ -136,14 +169,29 @@ export function buildAssertHarnessCode(
   var runtimeError = null;
 
   try {
-    var evaluator = new Function(
-      "console",
-      "CASES",
-      "deepEqual",
-      "formatValue",
-      USER_CODE + "\\n;return CASES.map(function(tc) { try { var actual = eval(tc.expression); var ok = deepEqual(actual, tc.expected); return { id: tc.id, label: tc.label, expression: tc.expression, passed: ok, expectedFormatted: formatValue(tc.expected), actualFormatted: formatValue(actual) }; } catch (err) { return { id: tc.id, label: tc.label, expression: tc.expression, passed: false, expectedFormatted: formatValue(tc.expected), actualFormatted: \\"erro\\", errorMessage: err && err.message ? String(err.message) : String(err) }; } });"
-    );
-    results = evaluator(safeConsole, CASES, deepEqual, formatValue);
+    var evaluated = (function(console, __coditDeepEqual, __coditFormatValue) {
+${userCode}
+      return [
+${caseEvaluators}
+      ];
+    })(safeConsole, deepEqual, formatValue);
+
+    if (Array.isArray(evaluated)) {
+      results = evaluated;
+    } else {
+      runtimeError = "O código retornou antes da avaliação dos casos de teste.";
+      results = CASES.map(function(tc) {
+        return {
+          id: tc.id,
+          label: tc.label,
+          expression: tc.expression,
+          passed: false,
+          expectedFormatted: formatValue(tc.expected),
+          actualFormatted: "não executado",
+          errorMessage: runtimeError
+        };
+      });
+    }
   } catch (err) {
     runtimeError = err && err.message ? String(err.message) : String(err);
     results = CASES.map(function(tc) {
@@ -194,13 +242,51 @@ export function buildAssertIframeDocument(
     ),
   );
 
+  const serializedRunId = JSON.stringify(runId);
+  const serializedCases = escapeScriptCloseTag(
+    JSON.stringify(
+      testCases.map((tc) => ({
+        id: tc.id,
+        label: tc.label,
+        expression: tc.expression,
+        expected: tc.expected,
+      })),
+    ),
+  );
+
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline';" />
   </head>
   <body>
+    <script>
+      window.addEventListener("error", function(ev) {
+        var msg = ev && ev.message ? String(ev.message) : "Erro de sintaxe ao executar o código.";
+        var cases = ${serializedCases};
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({
+            source: ${JSON.stringify(LESSON_RUNNER_SOURCE)},
+            runId: ${serializedRunId},
+            executionMs: 0,
+            runtimeError: msg,
+            consoleLines: [],
+            results: cases.map(function(tc) {
+              return {
+                id: tc.id,
+                label: tc.label,
+                expression: tc.expression,
+                passed: false,
+                expectedFormatted: JSON.stringify(tc.expected),
+                actualFormatted: "não executado",
+                errorMessage: msg
+              };
+            })
+          }, "*");
+        }
+      });
+    </script>
     <script>
 ${harness}
     </script>
