@@ -8,9 +8,10 @@ import {
 } from "@/components/account/project-studio-modal";
 import { ProjectsShowcasePanel } from "@/components/account/projects-showcase-panel";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
-import { LearningAnalyticsDrawer } from "@/components/learning/learning-analytics-drawer";
 import { LanguageIcon } from "@/components/sandbox/language-icon";
 import { SkeletonList } from "@/components/ui/skeleton";
+import { emitProblemToast } from "@/lib/app-toast";
+import { createProblemDetails } from "@/lib/problem-details";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type {
   SandboxLanguage,
@@ -23,8 +24,10 @@ import {
   getLanguageMeta,
 } from "@/modules/sandbox/language-catalog";
 import {
+  buildSandboxProblemDetails,
   createSandboxProject,
   listUserSandboxProjects,
+  recordSandboxProjectVersion,
   SandboxProjectConflictError,
   softDeleteSandboxProject,
   togglePinSandboxProject,
@@ -74,7 +77,6 @@ export function ProjectsWorkspace() {
   );
 
   const [studioOpen, setStudioOpen] = useState(false);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [studioSessionKey, setStudioSessionKey] = useState(1);
   const [studioInitialLanguage, setStudioInitialLanguage] =
     useState<SandboxLanguage>("html_css_js");
@@ -210,12 +212,20 @@ export function ProjectsWorkspace() {
             primaryLanguage: payload.primaryLanguage,
             visibility: payload.visibility,
             sourceCode: payload.sourceCode,
+            files: payload.files ?? null,
             isPinned: payload.isPinned,
             tags: payload.tags,
             repositoryUrl: payload.repositoryUrl,
             liveUrl: payload.liveUrl,
             expectedVersion: editingProject.version,
           },
+          client,
+        );
+
+        void recordSandboxProjectVersion(
+          userId,
+          updated,
+          "Salvamento manual",
           client,
         );
 
@@ -237,11 +247,19 @@ export function ProjectsWorkspace() {
             primaryLanguage: payload.primaryLanguage,
             visibility: payload.visibility,
             sourceCode: payload.sourceCode,
+            files: payload.files ?? null,
             isPinned: payload.isPinned,
             tags: payload.tags,
             repositoryUrl: payload.repositoryUrl,
             liveUrl: payload.liveUrl,
           },
+          client,
+        );
+
+        void recordSandboxProjectVersion(
+          userId,
+          created,
+          "Versão inicial",
           client,
         );
 
@@ -251,19 +269,92 @@ export function ProjectsWorkspace() {
         setProjectsMessage(`Projeto "${created.title}" criado com sucesso.`);
       }
     } catch (error) {
+      const problem = buildSandboxProblemDetails(
+        error,
+        "Não foi possível salvar o projeto",
+      );
+      emitProblemToast(problem);
       if (error instanceof SandboxProjectConflictError) {
         setStudioError(error.message);
         await loadProjects(userId);
       } else {
-        setStudioError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível salvar o projeto.",
-        );
+        setStudioError(problem.detail);
       }
     } finally {
       setSavingStudio(false);
     }
+  }
+
+  async function handleAutoSaveStudioProject(
+    payload: ProjectStudioSubmitPayload,
+    summary = "Auto-save",
+  ): Promise<SandboxProjectRow> {
+    if (!userId || !editingProject) {
+      throw new Error("Projeto ainda não inicializado para auto-save.");
+    }
+    if (!isOnline) {
+      const problem = createProblemDetails({
+        type: "https://codit.app/problems/sandbox-offline",
+        title: "Sem conexão",
+        status: 0,
+        detail: "Conecte-se à internet para sincronizar o auto-save.",
+      });
+      emitProblemToast(problem);
+      throw new Error(problem.detail);
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      throw new Error("Cliente Supabase não configurado.");
+    }
+
+    const updated = await updateSandboxProject(
+      userId,
+      editingProject.id,
+      {
+        title: payload.title,
+        description: payload.description,
+        primaryLanguage: payload.primaryLanguage,
+        visibility: payload.visibility,
+        sourceCode: payload.sourceCode,
+        files: payload.files ?? null,
+        isPinned: payload.isPinned,
+        tags: payload.tags,
+        repositoryUrl: payload.repositoryUrl,
+        liveUrl: payload.liveUrl,
+        expectedVersion: editingProject.version,
+      },
+      client,
+    );
+
+    void recordSandboxProjectVersion(userId, updated, summary, client);
+
+    setProjects((current) =>
+      sortProjects(
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      ),
+    );
+    setEditingProject(updated);
+    return updated;
+  }
+
+  async function handleReloadEditingProject(): Promise<SandboxProjectRow | null> {
+    if (!userId || !editingProject) {
+      return null;
+    }
+    await loadProjects(userId);
+    const client = getSupabaseClient();
+    if (!client) {
+      return null;
+    }
+    const freshList = await listUserSandboxProjects(userId, client);
+    const refreshed =
+      freshList.find((item) => item.id === editingProject.id) ?? null;
+    if (refreshed) {
+      setProjects(freshList);
+      setEditingProject(refreshed);
+      setStudioError(null);
+    }
+    return refreshed;
   }
 
   async function handleTogglePin(project: SandboxProjectRow) {
@@ -347,6 +438,7 @@ export function ProjectsWorkspace() {
           description: project.description,
           primaryLanguage: project.primary_language,
           sourceCode: project.source_code,
+          files: project.files ?? null,
           visibility: "private",
           isPinned: false,
           tags: project.tags,
@@ -522,19 +614,13 @@ export function ProjectsWorkspace() {
             Projetos
           </h1>
           <p className="max-w-2xl text-sm text-muted">
-            Desenvolva no Sandbox isolado, defina quem pode ver (privado, amigos
-            ou público) e organize seu portfólio.
+            Desenvolva no Sandbox isolado (Web e Python via Pyodide Worker),
+            defina quem pode ver (privado, amigos ou público) e organize seu
+            portfólio.
           </p>
         </div>
 
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
-          <button
-            type="button"
-            onClick={() => setAnalyticsOpen(true)}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent sm:text-sm"
-          >
-            Métricas TCC
-          </button>
           <button
             type="button"
             onClick={() => void loadProjects(userId)}
@@ -676,14 +762,10 @@ export function ProjectsWorkspace() {
         onRefresh={() => loadProjects(userId)}
       />
 
-      <LearningAnalyticsDrawer
-        isOpen={analyticsOpen}
-        onClose={() => setAnalyticsOpen(false)}
-      />
-
       {studioOpen ? (
         <ProjectStudioModal
           key={studioSessionKey}
+          userId={userId}
           editingProject={editingProject}
           initialLanguage={studioInitialLanguage}
           isSaving={savingStudio}
@@ -692,6 +774,8 @@ export function ProjectsWorkspace() {
           message={studioMessage}
           onClose={() => setStudioOpen(false)}
           onSubmit={handleSaveStudioProject}
+          onAutoSave={handleAutoSaveStudioProject}
+          onReloadProject={handleReloadEditingProject}
         />
       ) : null}
     </main>

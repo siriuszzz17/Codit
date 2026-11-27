@@ -327,6 +327,9 @@ export async function recordLessonAttempt(
     p_total_cases: parsed.data.totalCases,
     p_execution_ms: parsed.data.executionMs,
     p_hint_level_used: parsed.data.hintLevelUsed,
+    ...(parsed.data.failedCaseIds !== undefined
+      ? { p_failed_case_ids: parsed.data.failedCaseIds }
+      : {}),
   });
 
   if (error) {

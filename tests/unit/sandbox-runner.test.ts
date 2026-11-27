@@ -12,6 +12,7 @@ describe("sandbox-runner", () => {
     expect(doc).toContain('http-equiv="Content-Security-Policy"');
     expect(doc).toContain("default-src 'none'");
     expect(doc).toContain('"codit-sandbox"');
+    expect(doc).toContain('"codit-sandbox-host"');
     expect(doc).toContain('"run-42"');
     expect(doc).toContain("<h1>Olá Codit</h1>");
   });

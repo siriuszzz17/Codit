@@ -386,6 +386,12 @@ export type ProjectCommentUpdate = {
   updated_at?: string;
 };
 
+export type SandboxProjectFilesJson = {
+  "index.html"?: string;
+  "styles.css"?: string;
+  "script.js"?: string;
+};
+
 export type SandboxProjectRow = {
   id: string;
   user_id: string;
@@ -394,6 +400,7 @@ export type SandboxProjectRow = {
   primary_language: SandboxLanguage;
   runtime_target: SandboxRuntimeTarget;
   source_code: string;
+  files?: SandboxProjectFilesJson | null;
   visibility: SandboxVisibility;
   share_slug: string | null;
   is_pinned: boolean;
@@ -414,6 +421,7 @@ export type SandboxProjectInsert = {
   primary_language?: SandboxLanguage;
   runtime_target?: SandboxRuntimeTarget;
   source_code?: string;
+  files?: SandboxProjectFilesJson | null;
   visibility?: SandboxVisibility;
   share_slug?: string | null;
   is_pinned?: boolean;
@@ -432,6 +440,7 @@ export type SandboxProjectUpdate = {
   primary_language?: SandboxLanguage;
   runtime_target?: SandboxRuntimeTarget;
   source_code?: string;
+  files?: SandboxProjectFilesJson | null;
   visibility?: SandboxVisibility;
   share_slug?: string | null;
   is_pinned?: boolean;
@@ -441,6 +450,36 @@ export type SandboxProjectUpdate = {
   version?: number;
   updated_at?: string;
   deleted_at?: string | null;
+};
+
+export type SandboxProjectVersionRow = {
+  id: string;
+  project_id: string;
+  user_id: string;
+  version: number;
+  title: string;
+  primary_language: SandboxLanguage;
+  source_code: string;
+  files: SandboxProjectFilesJson | null;
+  summary: string | null;
+  created_at: string;
+};
+
+export type SandboxProjectVersionInsert = {
+  id?: string;
+  project_id: string;
+  user_id: string;
+  version: number;
+  title: string;
+  primary_language: SandboxLanguage;
+  source_code: string;
+  files?: SandboxProjectFilesJson | null;
+  summary?: string | null;
+  created_at?: string;
+};
+
+export type SandboxProjectVersionUpdate = {
+  summary?: string | null;
 };
 
 export type ChatConversationRow = {
@@ -1067,6 +1106,27 @@ export type Database = {
           },
         ];
       };
+      sandbox_project_versions: {
+        Row: SandboxProjectVersionRow;
+        Insert: SandboxProjectVersionInsert;
+        Update: SandboxProjectVersionUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fk_sandbox_project_versions_project_id";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "sandbox_projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_sandbox_project_versions_user_id";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       chat_conversations: {
         Row: ChatConversationRow;
         Insert: ChatConversationInsert;
@@ -1483,6 +1543,7 @@ export type Database = {
           p_total_cases: number;
           p_execution_ms?: number;
           p_hint_level_used?: number;
+          p_failed_case_ids?: string[];
         };
         Returns: RecordLessonAttemptRpcResult;
       };

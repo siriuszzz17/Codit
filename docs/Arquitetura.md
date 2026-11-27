@@ -31,20 +31,20 @@
 ### 2.3 Camada Nativa & CSP
 - **CSP Web (`next.config.ts`) & Desktop (`src-tauri/tauri.conf.json`):** permitem `'wasm-unsafe-eval' https://cdn.jsdelivr.net` em `script-src`, `worker-src 'self' blob:` e `https://cdn.jsdelivr.net` em `connect-src` para carregar o runtime Pyodide WASM com segurança.
 - **Permissões de Mídia Alinhadas:** `Microphone` e `Camera` habilitados em Web (`Permissions-Policy: camera=(self), microphone=(self), display-capture=(self)`), Tauri (`src-tauri/src/lib.rs`) e Android (`CoditWebChromeClient.java` + `CallForegroundService.java`).
-- **Pipeline CI (`.github/workflows/ci.yml`):** job `quality` (`typecheck`, `lint`, `test`, `build`) + job `rls-integration` (`supabase start` aplicando todas as 16 migrações + `npm run test:rls`).
+- **Pipeline CI (`.github/workflows/ci.yml`):** job `quality` (`typecheck`, `lint`, `test`, `build`) + job `rls-integration` (`supabase start` aplicando todas as 18 migrações + `npm run test:rls`).
 
 ---
 
 ## 3. Variáveis de Ambiente, Portas & URLs Críticas
 
-- **Bundle Público (`NEXT_PUBLIC_*`):** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_AUTH_REDIRECT_URL`, `NEXT_PUBLIC_SUPABASE_NATIVE_REDIRECT_URL`, `NEXT_PUBLIC_WEBRTC_ICE_SERVERS_JSON`, `NEXT_PUBLIC_APP_VERSION` (`0.1.15`).
+- **Bundle Público (`NEXT_PUBLIC_*`):** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_AUTH_REDIRECT_URL`, `NEXT_PUBLIC_SUPABASE_NATIVE_REDIRECT_URL`, `NEXT_PUBLIC_WEBRTC_ICE_SERVERS_JSON`, `NEXT_PUBLIC_APP_VERSION` (`0.1.16`).
 - **Supabase Edge Secrets (`send-push`):** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_TOKEN_URI`, `PUSH_WEBHOOK_SECRET`.
 - **Portas & Endpoints:** Next/Tauri dev `http://localhost:3000`; OAuth Tauri loopback `http://127.0.0.1:43823/auth/callback`; Ponte OAuth Android `https://codit-omega.vercel.app/auth/native-callback` → `com.codit.app://auth/callback`; OTA `https://github.com/siriuszzz17/Codit/releases/latest/download/latest.json`; Pyodide CDN `https://cdn.jsdelivr.net/pyodide/v0.27.4/full/`.
 
 ---
 
 ## 4. Decisões Técnicas (`DEC-XXX`)
-- **`DEC-001` (Migrações):** SQL puro versionado em `supabase/migrations/` (16 migrações) + `database.types.ts` + validação automática via `supabase start` no CI.
+- **`DEC-001` (Migrações):** SQL puro versionado em `supabase/migrations/` (18 migrações) + `database.types.ts` + validação automática via `supabase start` no CI.
 - **`DEC-002` (Tutor IA Octopy):** Dicas progressivas de 3 níveis implementadas no MVP curricular; proxy LLM server-side segue em aberto.
 - **`DEC-003` (Auth):** `@supabase/supabase-js` PKCE client-side multiplataforma.
 - **`DEC-004` (Banco & Segurança):** Supabase PostgreSQL com RLS estrita, Realtime privado e RPCs `SECURITY DEFINER`.

@@ -71,14 +71,24 @@ function buildConsoleBridgeScript(runId: string): string {
   }
 
   function sendReady() {
-    if (readySent) return;
-    readySent = true;
     postToParent({
       source: "codit-sandbox",
       runId: RUN_ID,
       type: "ready"
     });
   }
+
+  window.addEventListener("message", function(event) {
+    var payload = event && event.data;
+    if (
+      payload &&
+      payload.source === "codit-sandbox-host" &&
+      payload.type === "ping" &&
+      payload.runId === RUN_ID
+    ) {
+      sendReady();
+    }
+  });
 
   var originalConsole = window.console || {};
   ["log", "info", "warn", "error"].forEach(function(level) {
@@ -105,15 +115,17 @@ function buildConsoleBridgeScript(runId: string): string {
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", sendReady);
+  } else {
+    sendReady();
   }
   window.addEventListener("load", sendReady);
-  setTimeout(sendReady, 50);
+  setTimeout(sendReady, 40);
 })();
 </script>`;
 }
 
 const SANDBOX_CSP_META =
-  '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: https:;" />';
+  '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: https: blob:; font-src data: https:;" />';
 
 function injectHeadPayload(html: string, headPayload: string): string {
   if (/<head[^>]*>/i.test(html)) {
@@ -249,13 +261,18 @@ export function buildSandboxedPreviewDocument(
           if (box) box.textContent = lines.join("\\n");
         }
         var prevLog = console.log;
+        var prevInfo = console.info;
         var prevWarn = console.warn;
         var prevError = console.error;
         console.log = function() { appendLine("> ", arguments); prevLog.apply(console, arguments); };
+        console.info = function() { appendLine("[info] ", arguments); prevInfo.apply(console, arguments); };
         console.warn = function() { appendLine("[aviso] ", arguments); prevWarn.apply(console, arguments); };
         console.error = function() { appendLine("[erro] ", arguments); prevError.apply(console, arguments); };
         window.addEventListener("error", function(ev) {
           appendLine("[erro] ", [ev && ev.message ? ev.message : "Erro de execução"]);
+        });
+        window.addEventListener("unhandledrejection", function(ev) {
+          appendLine("[erro] ", [ev && ev.reason ? String(ev.reason) : "Promise rejeitada"]);
         });
       })();
     </script>

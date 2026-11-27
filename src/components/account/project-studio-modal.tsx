@@ -1,12 +1,29 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { LanguageBadge, LanguageIcon } from "@/components/sandbox/language-icon";
+import {
+  mapSandboxLanguageToEditor,
+  SandboxCodeEditor,
+} from "@/components/sandbox/sandbox-code-editor";
 import { SandboxPreview } from "@/components/sandbox/sandbox-preview";
 import { useDialogA11y } from "@/hooks/use-dialog-a11y";
+import { emitAppToast, emitProblemToast } from "@/lib/app-toast";
+import { createProblemDetails } from "@/lib/problem-details";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import type {
   SandboxLanguage,
+  SandboxProjectFilesJson,
   SandboxProjectRow,
+  SandboxProjectVersionRow,
   SandboxVisibility,
 } from "@/lib/supabase/database.types";
 import {
@@ -15,6 +32,25 @@ import {
   LANGUAGE_CATALOG,
   ORDERED_SANDBOX_LANGUAGES,
 } from "@/modules/sandbox/language-catalog";
+import {
+  formatCodeWithPrettier,
+  type PrettierTargetLanguage,
+} from "@/modules/sandbox/prettier-formatter";
+import {
+  compileProjectFilesToSource,
+  getDefaultActiveTab,
+  getStarterFilesForLanguage,
+  isMultiFileWebLanguage,
+  resolveProjectFiles,
+  SANDBOX_FILE_TABS,
+  type SandboxFileKey,
+  type SandboxProjectFiles,
+} from "@/modules/sandbox/sandbox-files";
+import {
+  buildSandboxProblemDetails,
+  listSandboxProjectVersions,
+  SandboxProjectConflictError,
+} from "@/modules/sandbox/sandbox-project-service";
 
 export interface ProjectStudioSubmitPayload {
   title: string;
@@ -22,13 +58,17 @@ export interface ProjectStudioSubmitPayload {
   primaryLanguage: SandboxLanguage;
   visibility: SandboxVisibility;
   sourceCode: string;
+  files?: SandboxProjectFilesJson | null;
   isPinned: boolean;
   tags: string[];
   repositoryUrl: string;
   liveUrl: string;
 }
 
+type AutoSaveStatus = "idle" | "dirty" | "saving" | "saved" | "conflict" | "error";
+
 interface ProjectStudioModalProps {
+  userId?: string | null;
   editingProject: SandboxProjectRow | null;
   initialLanguage?: SandboxLanguage;
   isSaving: boolean;
@@ -37,6 +77,11 @@ interface ProjectStudioModalProps {
   message: string | null;
   onClose: () => void;
   onSubmit: (payload: ProjectStudioSubmitPayload) => Promise<void>;
+  onAutoSave?: (
+    payload: ProjectStudioSubmitPayload,
+    summary?: string,
+  ) => Promise<SandboxProjectRow>;
+  onReloadProject?: () => Promise<SandboxProjectRow | null>;
 }
 
 const VISIBILITY_OPTIONS: ReadonlyArray<{
@@ -58,7 +103,23 @@ const VISIBILITY_OPTIONS: ReadonlyArray<{
   },
 ];
 
+const AUTO_SAVE_DEBOUNCE_MS = 1500;
+
+function formatVersionTimestamp(isoDate: string): string {
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(isoDate));
+  } catch {
+    return isoDate;
+  }
+}
+
 export function ProjectStudioModal({
+  userId = null,
   editingProject,
   initialLanguage = "html_css_js",
   isSaving,
@@ -67,10 +128,24 @@ export function ProjectStudioModal({
   message,
   onClose,
   onSubmit,
+  onAutoSave,
+  onReloadProject,
 }: ProjectStudioModalProps) {
   const startingLanguage = editingProject?.primary_language ?? initialLanguage;
   const startingCode =
     editingProject?.source_code ?? LANGUAGE_CATALOG[startingLanguage].starterCode;
+  const startingFiles = useMemo(
+    () =>
+      isMultiFileWebLanguage(startingLanguage)
+        ? resolveProjectFiles(
+            startingLanguage,
+            startingCode,
+            editingProject?.files ?? null,
+          )
+        : getStarterFilesForLanguage("html_css_js"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const [title, setTitle] = useState(editingProject?.title ?? "");
   const [description, setDescription] = useState(
@@ -81,6 +156,10 @@ export function ProjectStudioModal({
     editingProject?.visibility ?? "private",
   );
   const [sourceCode, setSourceCode] = useState(startingCode);
+  const [files, setFiles] = useState<SandboxProjectFiles>(startingFiles);
+  const [activeTab, setActiveTab] = useState<SandboxFileKey>(
+    getDefaultActiveTab(startingLanguage),
+  );
   const [isPinned, setIsPinned] = useState(editingProject?.is_pinned ?? false);
   const [tags, setTags] = useState<string[]>(editingProject?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
@@ -98,10 +177,65 @@ export function ProjectStudioModal({
         editingProject?.live_url,
     ),
   );
+  const [runTrigger, setRunTrigger] = useState(0);
+  const [isFormatting, setIsFormatting] = useState(false);
 
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Auto-save & Histórico de versões
+  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>(
+    editingProject ? "saved" : "idle",
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [versions, setVersions] = useState<SandboxProjectVersionRow[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [restoringVersionId, setRestoringVersionId] = useState<string | null>(
+    null,
+  );
+
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const isMultiFile = isMultiFileWebLanguage(language);
   const meta = getLanguageMeta(language);
+
+  const effectiveSourceCode = useMemo(() => {
+    if (isMultiFile) {
+      return compileProjectFilesToSource(language, files);
+    }
+    return sourceCode;
+  }, [files, isMultiFile, language, sourceCode]);
+
+  const currentPayload = useMemo<ProjectStudioSubmitPayload>(
+    () => ({
+      title,
+      description,
+      primaryLanguage: language,
+      visibility,
+      sourceCode: effectiveSourceCode,
+      files: isMultiFile ? files : null,
+      isPinned,
+      tags,
+      repositoryUrl,
+      liveUrl,
+    }),
+    [
+      description,
+      effectiveSourceCode,
+      files,
+      isMultiFile,
+      isPinned,
+      language,
+      liveUrl,
+      repositoryUrl,
+      tags,
+      title,
+      visibility,
+    ],
+  );
+
+  const payloadSignature = useMemo(
+    () => JSON.stringify(currentPayload),
+    [currentPayload],
+  );
+  const lastSavedSignatureRef = useRef<string>(payloadSignature);
+  const autoSaveInFlightRef = useRef(false);
 
   useDialogA11y({
     open: true,
@@ -118,25 +252,342 @@ export function ProjectStudioModal({
     };
   }, []);
 
+  // Auto-save com debounce de 1.5s para projetos já persistidos
+  useEffect(() => {
+    if (!editingProject || !onAutoSave || !isOnline || isSaving) {
+      return;
+    }
+    if (!title.trim()) {
+      return;
+    }
+    if (autoSaveStatus === "conflict") {
+      return;
+    }
+    if (payloadSignature === lastSavedSignatureRef.current) {
+      return;
+    }
+
+    setAutoSaveStatus("dirty");
+
+    const timer = window.setTimeout(() => {
+      if (autoSaveInFlightRef.current) {
+        return;
+      }
+      autoSaveInFlightRef.current = true;
+      setAutoSaveStatus("saving");
+      const snapshotSignature = payloadSignature;
+
+      void onAutoSave(currentPayload, "Auto-save")
+        .then(() => {
+          lastSavedSignatureRef.current = snapshotSignature;
+          setAutoSaveStatus("saved");
+        })
+        .catch((err: unknown) => {
+          const problem = buildSandboxProblemDetails(
+            err,
+            "Falha no auto-save do projeto",
+          );
+          emitProblemToast(problem);
+          if (err instanceof SandboxProjectConflictError) {
+            setAutoSaveStatus("conflict");
+          } else {
+            setAutoSaveStatus("error");
+          }
+        })
+        .finally(() => {
+          autoSaveInFlightRef.current = false;
+        });
+    }, AUTO_SAVE_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    autoSaveStatus,
+    currentPayload,
+    editingProject,
+    isOnline,
+    isSaving,
+    onAutoSave,
+    payloadSignature,
+    title,
+  ]);
+
+  const loadVersionHistory = useCallback(async () => {
+    if (!editingProject || !userId) {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return;
+    }
+    setLoadingVersions(true);
+    try {
+      const items = await listSandboxProjectVersions(
+        userId,
+        editingProject.id,
+        20,
+        client,
+      );
+      setVersions(items);
+    } catch (err) {
+      emitProblemToast(
+        buildSandboxProblemDetails(
+          err,
+          "Não foi possível carregar o histórico de versões",
+        ),
+      );
+    } finally {
+      setLoadingVersions(false);
+    }
+  }, [editingProject, userId]);
+
+  function handleToggleHistory() {
+    setHistoryOpen((current) => {
+      const next = !current;
+      if (next) {
+        void loadVersionHistory();
+      }
+      return next;
+    });
+  }
+
   function handleSelectLanguage(nextLanguage: SandboxLanguage) {
     setLanguage(nextLanguage);
     setConfirmTemplateSwap(false);
-    if (!editingProject && isStarterCodeSample(sourceCode)) {
+
+    if (isMultiFileWebLanguage(nextLanguage)) {
+      setActiveTab(getDefaultActiveTab(nextLanguage));
+      if (!editingProject && isStarterCodeSample(effectiveSourceCode)) {
+        const nextFiles = getStarterFilesForLanguage(nextLanguage);
+        setFiles(nextFiles);
+        setSourceCode(compileProjectFilesToSource(nextLanguage, nextFiles));
+      } else if (!isMultiFile) {
+        setFiles(resolveProjectFiles(nextLanguage, sourceCode, null));
+      }
+    } else if (!editingProject && isStarterCodeSample(effectiveSourceCode)) {
       setSourceCode(LANGUAGE_CATALOG[nextLanguage].starterCode);
     }
   }
 
   function applyLanguageTemplate() {
-    setSourceCode(meta.starterCode);
+    if (isMultiFile) {
+      const starterFiles = getStarterFilesForLanguage(language);
+      setFiles(starterFiles);
+      setSourceCode(compileProjectFilesToSource(language, starterFiles));
+      setActiveTab(getDefaultActiveTab(language));
+    } else {
+      setSourceCode(meta.starterCode);
+    }
     setConfirmTemplateSwap(false);
+    setRunTrigger((current) => current + 1);
   }
 
   function handleRequestTemplate() {
-    if (isStarterCodeSample(sourceCode)) {
+    if (isStarterCodeSample(effectiveSourceCode)) {
       applyLanguageTemplate();
       return;
     }
     setConfirmTemplateSwap(true);
+  }
+
+  function updateFileContent(tabKey: SandboxFileKey, nextContent: string) {
+    setFiles((current) => {
+      if (current[tabKey] === nextContent) {
+        return current;
+      }
+      return {
+        ...current,
+        [tabKey]: nextContent,
+      };
+    });
+  }
+
+  const handleRunPreviewNow = useCallback(() => {
+    setRunTrigger((current) => current + 1);
+  }, []);
+
+  const canFormatCurrentEditor = useMemo(() => {
+    if (isMultiFile) {
+      return true;
+    }
+    return (
+      language === "javascript" ||
+      language === "nodejs" ||
+      language === "html" ||
+      language === "css" ||
+      language === "html_css_js"
+    );
+  }, [isMultiFile, language]);
+
+  const handleFormatCurrentCode = useCallback(async () => {
+    if (!canFormatCurrentEditor || isFormatting) {
+      return;
+    }
+
+    let targetLang: PrettierTargetLanguage = "javascript";
+    let rawCode = sourceCode;
+
+    if (isMultiFile) {
+      const tabMeta = SANDBOX_FILE_TABS.find((t) => t.key === activeTab);
+      targetLang = tabMeta?.editorLanguage ?? "html";
+      rawCode = files[activeTab];
+    } else if (language === "html" || language === "html_css_js") {
+      targetLang = "html";
+    } else if (language === "css") {
+      targetLang = "css";
+    }
+
+    setIsFormatting(true);
+    try {
+      const formatted = await formatCodeWithPrettier(rawCode, targetLang);
+      if (isMultiFile) {
+        updateFileContent(activeTab, formatted);
+      } else {
+        setSourceCode(formatted);
+      }
+      emitAppToast({
+        tone: "success",
+        title: "Código formatado",
+        detail: isMultiFile
+          ? `${activeTab} formatado com Prettier.`
+          : `${meta.fileName} formatado com Prettier.`,
+        durationMs: 2500,
+      });
+    } catch (err) {
+      emitProblemToast(
+        createProblemDetails({
+          type: "https://codit.app/problems/sandbox-format-error",
+          title: "Erro ao formatar com Prettier",
+          status: 422,
+          detail:
+            err instanceof Error
+              ? err.message
+              : "Verifique a sintaxe do código antes de formatar.",
+        }),
+      );
+    } finally {
+      setIsFormatting(false);
+    }
+  }, [
+    activeTab,
+    canFormatCurrentEditor,
+    files,
+    isFormatting,
+    isMultiFile,
+    language,
+    meta.fileName,
+    sourceCode,
+  ]);
+
+  async function handleRestoreVersion(snapshot: SandboxProjectVersionRow) {
+    if (!editingProject) {
+      return;
+    }
+    setRestoringVersionId(snapshot.id);
+    try {
+      const nextLang = snapshot.primary_language;
+      const nextIsMultiFile = isMultiFileWebLanguage(nextLang);
+      const restoredFiles = nextIsMultiFile
+        ? resolveProjectFiles(nextLang, snapshot.source_code, snapshot.files)
+        : files;
+      const restoredSource = nextIsMultiFile
+        ? compileProjectFilesToSource(nextLang, restoredFiles)
+        : snapshot.source_code;
+
+      setLanguage(nextLang);
+      setTitle(snapshot.title);
+      if (nextIsMultiFile) {
+        setFiles(restoredFiles);
+        setActiveTab(getDefaultActiveTab(nextLang));
+      }
+      setSourceCode(restoredSource);
+      setRunTrigger((current) => current + 1);
+
+      if (onAutoSave && isOnline) {
+        const restoredPayload: ProjectStudioSubmitPayload = {
+          ...currentPayload,
+          title: snapshot.title,
+          primaryLanguage: nextLang,
+          sourceCode: restoredSource,
+          files: nextIsMultiFile ? restoredFiles : null,
+        };
+        setAutoSaveStatus("saving");
+        await onAutoSave(restoredPayload, `Restaurado da v${snapshot.version}`);
+        lastSavedSignatureRef.current = JSON.stringify(restoredPayload);
+        setAutoSaveStatus("saved");
+        await loadVersionHistory();
+      }
+
+      emitAppToast({
+        tone: "success",
+        title: `Versão v${snapshot.version} restaurada`,
+        detail: "O código anterior foi restaurado e salvo como nova versão.",
+      });
+      setHistoryOpen(false);
+    } catch (err) {
+      const problem = buildSandboxProblemDetails(
+        err,
+        "Não foi possível restaurar a versão",
+      );
+      emitProblemToast(problem);
+      if (err instanceof SandboxProjectConflictError) {
+        setAutoSaveStatus("conflict");
+      }
+    } finally {
+      setRestoringVersionId(null);
+    }
+  }
+
+  async function handleResolveConflictReload() {
+    if (!onReloadProject) {
+      return;
+    }
+    const fresh = await onReloadProject();
+    if (!fresh) {
+      return;
+    }
+    const nextIsMulti = isMultiFileWebLanguage(fresh.primary_language);
+    const nextFiles = nextIsMulti
+      ? resolveProjectFiles(fresh.primary_language, fresh.source_code, fresh.files ?? null)
+      : files;
+    const nextSource = nextIsMulti
+      ? compileProjectFilesToSource(fresh.primary_language, nextFiles)
+      : fresh.source_code;
+
+    setTitle(fresh.title);
+    setDescription(fresh.description ?? "");
+    setLanguage(fresh.primary_language);
+    setVisibility(fresh.visibility);
+    setIsPinned(fresh.is_pinned);
+    setTags(fresh.tags);
+    setRepositoryUrl(fresh.repository_url ?? "");
+    setLiveUrl(fresh.live_url ?? "");
+    if (nextIsMulti) {
+      setFiles(nextFiles);
+    }
+    setSourceCode(nextSource);
+
+    const reloadedPayload: ProjectStudioSubmitPayload = {
+      title: fresh.title,
+      description: fresh.description ?? "",
+      primaryLanguage: fresh.primary_language,
+      visibility: fresh.visibility,
+      sourceCode: nextSource,
+      files: nextIsMulti ? nextFiles : null,
+      isPinned: fresh.is_pinned,
+      tags: fresh.tags,
+      repositoryUrl: fresh.repository_url ?? "",
+      liveUrl: fresh.live_url ?? "",
+    };
+    lastSavedSignatureRef.current = JSON.stringify(reloadedPayload);
+    setAutoSaveStatus("saved");
+    setRunTrigger((current) => current + 1);
+    emitAppToast({
+      tone: "info",
+      title: `Projeto recarregado (v${fresh.version})`,
+      detail: "A versão mais recente do servidor foi carregada no estúdio.",
+    });
   }
 
   function addTag(rawTag: string) {
@@ -162,41 +613,20 @@ export function ProjectStudioModal({
     }
   }
 
-  function handleCodeKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Tab") {
-      return;
-    }
-    event.preventDefault();
-    const element = event.currentTarget;
-    const start = element.selectionStart ?? 0;
-    const end = element.selectionEnd ?? 0;
-    const updated = `${sourceCode.slice(0, start)}  ${sourceCode.slice(end)}`;
-    setSourceCode(updated);
-
-    window.requestAnimationFrame(() => {
-      if (textareaRef.current) {
-        textareaRef.current.selectionStart = start + 2;
-        textareaRef.current.selectionEnd = start + 2;
-      }
-    });
-  }
-
   async function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await onSubmit({
-      title,
-      description,
-      primaryLanguage: language,
-      visibility,
-      sourceCode,
-      isPinned,
-      tags,
-      repositoryUrl,
-      liveUrl,
-    });
+    const snapshotSig = payloadSignature;
+    await onSubmit(currentPayload);
+    lastSavedSignatureRef.current = snapshotSig;
+    if (editingProject) {
+      setAutoSaveStatus("saved");
+    }
   }
 
-  const lineCount = sourceCode ? sourceCode.split(/\r?\n/).length : 0;
+  const activeCodeForStats = isMultiFile ? files[activeTab] : sourceCode;
+  const lineCount = activeCodeForStats
+    ? activeCodeForStats.split(/\r?\n/).length
+    : 0;
 
   return (
     <div
@@ -207,37 +637,188 @@ export function ProjectStudioModal({
     >
       <div
         ref={dialogRef}
-        className="flex h-dvh w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 bg-surface-elevated shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border sm:border-border"
+        className="relative flex h-dvh w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 bg-surface-elevated shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl sm:border sm:border-border"
       >
         {/* Cabeçalho do Estúdio */}
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/60 pb-3 pt-[calc(0.75rem+var(--codit-safe-top))] pl-[calc(1rem+var(--codit-safe-left))] pr-[calc(1rem+var(--codit-safe-right))] sm:pt-3 sm:pl-[calc(1.5rem+var(--codit-safe-left))] sm:pr-[calc(1.5rem+var(--codit-safe-right))]">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <LanguageIcon language={language} size={28} />
             <div className="min-w-0">
-              <h2
-                id="studio-modal-title"
-                className="truncate text-base font-bold text-foreground sm:text-lg"
-              >
-                {editingProject
-                  ? `Estúdio: ${editingProject.title}`
-                  : "Novo Mini-Projeto Codit"}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2
+                  id="studio-modal-title"
+                  className="truncate text-base font-bold text-foreground sm:text-lg"
+                >
+                  {editingProject
+                    ? `Estúdio: ${editingProject.title}`
+                    : "Novo Mini-Projeto Codit"}
+                </h2>
+                {editingProject ? (
+                  <span
+                    role="status"
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                      autoSaveStatus === "conflict"
+                        ? "border-red-500/50 bg-red-500/15 text-red-600 dark:text-red-300"
+                        : autoSaveStatus === "saving"
+                          ? "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                          : autoSaveStatus === "error"
+                            ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300"
+                            : autoSaveStatus === "dirty"
+                              ? "border-border bg-surface text-muted"
+                              : "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                    }`}
+                  >
+                    {autoSaveStatus === "saving"
+                      ? "Salvando..."
+                      : autoSaveStatus === "conflict"
+                        ? "Conflito"
+                        : autoSaveStatus === "error"
+                          ? "Erro ao salvar"
+                          : autoSaveStatus === "dirty"
+                            ? "Alterações pendentes"
+                            : "Salvo"}
+                  </span>
+                ) : null}
+              </div>
               <p className="truncate text-xs text-muted">
                 {editingProject
-                  ? `Editando versão v${editingProject.version} · Persistência segura por usuário`
-                  : "Escolha uma linguagem, escreva seu código e teste no Sandbox"}
+                  ? `Editando versão v${editingProject.version} · Ctrl+Enter executa · Shift+Alt+F formata`
+                  : "Escolha uma linguagem, escreva seu código e teste no Sandbox (Ctrl+Enter)"}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
-          >
-            Fechar
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {editingProject && autoSaveStatus === "conflict" && onReloadProject ? (
+              <button
+                type="button"
+                onClick={() => void handleResolveConflictReload()}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-500/50 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/25 dark:text-red-300"
+              >
+                Recarregar v+
+              </button>
+            ) : null}
+
+            {editingProject && userId ? (
+              <button
+                type="button"
+                onClick={handleToggleHistory}
+                aria-expanded={historyOpen}
+                className={`inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  historyOpen
+                    ? "border-accent bg-accent text-accent-foreground"
+                    : "border-border bg-surface text-foreground hover:border-accent"
+                }`}
+              >
+                Histórico
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+            >
+              Fechar
+            </button>
+          </div>
         </header>
+
+        {/* Drawer de Histórico de Versões */}
+        {historyOpen && editingProject ? (
+          <aside
+            aria-label="Histórico de versões do projeto"
+            className="border-b border-border bg-surface-muted/75 px-4 py-3 sm:px-6"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-bold text-foreground">
+                  Histórico de versões (snapshots recentes)
+                </h3>
+                <p className="text-[11px] text-muted">
+                  Restaure uma versão anterior sem perder o histórico atual.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadVersionHistory()}
+                  disabled={loadingVersions}
+                  className="rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-accent disabled:opacity-60"
+                >
+                  {loadingVersions ? "Atualizando..." : "Atualizar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(false)}
+                  className="rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted hover:text-foreground"
+                >
+                  Ocultar
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-2.5 max-h-44 overflow-y-auto">
+              {loadingVersions ? (
+                <p className="py-3 text-xs text-muted">
+                  Carregando snapshots salvos...
+                </p>
+              ) : versions.length === 0 ? (
+                <p className="py-3 text-xs text-muted">
+                  Nenhum snapshot anterior registrado ainda. Cada salvamento ou
+                  auto-save grava uma versão aqui.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border rounded-xl border border-border bg-surface">
+                  {versions.map((snapshot) => {
+                    const isCurrent = snapshot.version === editingProject.version;
+                    return (
+                      <li
+                        key={snapshot.id}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-foreground">
+                              v{snapshot.version}
+                            </span>
+                            {isCurrent ? (
+                              <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent">
+                                Atual
+                              </span>
+                            ) : null}
+                            <span className="text-[11px] text-muted">
+                              {formatVersionTimestamp(snapshot.created_at)}
+                            </span>
+                          </div>
+                          <p className="truncate text-[11px] text-muted">
+                            {snapshot.summary || snapshot.title} ·{" "}
+                            {snapshot.source_code.length.toLocaleString("pt-BR")}{" "}
+                            caracteres
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={
+                            isCurrent ||
+                            restoringVersionId === snapshot.id ||
+                            isSaving
+                          }
+                          onClick={() => void handleRestoreVersion(snapshot)}
+                          className="rounded-lg border border-border bg-surface-muted px-2.5 py-1 text-[11px] font-semibold text-foreground transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {restoringVersionId === snapshot.id
+                            ? "Restaurando..."
+                            : "Restaurar"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </aside>
+        ) : null}
 
         <form
           onSubmit={(event) => void handleFormSubmit(event)}
@@ -488,7 +1069,7 @@ export function ProjectStudioModal({
                       : "text-muted"
                   }`}
                 >
-                  Editor ({meta.fileName})
+                  Editor ({isMultiFile ? activeTab : meta.fileName})
                 </button>
                 <button
                   type="button"
@@ -503,74 +1084,175 @@ export function ProjectStudioModal({
                 </button>
               </div>
 
-              {/* Editor + Sandbox Preview lado a lado */}
+              {/* Editor CodeMirror 6 + Sandbox Preview lado a lado */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div
-                  className={`flex flex-col overflow-hidden rounded-2xl border border-border bg-background ${
+                  className={`flex min-h-[340px] flex-col overflow-hidden rounded-2xl border border-border bg-surface-solid sm:min-h-[400px] ${
                     mobilePane === "editor" ? "flex" : "hidden lg:flex"
                   }`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-muted/70 px-3.5 py-2">
-                    <div className="flex items-center gap-2">
-                      <LanguageIcon language={language} size={16} />
-                      <span className="font-mono text-xs font-semibold text-foreground">
-                        {meta.fileName}
-                      </span>
-                      <span className="text-[11px] text-muted">
-                        · {lineCount} linhas
-                      </span>
-                    </div>
-
-                    {confirmTemplateSwap ? (
-                      <div className="flex items-center gap-1.5 text-[11px]">
-                        <span className="text-amber-500">Substituir código?</span>
-                        <button
-                          type="button"
-                          onClick={applyLanguageTemplate}
-                          className="rounded-md bg-amber-500/20 px-2 py-0.5 font-semibold text-amber-600 dark:text-amber-300"
-                        >
-                          Sim
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmTemplateSwap(false)}
-                          className="rounded-md border border-border px-2 py-0.5 text-muted"
-                        >
-                          Cancelar
-                        </button>
+                  {/* Barra de abas multi-arquivo (HTML/CSS/JS) ou nome de arquivo único */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-muted/70 px-3 py-2">
+                    {isMultiFile ? (
+                      <div
+                        role="tablist"
+                        aria-label="Arquivos do projeto"
+                        className="flex flex-wrap items-center gap-1"
+                      >
+                        {SANDBOX_FILE_TABS.map((tab) => {
+                          const selected = activeTab === tab.key;
+                          const hasContent = files[tab.key].trim().length > 0;
+                          return (
+                            <button
+                              key={tab.key}
+                              type="button"
+                              role="tab"
+                              aria-selected={selected}
+                              onClick={() => setActiveTab(tab.key)}
+                              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold transition-colors ${
+                                selected
+                                  ? "border-accent bg-surface text-foreground shadow-xs"
+                                  : "border-transparent text-muted hover:border-border hover:text-foreground"
+                              }`}
+                            >
+                              <span>{tab.label}</span>
+                              {hasContent ? (
+                                <span
+                                  aria-hidden="true"
+                                  className="h-1.5 w-1.5 rounded-full bg-signal"
+                                />
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                        <span className="ml-1 text-[11px] text-muted">
+                          {lineCount} {lineCount === 1 ? "linha" : "linhas"}
+                        </span>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={handleRequestTemplate}
-                        className="rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-accent"
-                      >
-                        Carregar modelo
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <LanguageIcon language={language} size={16} />
+                        <span className="font-mono text-xs font-semibold text-foreground">
+                          {meta.fileName}
+                        </span>
+                        <span className="text-[11px] text-muted">
+                          · {lineCount} linhas
+                        </span>
+                      </div>
                     )}
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {canFormatCurrentEditor ? (
+                        <button
+                          type="button"
+                          title="Formatar código (Shift+Alt+F)"
+                          disabled={isFormatting}
+                          onClick={() => void handleFormatCurrentCode()}
+                          className="rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-accent disabled:opacity-50"
+                        >
+                          {isFormatting ? "Formatando..." : "Formatar"}
+                        </button>
+                      ) : null}
+
+                      {meta.supportsLivePreview ? (
+                        <button
+                          type="button"
+                          title="Executar preview agora (Ctrl+Enter)"
+                          onClick={handleRunPreviewNow}
+                          className="rounded-lg bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                        >
+                          Executar
+                        </button>
+                      ) : null}
+
+                      {confirmTemplateSwap ? (
+                        <div className="flex items-center gap-1.5 text-[11px]">
+                          <span className="text-amber-500">Substituir?</span>
+                          <button
+                            type="button"
+                            onClick={applyLanguageTemplate}
+                            className="rounded-md bg-amber-500/20 px-2 py-0.5 font-semibold text-amber-600 dark:text-amber-300"
+                          >
+                            Sim
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmTemplateSwap(false)}
+                            className="rounded-md border border-border px-2 py-0.5 text-muted"
+                          >
+                            Não
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleRequestTemplate}
+                          className="rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-accent"
+                        >
+                          Modelo
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <textarea
-                    ref={textareaRef}
-                    aria-label={`Código-fonte em ${meta.label}`}
-                    rows={12}
-                    value={sourceCode}
-                    onChange={(event) => setSourceCode(event.target.value)}
-                    onKeyDown={handleCodeKeyDown}
-                    spellCheck={false}
-                    className="min-h-[240px] w-full flex-1 resize-y bg-[#0c0a18] p-3.5 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none sm:min-h-[320px]"
-                  />
+                  {/* Instâncias isoladas do CodeMirror 6 por aba preservam histórico local (undo/redo) */}
+                  {isMultiFile ? (
+                    <div className="flex min-h-[280px] flex-1 flex-col sm:min-h-[340px]">
+                      {SANDBOX_FILE_TABS.map((tab) => (
+                        <div
+                          key={tab.key}
+                          role="tabpanel"
+                          aria-label={tab.label}
+                          className={
+                            activeTab === tab.key
+                              ? "flex min-h-[280px] flex-1 flex-col sm:min-h-[340px]"
+                              : "hidden"
+                          }
+                        >
+                          <SandboxCodeEditor
+                            value={files[tab.key]}
+                            language={tab.editorLanguage}
+                            ariaLabel={`Editor de código ${tab.label}`}
+                            minHeight="300px"
+                            onChange={(nextVal) =>
+                              updateFileContent(tab.key, nextVal)
+                            }
+                            onRunShortcut={handleRunPreviewNow}
+                            onFormatShortcut={() => void handleFormatCurrentCode()}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[280px] flex-1 flex-col sm:min-h-[340px]">
+                      <SandboxCodeEditor
+                        value={sourceCode}
+                        language={mapSandboxLanguageToEditor(language)}
+                        ariaLabel={`Código-fonte em ${meta.label}`}
+                        minHeight="300px"
+                        onChange={setSourceCode}
+                        onRunShortcut={handleRunPreviewNow}
+                        onFormatShortcut={
+                          canFormatCurrentEditor
+                            ? () => void handleFormatCurrentCode()
+                            : undefined
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div
-                  className={`min-h-[300px] sm:min-h-[360px] ${
+                  className={`min-h-[340px] sm:min-h-[400px] ${
                     mobilePane === "preview" ? "block" : "hidden lg:block"
                   }`}
                 >
                   <SandboxPreview
                     language={language}
-                    sourceCode={sourceCode}
+                    sourceCode={effectiveSourceCode}
                     projectTitle={title}
+                    runTrigger={runTrigger}
+                    isVisible={mobilePane === "preview" || true}
                   />
                 </div>
               </div>

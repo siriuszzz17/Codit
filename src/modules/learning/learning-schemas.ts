@@ -27,6 +27,7 @@ export const recordLessonAttemptInputSchema = z.object({
   totalCases: z.number().int().min(0),
   executionMs: z.number().int().min(0).max(60_000).default(0),
   hintLevelUsed: z.number().int().min(0).max(3).default(0),
+  failedCaseIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
 });
 
 export type RecordLessonAttemptInput = z.infer<
@@ -75,6 +76,13 @@ export const BADGE_CATALOG: Readonly<Record<string, BadgeMeta>> = {
     description: "Finalizou todas as lições de Fundamentos de JavaScript.",
     toneClass:
       "border-violet-500/35 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  },
+  python_fundamentals_complete: {
+    id: "python_fundamentals_complete",
+    label: "Base Python Completa",
+    description: "Finalizou todas as lições de Python na Prática.",
+    toneClass:
+      "border-cyan-500/35 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
   },
 };
 

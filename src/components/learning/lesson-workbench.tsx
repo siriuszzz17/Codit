@@ -15,9 +15,10 @@ import {
   type AssertRunSummary,
 } from "@/modules/learning/assert-runner";
 import {
+  PYODIDE_EXECUTION_TIMEOUT_MS,
   runPythonLessonAssertions,
   type PyodideLoadProgress,
-} from "@/modules/learning/pyodide-runner";
+} from "@/modules/sandbox/pyodide-runner";
 import { getBadgeMeta } from "@/modules/learning/learning-schemas";
 import {
   getLessonBySlug,
@@ -112,6 +113,7 @@ export function LessonWorkbench() {
       const isPython = bundle.lesson.language.toLowerCase() === "python";
       const summary = isPython
         ? await runPythonLessonAssertions(code, bundle.lesson.test_cases, {
+            timeoutMs: PYODIDE_EXECUTION_TIMEOUT_MS,
             onProgress: (progress) => setPyodideProgress(progress),
           })
         : await runLessonAssertions(code, bundle.lesson.test_cases);
@@ -124,8 +126,9 @@ export function LessonWorkbench() {
         emitAppToast({
           tone: "warning",
           title: "Execução interrompida por tempo limite",
-          detail:
-            "Seu código excedeu 4 segundos. Verifique possíveis loops infinitos.",
+          detail: isPython
+            ? "Seu código Python excedeu 5 segundos e o Worker foi encerrado (RN-202)."
+            : "Seu código excedeu 4 segundos. Verifique possíveis loops infinitos.",
         });
       }
 
@@ -134,6 +137,9 @@ export function LessonWorkbench() {
         if (client) {
           setSavingAttempt(true);
           try {
+            const failedCaseIds = summary.results
+              .filter((r) => !r.passed)
+              .map((r) => r.id);
             const rpcResult = await recordLessonAttempt(
               {
                 lessonId: bundle.lesson.id,
@@ -143,6 +149,7 @@ export function LessonWorkbench() {
                 totalCases: summary.totalCount,
                 executionMs: summary.executionMs,
                 hintLevelUsed: revealedHintLevel,
+                failedCaseIds,
               },
               client,
             );
@@ -235,6 +242,7 @@ export function LessonWorkbench() {
   }
 
   const lessonPassed = Boolean(runSummary?.passed) || alreadyCompleted;
+  const isPythonLesson = bundle.lesson.language.toLowerCase() === "python";
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-7">
@@ -415,16 +423,26 @@ export function LessonWorkbench() {
         {/* Coluna direita: Editor técnico */}
         <div className="space-y-4">
           <section
-            aria-label="Editor de código JavaScript"
+            aria-label={
+              isPythonLesson
+                ? "Editor de código Python"
+                : "Editor de código JavaScript"
+            }
             className="codit-code-window overflow-hidden rounded-2xl border border-border bg-[#0f101a] text-[#eef0ff]"
           >
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-2.5">
               <div className="flex items-center gap-2">
-                <span className="rounded-md bg-amber-400/15 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-300">
-                  JS
+                <span
+                  className={
+                    isPythonLesson
+                      ? "rounded-md bg-sky-400/15 px-2 py-0.5 font-mono text-[11px] font-bold text-sky-300"
+                      : "rounded-md bg-amber-400/15 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-300"
+                  }
+                >
+                  {isPythonLesson ? "PY" : "JS"}
                 </span>
                 <span className="font-mono text-xs text-white/80">
-                  solucao.js
+                  {isPythonLesson ? "solucao.py" : "solucao.js"}
                 </span>
               </div>
 
@@ -453,7 +471,11 @@ export function LessonWorkbench() {
             </div>
 
             <textarea
-              aria-label="Código da solução em JavaScript"
+              aria-label={
+                isPythonLesson
+                  ? "Código da solução em Python"
+                  : "Código da solução em JavaScript"
+              }
               value={code}
               onChange={(event) => setCode(event.target.value)}
               spellCheck={false}
@@ -468,7 +490,9 @@ export function LessonWorkbench() {
             className="rounded-2xl border border-border bg-surface p-4"
           >
             <p className="text-xs font-bold text-foreground">
-              Console isolado (timeout 4s)
+              {isPythonLesson
+                ? "Console isolado Pyodide (timeout 5s · máx. 16 KB)"
+                : "Console isolado (timeout 4s)"}
             </p>
             {runSummary && runSummary.consoleLines.length > 0 ? (
               <pre className="mt-2 max-h-40 overflow-auto rounded-xl bg-surface-muted p-3 font-mono text-xs text-foreground">
@@ -476,7 +500,10 @@ export function LessonWorkbench() {
               </pre>
             ) : (
               <p className="mt-1.5 text-xs text-muted">
-                Use <code className="font-mono text-foreground">console.log(...)</code>{" "}
+                Use{" "}
+                <code className="font-mono text-foreground">
+                  {isPythonLesson ? "print(...)" : "console.log(...)"}
+                </code>{" "}
                 se quiser inspecionar valores durante os testes.
               </p>
             )}

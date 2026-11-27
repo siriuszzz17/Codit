@@ -4,6 +4,7 @@ import {
   createProblemDetails,
   type ProblemDetails,
 } from "@/lib/problem-details";
+import { reportProblemDetails } from "@/lib/telemetry/error-reporter";
 
 export type MissingMigrationFile =
   | "20261123000001_enhance_profiles_and_projects.sql"
@@ -370,6 +371,11 @@ function emitSupabaseProblemToast(
 
   if (!context?.silent) {
     emitProblemToast(problem);
+    if (status >= 500) {
+      void reportProblemDetails(problem, {
+        source: "problem_details",
+      });
+    }
   }
 
   return problem;

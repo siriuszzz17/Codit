@@ -1,11 +1,17 @@
 import { z } from "zod";
 import {
+  createProblemDetails,
+  type ProblemDetails,
+} from "@/lib/problem-details";
+import {
   requireSupabaseClient,
   type CoditSupabaseClient,
 } from "@/lib/supabase/client";
 import type {
   SandboxLanguage,
+  SandboxProjectFilesJson,
   SandboxProjectRow,
+  SandboxProjectVersionRow,
   SandboxRuntimeTarget,
   SandboxVisibility,
 } from "@/lib/supabase/database.types";
@@ -105,6 +111,24 @@ const optionalTagsSchema = z
   .transform(normalizeTagsList)
   .optional();
 
+const sandboxFilesSchema = z
+  .object({
+    "index.html": z
+      .string()
+      .max(MAX_SANDBOX_SOURCE_LENGTH, "O arquivo index.html excede o limite permitido.")
+      .optional(),
+    "styles.css": z
+      .string()
+      .max(MAX_SANDBOX_SOURCE_LENGTH, "O arquivo styles.css excede o limite permitido.")
+      .optional(),
+    "script.js": z
+      .string()
+      .max(MAX_SANDBOX_SOURCE_LENGTH, "O arquivo script.js excede o limite permitido.")
+      .optional(),
+  })
+  .nullable()
+  .optional();
+
 export const createSandboxProjectSchema = z.object({
   title: z
     .string({ error: "Informe um título para o mini-projeto." })
@@ -128,6 +152,7 @@ export const createSandboxProjectSchema = z.object({
       "O código excede o limite permitido de 200.000 caracteres.",
     )
     .default(""),
+  files: sandboxFilesSchema,
   visibility: z
     .enum(["private", "friends", "unlisted", "public_portfolio"])
     .default("private"),
@@ -185,6 +210,7 @@ export const updateSandboxProjectSchema = z.object({
       "O código excede o limite permitido de 200.000 caracteres.",
     )
     .optional(),
+  files: sandboxFilesSchema,
   visibility: z
     .enum(["private", "friends", "unlisted", "public_portfolio"])
     .optional(),
@@ -319,7 +345,7 @@ type RawSandboxProjectDbRow = Pick<
   Partial<
     Pick<
       SandboxProjectRow,
-      "is_pinned" | "tags" | "repository_url" | "live_url"
+      "files" | "is_pinned" | "tags" | "repository_url" | "live_url"
     >
   >;
 
@@ -419,6 +445,7 @@ export function normalizeSandboxProjectRow(
     primary_language: resolvedLanguage,
     runtime_target: resolvedRuntime,
     source_code: raw.source_code,
+    ...(raw.files !== undefined ? { files: raw.files } : {}),
     visibility: raw.visibility,
     share_slug: raw.share_slug,
     is_pinned:
@@ -564,6 +591,7 @@ export async function createSandboxProject(
   };
 
   const extendedPayload = {
+    ...(parsed.data.files !== undefined ? { files: parsed.data.files } : {}),
     ...(parsed.data.isPinned !== undefined
       ? { is_pinned: parsed.data.isPinned }
       : {}),
@@ -687,6 +715,7 @@ export async function updateSandboxProject(
   };
 
   const extendedUpdatePayload = {
+    ...(parsed.data.files !== undefined ? { files: parsed.data.files } : {}),
     ...(parsed.data.isPinned !== undefined
       ? { is_pinned: parsed.data.isPinned }
       : {}),
@@ -839,4 +868,129 @@ export async function softDeleteSandboxProject(
   }
 
   return data !== null;
+}
+
+export async function recordSandboxProjectVersion(
+  userId: string,
+  project: Pick<
+    SandboxProjectRow,
+    "id" | "version" | "title" | "primary_language" | "source_code" | "files"
+  >,
+  summary?: string,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<SandboxProjectVersionRow | null> {
+  await assertAuthenticatedUserMatches(
+    userId,
+    client,
+    (message) =>
+      new SandboxProjectServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const { data, error } = await client
+    .from("sandbox_project_versions")
+    .insert({
+      project_id: project.id,
+      user_id: userId,
+      version: project.version,
+      title: project.title,
+      primary_language: project.primary_language,
+      source_code: project.source_code,
+      files: (project.files ?? null) as SandboxProjectFilesJson | null,
+      summary: summary ? summary.slice(0, 140) : null,
+    })
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (isSchemaMismatchError(error) || isMissingDatabaseSchemaError(error)) {
+      return null;
+    }
+    const meta = extractSupabaseErrorMeta(error, { status: null });
+    if (meta.code === "23505") {
+      return null;
+    }
+    return null;
+  }
+
+  return (data as SandboxProjectVersionRow | null) ?? null;
+}
+
+export async function listSandboxProjectVersions(
+  userId: string,
+  projectId: string,
+  limit = 20,
+  client: CoditSupabaseClient = requireSupabaseClient(),
+): Promise<SandboxProjectVersionRow[]> {
+  await assertAuthenticatedUserMatches(
+    userId,
+    client,
+    (message) =>
+      new SandboxProjectServiceError(message, {
+        code: "AUTH_USER_MISMATCH",
+        status: 403,
+      }),
+  );
+
+  const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+  const { data, error, status } = await client
+    .from("sandbox_project_versions")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .order("version", { ascending: false })
+    .limit(safeLimit);
+
+  if (error) {
+    if (isSchemaMismatchError(error) || isMissingDatabaseSchemaError(error)) {
+      return [];
+    }
+    throw toSandboxServiceError(error, status, "listSandboxProjectVersions");
+  }
+
+  return (data ?? []) as SandboxProjectVersionRow[];
+}
+
+export function buildSandboxProblemDetails(
+  error: unknown,
+  fallbackTitle = "Falha no estúdio de código",
+): ProblemDetails {
+  if (error instanceof SandboxProjectConflictError) {
+    return createProblemDetails({
+      type: "https://codit.app/problems/sandbox-version-conflict",
+      title: "Conflito de versão do projeto",
+      status: 409,
+      detail: error.message,
+    });
+  }
+
+  if (error instanceof SandboxProjectValidationError) {
+    return createProblemDetails({
+      type: "https://codit.app/problems/sandbox-validation-error",
+      title: "Dados inválidos no projeto",
+      status: 400,
+      detail: error.message,
+    });
+  }
+
+  if (error instanceof SandboxProjectServiceError) {
+    return createProblemDetails({
+      type: "https://codit.app/problems/sandbox-service-error",
+      title: fallbackTitle,
+      status: error.status ?? 500,
+      detail: error.message,
+    });
+  }
+
+  return createProblemDetails({
+    type: "https://codit.app/problems/sandbox-unexpected-error",
+    title: fallbackTitle,
+    status: 500,
+    detail:
+      error instanceof Error
+        ? error.message
+        : "Não foi possível concluir a operação no estúdio.",
+  });
 }

@@ -2,7 +2,7 @@
 
 ## 1. Estrutura & Camadas de Backend
 
-1. **Rota Next.js Estática:** `GET /api/v1/health` (`src/app/api/v1/health/route.ts`, `force-static`) → retorna `{ status: "ok", service: "codit", version: "0.1.15", timestamp }`.
+1. **Rota Next.js Estática:** `GET /api/v1/health` (`src/app/api/v1/health/route.ts`, `force-static`) → retorna `{ status: "ok", service: "codit", version: "0.1.16", timestamp }`.
 2. **PostgREST + RLS + RPCs `SECURITY DEFINER`:** toda lógica transacional (trilhas/XP, chat rico, chamadas, moderação, LGPD e analytics) roda no PostgreSQL via RPCs autenticadas chamadas por `src/modules/*/*-service.ts`.
 3. **Supabase Storage (`chat-attachments`):** bucket privado (`file_size_limit = 5242880`, MIME `image/png|jpeg|webp|gif`), caminho `<conversation_id>/<sender_id>/<uuid>.<ext>`, protegido pelas políticas `chat_attachments_select_member` e `chat_attachments_insert_member`.
 4. **Edge Function Deno (`supabase/functions/send-push/{index.ts,helpers.ts}`):** despacho FCM HTTP v1 `data-only` (OAuth2 RS256), coordenação de estado/timeout `60s` de `call_sessions` e resposta rápida `RemoteInput`.

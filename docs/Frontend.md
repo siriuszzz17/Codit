@@ -5,9 +5,9 @@
 | Rota | Arquivo | Função |
 | :--- | :--- | :--- |
 | `/` | `src/app/page.tsx` | Landing inicial + `HeroWorkbench` + atalhos para Trilhas, Projetos, Comunidade e Mensagens. |
-| `/trilhas` | `src/app/trilhas/page.tsx` | Catálogo de trilhas JS/Python, progresso, XP/streak/badges, `FirstStepsCard` e resumo analítico (`TracksOverview`). |
-| `/trilhas/licao` | `src/app/trilhas/licao/page.tsx` | Ambiente interativo de lição por `?slug=<lessonSlug>` (`LessonWorkbench` em `<Suspense>`), `OctopyHintPanel` e runner JS/Pyodide. |
-| `/projetos` | `src/app/projetos/page.tsx` | Estúdio de 15 linguagens (`ProjectsWorkspace`) com `SandboxPreview` (HTML/CSS/JS em `iframe` + Python em Pyodide Worker) e `LearningAnalyticsDrawer`. |
+| `/trilhas` | `src/app/trilhas/page.tsx` | Catálogo de trilhas JS/Python, progresso, XP/streak/badges, `FirstStepsCard`, resumo analítico e botão *Ver funil por lição* (`TracksOverview` + `LearningAnalyticsDrawer`). |
+| `/trilhas/licao` | `src/app/trilhas/licao/page.tsx` | Ambiente interativo de lição por `?slug=<lessonSlug>` (`LessonWorkbench` em `<Suspense>`), `OctopyHintPanel`, `failed_case_ids` e runner JS/Pyodide unificado (watchdog 5s). |
+| `/projetos` | `src/app/projetos/page.tsx` | Estúdio Multi-Arquivo de 15 linguagens (`ProjectsWorkspace`, `ProjectStudioModal`, `SandboxCodeEditor` CodeMirror 6, abas `index.html`/`styles.css`/`script.js`, Prettier `Shift+Alt+F`, auto-save 1.5s, histórico de versões) com `SandboxPreview` (`iframe` com handshake `ping`/`ready` + Python em Pyodide Worker). |
 | `/comunidade` | `src/app/comunidade/page.tsx` | Busca `@` e feed de projetos (`CommunityHub`). |
 | `/comunidade/perfil` | `src/app/comunidade/perfil/page.tsx` | Perfil público por `?u=` ou `?id=` (`PublicProfileView` em `<Suspense>`), badges/XP e botão denunciar/bloquear (`ReportBlockModal`). |
 | `/mensagens` | `src/app/mensagens/page.tsx` | Chat rico (`text`, `code`, `image`, `project_share`), reações, busca na conversa, grupos <=10 e palco WebRTC (`MessagesWorkspace` em `<Suspense>`). |

@@ -1,19 +1,23 @@
 # Codit — Estado Real do Projeto (`STATE`)
 
 ## 1. Status de Build, CI & Versão
-- **Versão atual:** `0.1.15` (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src/app/api/v1/health/route.ts`, `src/lib/app-updater.ts`, `android/app/build.gradle` `versionName "0.1.15"` / `versionCode 16`).
-- **Artefatos de release:** `Codit_0.1.15_x64-setup.exe` + `.sig` (assinados via chave Minisign Tauri), `Codit-mobile.apk` e `latest.json` publicados no GitHub Releases (`siriuszzz17/Codit`).
-- **Qualidade & CI (`.github/workflows/ci.yml`):** `npm run typecheck`, `npm run lint`, `npm run test` (`30` arquivos / `154` testes unitários passando), `npm run build` (`out/`) e job `rls-integration` (`supabase start` + `npm run test:rls` com 7 cenários ponta a ponta de RLS/anti-IDOR).
+- **Versão atual:** `0.1.16` (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src/app/api/v1/health/route.ts`, `src/lib/app-updater.ts`, `android/app/build.gradle` `versionName "0.1.16"` / `versionCode 17`).
+- **Artefatos de release:** `Codit_0.1.16_x64-setup.exe` + `.sig` (assinados via chave Minisign Tauri), `Codit-mobile.apk` e `latest.json` publicados no GitHub Releases (`siriuszzz17/Codit`).
+- **Qualidade & CI (`.github/workflows/ci.yml`):** `npm run typecheck`, `npm run lint`, `npm run test` (`31` arquivos / `156` testes unitários passando), `npm run build` (`out/`) e job `rls-integration` (`supabase start` + `npm run test:rls` com 7 cenários ponta a ponta de RLS/anti-IDOR).
 
 ---
 
-## 2. Funcionalidades Implementadas e Integradas na `master` (`v0.1.15`)
+## 2. Funcionalidades Implementadas e Integradas na `master` (`v0.1.16`)
 
-- **Núcleo Educacional, Pyodide & Gamificação (`/trilhas`, `/trilhas/licao`, `src/modules/learning/`):**
-  - Catálogo publicado em `public.tracks` e `public.lessons` (trilha *Fundamentos de JavaScript* com 5 lições + trilha *Python na Prática com Pyodide* com 3 lições).
-  - Correção automática client-side: `assert-runner.ts` (`iframe` isolado para JS) e `pyodide-runner.ts` + `public/workers/pyodide-runner.worker.js` (Pyodide WASM `v0.27.4` em Web Worker com barra de progresso e terminação dura em loop infinito, integrado tanto em `/trilhas/licao` quanto no Estúdio `/projetos`).
-  - Dicas socráticas progressivas de 3 níveis (`OctopyHintPanel`), onboarding (`FirstStepsCard`) e RPC atômica `record_lesson_attempt` (progresso monotônico, XP, `current_streak` diário e `badges` sincronizados em `public_profiles`).
-  - Painel e métricas de aprendizado/retenção (`LearningAnalyticsDrawer`, `get_learning_retention_analytics`, `get_learning_analytics_summary`).
+- **Estúdio Multi-Arquivo, CodeMirror 6, Prettier & Histórico de Versões (`/projetos`, `src/modules/sandbox/`, `20261127000001`):**
+  - Editor técnico **CodeMirror 6** (`SandboxCodeEditor`, `@uiw/react-codemirror`) tematizado em *Warm Technical Craft* com suporte a HTML, CSS, JavaScript e Python, atalho `Ctrl+Enter` (`Prec.highest`) para executar e `Shift+Alt+F` para formatação sob demanda via **Prettier** (`prettier/standalone` com `import()` dinâmico).
+  - Suporte multi-arquivo (`index.html`, `styles.css`, `script.js`) com extração retroativa de `source_code` legado (`sandbox-files.ts`), persistência em `sandbox_projects.files` (JSONB), auto-save com debounce de `1.5s` e lock otimista (`version`).
+  - Histórico e restauração de snapshots em `public.sandbox_project_versions` (com RLS estrito ao dono do projeto, `recordSandboxProjectVersion` / `listSandboxProjectVersions` e drawer de versões no `ProjectStudioModal`).
+  - Fix de handshake/race condition (`ping`/`ready`) no `iframe` do sandbox (`sandbox-runner.ts` + `sandbox-preview.tsx`) e integração direta do Python client-side via Pyodide Web Worker no `SandboxPreview`.
+- **Núcleo Educacional, Pyodide Unificado & Gamificação (`/trilhas`, `/trilhas/licao`, `src/modules/learning/`, `20261127000002`):**
+  - Catálogo publicado em `public.tracks` e `public.lessons` (JavaScript e Python) com runner Pyodide WASM `v0.27.4` unificado em Web Worker dedicado (`public/workers/pyodide-runner.worker.js` + `src/modules/sandbox/pyodide-runner.ts`, stdout/stderr 16 KB, watchdog `worker.terminate()` em `5s` / RN-202).
+  - Dicas socráticas progressivas de 3 níveis (`OctopyHintPanel`), onboarding (`FirstStepsCard`), rastreamento de `failed_case_ids` por tentativa na RPC `record_lesson_attempt` (com badge `python_fundamentals_complete`) e botão *"Ver funil por lição"* abrindo o `LearningAnalyticsDrawer` em `/trilhas`.
+  - Reporte automático de erros HTTP >= 500 via `reportProblemDetails` em `src/lib/supabase/errors.ts`.
 - **Chat Rico, Reações, Busca & Chamadas WebRTC (`/mensagens`, `src/modules/messaging/`):**
   - Tipos de mensagem `'text' | 'system' | 'code' | 'image' | 'project_share'` com `metadata_json`, blocos de código (`CodeMessageBlock`), anexos de imagem no bucket privado `chat-attachments` (`ChatImageAttachment`), 6 reações (`chat_message_reactions`) e busca textual (`search_conversation_messages`).
   - Chamadas WebRTC mesh polite-peer de voz, vídeo de câmera (alinhado em Web, Android e Tauri Desktop) e compartilhamento de tela (Web `getDisplayMedia` + Android `ScreenCaptureService`), timeout de `60s` (`call_sessions` + RPC `notify_incoming_call`) e `CallForegroundService`.
@@ -32,7 +36,7 @@
 
 ## 3. Pendências Ativas & Próximos Passos Priorizados
 
-1. **[P0 — Supabase Remoto]** Aplicar no projeto Supabase de produção as migrações `20261126000001` a `20261126000007`, validar o bucket `chat-attachments` e publicar a versão atualizada da Edge Function `supabase/functions/send-push`.
+1. **[P0 — Supabase Remoto]** Aplicar no projeto Supabase de produção as migrações `20261126000001` a `20261127000002`, validar o bucket `chat-attachments` e publicar a versão atualizada da Edge Function `supabase/functions/send-push`.
 2. **[P1 — Limpeza de Worktrees]** Remover ou arquivar worktrees secundários já integrados na `master` (`Segurança`, `Ultra`, `Chamadas-not`, `SetupTauri`).
 3. **[P2 — Tutor IA Dinâmico (`DEC-002`)]** Evoluir as dicas estáticas de 3 níveis do Octopy para chat socrático dinâmico via Edge Function/proxy com rate limit por `user_id`.
 4. **[P2 — Sandbox Remoto Compilado]** Integrar `CodeExecutionProvider` (Judge0 CE / Piston) para as 10 linguagens compiladas/backend restantes do catálogo de 15 linguagens.

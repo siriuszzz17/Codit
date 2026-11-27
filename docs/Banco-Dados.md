@@ -1,6 +1,6 @@
 # Banco de Dados — Codit (`TCC-Codit`)
 
-## 1. Migrações Versionadas (`supabase/migrations/` — 16 arquivos)
+## 1. Migrações Versionadas (`supabase/migrations/` — 18 arquivos)
 
 1. `20261122000001_init_profiles_and_sandbox_projects.sql` — `profiles`, `sandbox_projects`, RLS base.
 2. `20261123000001_enhance_profiles_and_projects.sql` — customização de perfil e 15 linguagens em `sandbox_projects`.
@@ -18,10 +18,12 @@
 14. `20261126000005_add_learning_mvp_and_gamification.sql` — gamificação (`xp_total`, `current_streak`, `badges`, `onboarding_completed_at`), `user_lesson_progress`, `exercise_submissions`, `record_lesson_attempt`, trilha JS (5 lições) e enriquecimento das 3 lições Python.
 15. `20261126000006_add_rich_chat_moderation_and_lgpd.sql` — `user_blocks`, `moderation_reports`, chat rico (`metadata_json`, `code`/`image`/`project_share`), `chat_message_reactions`, `search_conversation_messages`, bucket `chat-attachments` e RPCs LGPD (`accept_privacy_terms`, `export_my_account_data`, `delete_my_account`).
 16. `20261126000007_add_observability_and_learning_analytics.sql` — `error_events` e `get_learning_analytics_summary()`.
+17. `20261127000001_add_sandbox_multifile_and_versions.sql` — coluna `files` JSONB em `sandbox_projects` e tabela `sandbox_project_versions` com RLS restrito ao dono.
+18. `20261127000002_add_failed_case_ids_to_lesson_attempts.sql` — coluna `failed_case_ids` em `exercise_submissions` e `record_lesson_attempt` com 8º parâmetro opcional `p_failed_case_ids` + badge `python_fundamentals_complete`.
 
 ---
 
-## 2. Catálogo Completo das 19 Tabelas (`public.*`) + Tipagem (`database.types.ts`)
+## 2. Catálogo Completo das 20 Tabelas (`public.*`) + Tipagem (`database.types.ts`)
 
 - **Identidade & LGPD:**
   - `profiles`: PK `id`, PII privada (`email`, `notification_prefs`, `terms_accepted_at`, `privacy_version`, `last_activity_date`, `onboarding_completed_at`), gamificação (`xp_total`, `current_streak`, `badges`), `last_seen_at`, `username` (cooldown 30d), customização e aparência.
@@ -33,7 +35,8 @@
   - `exercise_submissions`: histórico imutável de submissões por tentativa (`passed_cases`, `total_cases`, `execution_ms`, `xp_earned`).
   - `learning_lesson_attempts`: telemetria detalhada de tentativas e asserções falhas para `get_learning_retention_analytics`.
 - **Estúdio & Comunidade:**
-  - `sandbox_projects`: `user_id`, 15 linguagens, `visibility`, lock otimista `version`, `deleted_at` (respeita `user_blocks` em `can_view_sandbox_project`).
+  - `sandbox_projects`: `user_id`, 15 linguagens, `files` JSONB (`index.html`/`styles.css`/`script.js`), `visibility`, lock otimista `version`, `deleted_at` (respeita `user_blocks` em `can_view_sandbox_project`).
+  - `sandbox_project_versions`: histórico de snapshots de versão por projeto (`project_id`, `user_id`, `version`, `source_code`, `files`, `summary`) com RLS estrito ao dono.
   - `friendships` · `project_likes` · `project_comments` · `user_blocks` (bloqueio bilateral com trigger `on_user_block_inserted` que desfaz amizade) · `moderation_reports` (`user|project|message`).
 - **Mensagens, Chamadas & Alertas:**
   - `chat_conversations` · `chat_conversation_members` (máx. 10 ativos; escrita apenas via RPC) · `chat_messages` (`text|system|code|image|project_share`, `metadata_json`, redação `[Mensagem removida]` no soft delete) · `chat_message_reactions` (`👍 ❤️ 🔥 🚀 👏 👀`) · `call_sessions` (`ringing` 60s).

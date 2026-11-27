@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { OctopyBadge } from "@/components/brand/octopy-badge";
+import { LearningAnalyticsDrawer } from "@/components/learning/learning-analytics-drawer";
 import { FirstStepsCard } from "@/components/onboarding/first-steps-card";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { SkeletonList } from "@/components/ui/skeleton";
@@ -45,6 +46,7 @@ export function TracksOverview() {
   const [tracks, setTracks] = useState<TrackWithLessonsAndProgress[]>([]);
   const [analytics, setAnalytics] =
     useState<LearningAnalyticsSummaryRpcResult | null>(null);
+  const [analyticsDrawerOpen, setAnalyticsDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
@@ -392,9 +394,18 @@ export function TracksOverview() {
                 lição.
               </p>
             </div>
-            <span className="rounded-full bg-accent-soft px-3 py-1 font-mono text-xs font-bold text-accent-strong">
-              {analytics.completion_rate_percent}% concluído
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-accent-soft px-3 py-1 font-mono text-xs font-bold text-accent-strong">
+                {analytics.completion_rate_percent}% concluído
+              </span>
+              <button
+                type="button"
+                onClick={() => setAnalyticsDrawerOpen(true)}
+                className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-accent"
+              >
+                Ver funil por lição
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -424,6 +435,12 @@ export function TracksOverview() {
             </div>
           </div>
         </section>
+      ) : null}
+      {user ? (
+        <LearningAnalyticsDrawer
+          isOpen={analyticsDrawerOpen}
+          onClose={() => setAnalyticsDrawerOpen(false)}
+        />
       ) : null}
     </main>
   );

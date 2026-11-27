@@ -1,28 +1,36 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { LESSON_RUNNER_SOURCE } from "@/modules/learning/assert-runner";
 import {
-  createPyodideRunner,
-  PYODIDE_INIT_TIMEOUT_MS,
+  PYODIDE_EXECUTION_TIMEOUT_MS,
   PYODIDE_MAX_OUTPUT_BYTES,
-  PYODIDE_TIMEOUT_MS,
-  truncateUtf8Output,
-  type PyodideProgressEvent,
-  type WorkerLike,
+  PYODIDE_SANDBOX_SOURCE,
+  runPythonCode,
+  runPythonLessonAssertions,
+  truncateOutputToByteLimit,
+  type PyodideLoadProgress,
+  type PyodideWorkerLike,
 } from "@/modules/sandbox/pyodide-runner";
 
-class FakeWorker implements WorkerLike {
-  public terminated = false;
-  public postedMessages: unknown[] = [];
-  private messageListeners = new Set<(event: MessageEvent | ErrorEvent) => void>();
-  private errorListeners = new Set<(event: MessageEvent | ErrorEvent) => void>();
-  private readonly onPost?: (msg: unknown, worker: FakeWorker) => void;
+class FakeWorker implements PyodideWorkerLike {
+  terminated = false;
+  postedMessages: unknown[] = [];
+  private listeners: Record<
+    "message" | "error",
+    Set<(event: MessageEvent | ErrorEvent) => void>
+  > = {
+    message: new Set(),
+    error: new Set(),
+  };
 
-  constructor(onPost?: (msg: unknown, worker: FakeWorker) => void) {
-    this.onPost = onPost;
-  }
+  constructor(
+    private readonly onPost?: (msg: Record<string, unknown>, worker: FakeWorker) => void,
+  ) {}
 
   postMessage(message: unknown): void {
     this.postedMessages.push(message);
-    this.onPost?.(message, this);
+    if (this.onPost && message && typeof message === "object") {
+      this.onPost(message as Record<string, unknown>, this);
+    }
   }
 
   terminate(): void {
@@ -33,230 +41,160 @@ class FakeWorker implements WorkerLike {
     type: "message" | "error",
     listener: (event: MessageEvent | ErrorEvent) => void,
   ): void {
-    if (type === "message") {
-      this.messageListeners.add(listener);
-    } else {
-      this.errorListeners.add(listener);
-    }
+    this.listeners[type].add(listener);
   }
 
   removeEventListener(
     type: "message" | "error",
     listener: (event: MessageEvent | ErrorEvent) => void,
   ): void {
-    if (type === "message") {
-      this.messageListeners.delete(listener);
-    } else {
-      this.errorListeners.delete(listener);
-    }
+    this.listeners[type].delete(listener);
   }
 
   emitMessage(data: unknown): void {
     const event = { data } as MessageEvent;
-    for (const listener of this.messageListeners) {
-      listener(event);
-    }
-  }
-
-  emitError(message: string): void {
-    const event = { message } as ErrorEvent;
-    for (const listener of this.errorListeners) {
+    for (const listener of this.listeners.message) {
       listener(event);
     }
   }
 }
 
-describe("pyodide-runner (Web Worker + Watchdog RN-202)", () => {
-  it("reports download/init progress and returns stdout + assertion results", async () => {
-    const progressEvents: PyodideProgressEvent[] = [];
+describe("pyodide-runner (Web Worker + watchdog 5s RN-202)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-    const runner = createPyodideRunner({
+  it("terminates worker in 5s when Python code enters an infinite loop (RN-202)", async () => {
+    vi.useFakeTimers();
+    let createdWorker: FakeWorker | null = null;
+    const stages: PyodideLoadProgress[] = [];
+
+    const promise = runPythonCode("while True:\n    pass", {
+      onProgress: (p) => stages.push(p),
+      workerFactory: () => {
+        createdWorker = new FakeWorker((msg, worker) => {
+          worker.emitMessage({
+            type: "progress",
+            runId: msg.runId,
+            stage: "running",
+            percent: 100,
+            label: "Executando código Python...",
+          });
+          // Simula loop infinito: nunca envia resposta final.
+        });
+        return createdWorker;
+      },
+    });
+
+    expect(PYODIDE_EXECUTION_TIMEOUT_MS).toBe(5000);
+    expect(createdWorker).not.toBeNull();
+    expect(createdWorker!.terminated).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(createdWorker!.terminated).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await promise;
+
+    expect(createdWorker!.terminated).toBe(true);
+    expect(result.timedOut).toBe(true);
+    expect(result.executionMs).toBe(5000);
+    expect(result.runtimeError).toContain("5s");
+    expect(stages.some((s) => s.stage === "error")).toBe(true);
+  });
+
+  it("truncates stdout/stderr strictly at 16 KB max", async () => {
+    const hugeStdout = "A".repeat(PYODIDE_MAX_OUTPUT_BYTES + 2048);
+
+    const result = await runPythonCode('print("A" * 20000)', {
       workerFactory: () =>
         new FakeWorker((msg, worker) => {
-          const payload = msg as { runId: string; type: string };
-          if (payload.type !== "run") return;
-
           worker.emitMessage({
-            type: "status",
-            runId: payload.runId,
-            stage: "downloading",
-            progress: 20,
-            message: "Baixando runtime Python...",
-          });
-          worker.emitMessage({
-            type: "status",
-            runId: payload.runId,
-            stage: "initializing",
-            progress: 65,
-            message: "Inicializando Pyodide...",
-          });
-          worker.emitMessage({
-            type: "result",
-            runId: payload.runId,
-            ok: true,
-            stdout: "Média: 9.0\n",
+            source: PYODIDE_SANDBOX_SOURCE,
+            runId: msg.runId,
+            stdout: hugeStdout,
             stderr: "",
             truncated: false,
-            durationMs: 42,
-            assertions: [
-              {
-                id: "assert-media",
-                label: "media == 9.0",
-                passed: true,
-                message: "Critério atendido.",
-              },
-            ],
-            error: null,
+            executionMs: 12,
+            runtimeError: null,
           });
         }),
     });
 
-    const result = await runner.run("media = 9.0\nprint(f'Média: {media}')", {
-      assertions: [
-        { id: "assert-media", label: "media == 9.0", expression: "media == 9.0" },
-      ],
-      onProgress: (ev) => progressEvents.push(ev),
-    });
-
-    expect(result.ok).toBe(true);
     expect(result.timedOut).toBe(false);
-    expect(result.stdout).toContain("Média: 9.0");
-    expect(result.assertions).toHaveLength(1);
-    expect(result.assertions[0]?.passed).toBe(true);
+    expect(result.truncated).toBe(true);
+    expect(new TextEncoder().encode(result.stdout).byteLength).toBeLessThanOrEqual(
+      PYODIDE_MAX_OUTPUT_BYTES,
+    );
+  });
+
+  it("reuses AssertRunSummary contract and emits progress stages for Python lessons", async () => {
+    const progressEvents: PyodideLoadProgress[] = [];
+
+    const summary = await runPythonLessonAssertions(
+      "def dobro(n):\n    return n * 2",
+      [
+        {
+          id: "c1",
+          label: "dobro(4) == 8",
+          expression: "dobro(4)",
+          expected: 8,
+        },
+      ],
+      {
+        onProgress: (p) => progressEvents.push(p),
+        workerFactory: () =>
+          new FakeWorker((msg, worker) => {
+            worker.emitMessage({
+              type: "progress",
+              runId: msg.runId,
+              stage: "downloading",
+              percent: 25,
+              label: "Baixando runtime Python (Pyodide)...",
+            });
+            worker.emitMessage({
+              type: "progress",
+              runId: msg.runId,
+              stage: "running",
+              percent: 100,
+              label: "Executando testes em Python...",
+            });
+            worker.emitMessage({
+              source: LESSON_RUNNER_SOURCE,
+              runId: msg.runId,
+              executionMs: 18,
+              runtimeError: null,
+              consoleLines: ["ok"],
+              results: [
+                {
+                  id: "c1",
+                  label: "dobro(4) == 8",
+                  expression: "dobro(4)",
+                  passed: true,
+                  expectedFormatted: "8",
+                  actualFormatted: "8",
+                },
+              ],
+            });
+          }),
+      },
+    );
+
+    expect(summary.passed).toBe(true);
+    expect(summary.passedCount).toBe(1);
+    expect(summary.totalCount).toBe(1);
     expect(progressEvents.map((e) => e.stage)).toEqual([
       "downloading",
-      "initializing",
+      "running",
     ]);
   });
 
-  it("terminates worker after 5s watchdog on infinite loop (RN-202) and respawns cleanly", async () => {
-    vi.useFakeTimers();
-    try {
-      const workers: FakeWorker[] = [];
-      const runner = createPyodideRunner({
-        workerFactory: () => {
-          const index = workers.length;
-          const worker = new FakeWorker((msg, w) => {
-            const payload = msg as { runId: string; code: string };
-            if (index === 0) {
-              // Simula loop infinito (while True: pass) sem resposta
-              return;
-            }
-            w.emitMessage({
-              type: "result",
-              runId: payload.runId,
-              ok: true,
-              stdout: "ok após reinício\n",
-              stderr: "",
-              truncated: false,
-              durationMs: 12,
-              assertions: [],
-              error: null,
-            });
-          });
-          workers.push(worker);
-          return worker;
-        },
-      });
-
-      const hungRun = runner.run("while True:\n    pass");
-      await vi.advanceTimersByTimeAsync(PYODIDE_TIMEOUT_MS);
-      const hungResult = await hungRun;
-
-      expect(hungResult.ok).toBe(false);
-      expect(hungResult.timedOut).toBe(true);
-      expect(hungResult.error).toContain("5s");
-      expect(workers[0]?.terminated).toBe(true);
-
-      const recoveryResult = await runner.run("print('ok após reinício')");
-      expect(workers).toHaveLength(2);
-      expect(recoveryResult.ok).toBe(true);
-      expect(recoveryResult.stdout).toContain("ok após reinício");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("enforces 16 KB stdout/stderr truncation cap (RN-202)", () => {
-    const oversized = "A".repeat(PYODIDE_MAX_OUTPUT_BYTES + 2048);
-    const result = truncateUtf8Output(oversized);
-
-    expect(result.truncated).toBe(true);
-    expect(result.text).toContain("truncada em 16 KB");
-    expect(result.text.length).toBeLessThan(oversized.length);
-  });
-
-  it("terminates and recovers when worker emits fatal error", async () => {
-    const created: FakeWorker[] = [];
-    const runner = createPyodideRunner({
-      workerFactory: () => {
-        const worker = new FakeWorker((_msg, w) => {
-          w.emitError("WASM out of memory");
-        });
-        created.push(worker);
-        return worker;
-      },
-    });
-
-    const result = await runner.run("x = [0] * (10**9)");
-    expect(result.ok).toBe(false);
-    expect(result.timedOut).toBe(false);
-    expect(result.error).toContain("WASM out of memory");
-    expect(created[0]?.terminated).toBe(true);
-  });
-
-  it("allows up to 45s for cold WASM download/init and resets to 5s watchdog once stage=running", async () => {
-    vi.useFakeTimers();
-    try {
-      let capturedWorker: FakeWorker | null = null;
-      let currentRunId = "";
-
-      const runner = createPyodideRunner({
-        workerFactory: () => {
-          capturedWorker = new FakeWorker((msg, w) => {
-            const payload = msg as { runId: string; type: string };
-            if (payload.type !== "run") return;
-            currentRunId = payload.runId;
-            w.emitMessage({
-              type: "status",
-              runId: payload.runId,
-              stage: "downloading",
-              progress: 20,
-              message: "Baixando runtime Python...",
-            });
-          });
-          return capturedWorker;
-        },
-      });
-
-      expect(PYODIDE_INIT_TIMEOUT_MS).toBe(45000);
-
-      const pendingRun = runner.run("while True:\n    pass");
-
-      // 12s em download frio (> 5s) NÃO deve matar o worker
-      await vi.advanceTimersByTimeAsync(12000);
-      expect(capturedWorker!.terminated).toBe(false);
-
-      // Assim que o worker entra em `running`, o watchdog volta para 5s estritos
-      capturedWorker!.emitMessage({
-        type: "status",
-        runId: currentRunId,
-        stage: "running",
-        progress: 100,
-        message: "Executando código Python...",
-      });
-
-      await vi.advanceTimersByTimeAsync(PYODIDE_TIMEOUT_MS - 1);
-      expect(capturedWorker!.terminated).toBe(false);
-
-      await vi.advanceTimersByTimeAsync(1);
-      const timedOutResult = await pendingRun;
-
-      expect(timedOutResult.timedOut).toBe(true);
-      expect(timedOutResult.error).toContain("5s");
-      expect(capturedWorker!.terminated).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
+  it("truncateOutputToByteLimit respects UTF-8 byte length", () => {
+    const sample = "é".repeat(10_000); // 20_000 bytes em UTF-8
+    const out = truncateOutputToByteLimit(sample, 16 * 1024);
+    expect(out.truncated).toBe(true);
+    expect(new TextEncoder().encode(out.text).byteLength).toBeLessThanOrEqual(
+      16 * 1024,
+    );
   });
 });
