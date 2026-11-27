@@ -64,11 +64,11 @@ jobs:
           version: latest
 
       - name: Start local Supabase and apply migrations
-        run: npx supabase start
+        run: supabase start
 
       - name: Run RLS integration suite
         run: npm run test:rls
 
       - name: Stop local Supabase
         if: always()
-        run: npx supabase stop --no-backup
+        run: supabase stop --no-backup
