@@ -14,7 +14,7 @@ export const RATE_LIMIT_WINDOW_MS = 60_000;
 export const RATE_LIMIT_MAX_REQUESTS = 6;
 export const RATE_LIMIT_COOLDOWN_MS = 4_000;
 
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 export const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 export const MAX_OUTPUT_TOKENS = 260;
 

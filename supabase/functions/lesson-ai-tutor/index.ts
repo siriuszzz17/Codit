@@ -43,15 +43,18 @@ const CORS_HEADERS: Record<string, string> = {
 class TutorUpstreamError extends Error {
   readonly code: "timeout" | "rate_limited" | "auth_error" | "upstream_error" | "invalid_response";
   readonly retryAfter: string | null;
+  readonly httpStatus: number | null;
 
   constructor(
     code: "timeout" | "rate_limited" | "auth_error" | "upstream_error" | "invalid_response",
     retryAfter: string | null = null,
+    httpStatus: number | null = null,
   ) {
     super(code);
     this.name = "TutorUpstreamError";
     this.code = code;
     this.retryAfter = retryAfter;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -169,12 +172,13 @@ async function callProvider(
         throw new TutorUpstreamError(
           "rate_limited",
           response.headers.get("retry-after"),
+          response.status,
         );
       }
       if (response.status === 401 || response.status === 403) {
-        throw new TutorUpstreamError("auth_error");
+        throw new TutorUpstreamError("auth_error", null, response.status);
       }
-      throw new TutorUpstreamError("upstream_error");
+      throw new TutorUpstreamError("upstream_error", null, response.status);
     }
 
     const payload: unknown = await response.json();
@@ -289,8 +293,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       } else {
         lastErrorCode = "upstream_error";
       }
+      const httpStatus =
+        err instanceof TutorUpstreamError && err.httpStatus !== null
+          ? err.httpStatus
+          : "na";
       console.error(
-        `[lesson-ai-tutor] slot=${config.slot} code=${lastErrorCode}`,
+        `[lesson-ai-tutor] slot=${config.slot} model=${config.model} status=${httpStatus} code=${lastErrorCode}`,
       );
     }
   }
