@@ -4,14 +4,14 @@
 
 Aplicação educacional e rede de estudos **client-first** construída sobre exportação estática Next.js (`output: "export"` → `out/`), backend gerenciado no **Supabase** (PostgreSQL + RLS + RPCs `SECURITY DEFINER` + Auth + Realtime privado + Storage + Edge Function `send-push`) e empacotamento nativo para **Desktop Windows (Tauri v2)** e **Android (Capacitor 8)**.
 
-| Camada | Stack & Versões Reais (`0.1.16`) | Responsabilidade |
+| Camada | Stack & Versões Reais (`0.1.18`) | Responsabilidade |
 | :--- | :--- | :--- |
-| **Web / UI** | Next.js `16.4.6` (App Router) · React `19.3.1` · TypeScript `5.9.3` (`strict`) · Tailwind CSS `4.3.5` · Zod `4.6.7` · CodeMirror 6 (`@uiw/react-codemirror`) · Prettier `3.10.1` | 14 rotas, trilhas gamificadas, Estúdio Multi-Arquivo com CodeMirror 6 + Prettier + versões, UI `Warm Technical Craft`, temas CSS/SVG, a11y (`useDialogA11y`), Sandbox `iframe` e Pyodide WASM Worker. |
-| **PWA & Workers** | `public/sw.js` (`codit-static-v2`) · `public/workers/pyodide-runner.worker.js` · `manifest.webmanifest` | Cache offline estático na Web e execução Python isolada via Pyodide `v0.27.4` em Web Worker unificado (watchdog 5s, stdout/stderr 16 KB). |
-| **Backend / Dados** | `@supabase/supabase-js` `2.119.2` · PostgreSQL (20 tabelas + RLS) · Storage (`chat-attachments`) · Edge Function `send-push` | Persistência isolada por `user_id`, snapshots de versão de projetos (`sandbox_project_versions`), canais Realtime privados, anexos de chat, LGPD, moderação, FCM HTTP v1 e timeout de chamadas. |
-| **Android Nativo** | Capacitor `8.6.2` (`com.codit.app`, `versionCode 17`, `0.1.16`) · Firebase Messaging `25.0.1` · Java 21 / SDK 36 | WebView Edge-to-Edge, `MediaProjection` (screen share), `CallForegroundService`, `MessagingStyle` + `RemoteInput`. |
-| **Desktop Nativo** | Tauri `2.12.x` (`com.codit.app`, `0.1.16`) · Rust (`oauth.rs`, `lib.rs`) · `tauri-plugin-{updater,notification,opener,process}` | Loopback OAuth local (`127.0.0.1:43823`), microfone/câmera liberados, CSP compatível com Pyodide WASM e auto-update assinado. |
-| **Qualidade & CI** | Vitest `5.1.1` (`31` suítes unitárias / `156` testes + `tests/rls/rls-policies.integration.test.ts`) · GitHub Actions (`.github/workflows/ci.yml`) | Pipeline automático de `typecheck`, `lint`, `test`, `next build` e `supabase start` + `test:rls`. |
+| **Web / UI** | Next.js `16.4.6` (App Router) · React `19.3.1` · TypeScript `5.9.3` (`strict`) · Tailwind CSS `4.3.5` · Zod `4.6.7` · CodeMirror 6 (`@uiw/react-codemirror`) · Prettier `3.10.1` | 14 rotas, trilhas gamificadas com Markdown sanitizado e Assistente IA Socrático (`LessonAiAssistant`), Estúdio Multi-Arquivo com CodeMirror 6 + Prettier + versões, UI `Warm Technical Craft`, temas CSS/SVG, a11y (`useDialogA11y`), Sandbox `iframe` e Pyodide WASM Worker. |
+| **PWA & Workers** | `public/sw.js` (`codit-static-v2`) · `public/workers/pyodide-runner.worker.js` · `manifest.webmanifest` | Cache offline estático na Web e execução Python isolada via Pyodide `v0.27.4` em Web Worker unificado (watchdog 5s, stdout/stderr 16 KB, precisão IEEE 754). |
+| **Backend / Dados** | `@supabase/supabase-js` `2.119.2` · PostgreSQL (20 tabelas + RLS) · Storage (`chat-attachments`) · Edge Functions `send-push` e `lesson-ai-tutor` | Persistência isolada por `user_id`, snapshots de versão de projetos (`sandbox_project_versions`), proxy IA socrático (`Gemini`/`OpenAI`), canais Realtime privados, anexos de chat, LGPD, moderação, FCM HTTP v1 e timeout de chamadas. |
+| **Android Nativo** | Capacitor `8.6.2` (`com.codit.app`, `versionCode 19`, `0.1.18`) · Firebase Messaging `25.0.1` · Java 21 / SDK 36 | WebView Edge-to-Edge, `MediaProjection` (screen share), `CallForegroundService`, `MessagingStyle` + `RemoteInput`. |
+| **Desktop Nativo** | Tauri `2.12.x` (`com.codit.app`, `0.1.18`) · Rust (`oauth.rs`, `lib.rs`) · `tauri-plugin-{updater,notification,opener,process}` | Loopback OAuth local (`127.0.0.1:43823`), microfone/câmera liberados, CSP compatível com Pyodide WASM e auto-update assinado. |
+| **Qualidade & CI** | Vitest `5.1.1` (`33` suítes unitárias / `168` testes + `tests/rls/rls-policies.integration.test.ts`) · GitHub Actions (`.github/workflows/ci.yml`) | Pipeline automático de `typecheck`, `lint`, `test`, `next build` e `supabase start` + `test:rls`. |
 
 ---
 
@@ -42,9 +42,9 @@ TCC-Codit/
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx, globals.css, page.tsx, not-found.tsx, offline/page.tsx
-│   │   ├── api/v1/health/route.ts               # Health check estático (v0.1.16)
+│   │   ├── api/v1/health/route.ts               # Health check estático (v0.1.18)
 │   │   ├── auth/{page,callback/page,native-callback/page}.tsx
-│   │   ├── trilhas/{page,licao/page}.tsx        # Catálogo de trilhas JS/Python, correção, analytics e Octopy
+│   │   ├── trilhas/{page,licao/page}.tsx        # Catálogo JS/Python, Markdown sanitizado, Assistente IA Octopy e analytics
 │   │   ├── projetos/page.tsx                    # Estúdio Multi-Arquivo CodeMirror 6 (15 linguagens) + Sandbox Web & Pyodide
 │   │   ├── comunidade/{page,perfil/page}.tsx    # Feed, busca @, bloqueio e denúncias
 │   │   ├── mensagens/page.tsx                   # Chat rico, reações, busca, grupos e WebRTC
@@ -52,7 +52,7 @@ TCC-Codit/
 │   │   └── privacidade/page.tsx                 # Política LGPD e direitos do titular
 │   ├── modules/
 │   │   ├── auth/, profiles/, theme/
-│   │   ├── learning/      # learning-{schemas,service,analytics-service}.ts, assert-runner.ts, pyodide-runner.ts
+│   │   ├── learning/      # learning-{schemas,service,analytics-service}.ts, assert-runner.ts, pyodide-runner.ts, lesson-markdown.ts, lesson-ai-tutor-service.ts
 │   │   ├── sandbox/       # sandbox-project-service.ts, sandbox-files.ts, prettier-formatter.ts, language-catalog.ts, sandbox-runner.ts, pyodide-runner.ts
 │   │   ├── social/        # social-{schemas,service}.ts (amizades, likes, comments, blocks, reports)
 │   │   ├── messaging/     # messaging-{schemas,service}.ts, voice-call-{manager,provider}, webrtc-media.ts
@@ -62,12 +62,12 @@ TCC-Codit/
 │   └── lib/               # app-toast.ts, app-updater.ts, codit-native-bridge.ts, desktop-updater.ts, env.ts, error-observability.ts, logger.ts, native-oauth.ts, navigation.ts, problem-details.ts, problem-response.ts, social-events.ts, use-is-online.ts, supabase/*, telemetry/error-reporter.ts
 ├── supabase/
 │   ├── config.toml
-│   ├── migrations/        # 18 arquivos SQL (20261122000001 .. 20261127000002)
-│   └── functions/send-push/{index.ts,helpers.ts}
+│   ├── migrations/        # 19 arquivos SQL (20261122000001 .. 20261127000003)
+│   └── functions/         # send-push/{index,helpers}.ts · lesson-ai-tutor/{index,helpers}.ts
 ├── android/app/src/main/  # AndroidManifest.xml + java/com/codit/app/* (9 classes Java)
 ├── src-tauri/             # tauri.conf.json, Cargo.toml, src/{main,lib,oauth}.rs
 ├── public/                # sw.js, manifest.webmanifest, icons/, workers/pyodide-runner.worker.js
-└── tests/                 # unit/ (31 suítes) + rls/rls-policies.integration.test.ts + mocks/
+└── tests/                 # unit/ (33 suítes) + rls/rls-policies.integration.test.ts + mocks/
 ```
 
 ---
@@ -76,12 +76,12 @@ TCC-Codit/
 
 | Nota | O que documenta | Quando um agente deve ler |
 | :--- | :--- | :--- |
-| [[STATE]] | Status real (`0.1.16`), entregas das fases integradas, pendências remotas e próximos passos. | **Sempre no início** de qualquer tarefa. |
+| [[STATE]] | Status real (`0.1.18`), entregas das fases integradas, pendências remotas e próximos passos. | **Sempre no início** de qualquer tarefa. |
 | [[Arquitetura]] | Padrões arquiteturais, ciclo de vida, Realtime privado, Pyodide Worker, CI, `.env` e `DEC-XXX`. | Ao planejar features, alterar build/CSP ou integrar novos módulos. |
-| [[Backend]] | `/api/v1/health`, Edge Function `send-push`, Realtime broadcasts do banco, Storage `chat-attachments` e RPCs. | Ao alterar Edge Functions, triggers, Storage ou contratos de backend. |
+| [[Backend]] | `/api/v1/health`, Edge Functions `send-push` e `lesson-ai-tutor`, Realtime broadcasts do banco, Storage `chat-attachments` e RPCs. | Ao alterar Edge Functions, triggers, Storage ou contratos de backend. |
 | [[Frontend]] | 14 rotas App Router, providers, componentes (`learning`, `messaging`, `sandbox`, `ui`, `a11y`), caches e armadilhas CSS. | Ao criar/editar páginas, modais, estados React ou navegação. |
-| [[Capacitor-Android]] | `capacitor.config.ts`, `build.gradle` (`versionCode 17`), `window.CoditNative`, permissões e diferenças WebView. | Ao mexer no Android nativo, push/chamadas mobile ou gerar `Codit-mobile.apk`. |
+| [[Capacitor-Android]] | `capacitor.config.ts`, `build.gradle` (`versionCode 19`), `window.CoditNative`, permissões e diferenças WebView. | Ao mexer no Android nativo, push/chamadas mobile ou gerar `Codit-mobile.apk`. |
 | [[Auth-Seguranca]] | OAuth PKCE Web/Tauri/Android, `NativeSessionStore`, RLS, canais privados, moderação, LGPD e CSP. | Ao alterar login, permissões, políticas RLS, privacidade ou headers/CSP. |
-| [[Banco-Dados]] | 18 migrações SQL, schema das 20 tabelas, bucket `chat-attachments`, triggers, RLS e RPCs. | Antes de escrever queries, criar migrações ou atualizar `database.types.ts`. |
+| [[Banco-Dados]] | 19 migrações SQL, schema das 20 tabelas, bucket `chat-attachments`, triggers, RLS e RPCs. | Antes de escrever queries, criar migrações ou atualizar `database.types.ts`. |
 | [[Fluxos-Criticos]] | Sequências ponta a ponta: Auth, Trilhas/Pyodide/XP, Chat Rico + Push + `RemoteInput`, WebRTC, LGPD e Telemetria. | Ao depurar fluxos multi-camada. |
 | [[design-system]] | Padrão visual `Warm Technical Craft`, 3 zonas de peso, regras anti-clichê, tipografia e temas/wallpapers. | Ao criar ou refatorar qualquer interface ou copy em `pt-BR`. |

@@ -6,7 +6,7 @@
 | :--- | :--- | :--- |
 | `/` | `src/app/page.tsx` | Landing inicial + `HeroWorkbench` + atalhos para Trilhas, Projetos, Comunidade e Mensagens. |
 | `/trilhas` | `src/app/trilhas/page.tsx` | Catálogo de trilhas JS/Python, progresso, XP/streak/badges, `FirstStepsCard`, resumo analítico e botão *Ver funil por lição* (`TracksOverview` + `LearningAnalyticsDrawer`). |
-| `/trilhas/licao` | `src/app/trilhas/licao/page.tsx` | Ambiente interativo de lição por `?slug=<lessonSlug>` (`LessonWorkbench` em `<Suspense>`), `OctopyHintPanel`, `failed_case_ids` e runner JS/Pyodide unificado (watchdog 5s). |
+| `/trilhas/licao` | `src/app/trilhas/licao/page.tsx` | Ambiente interativo de lição por `?slug=<lessonSlug>` (`LessonWorkbench` em `<Suspense>`), enunciado em Markdown sanitizado (`LessonMarkdownBlocks` + seções Objetivo/Assinatura/Regras), `LessonAiAssistant` (máx. 3 interações/lição), `failed_case_ids` e runner JS/Pyodide unificado (watchdog 5s). |
 | `/projetos` | `src/app/projetos/page.tsx` | Estúdio Multi-Arquivo de 15 linguagens (`ProjectsWorkspace`, `ProjectStudioModal`, `SandboxCodeEditor` CodeMirror 6, abas `index.html`/`styles.css`/`script.js`, Prettier `Shift+Alt+F`, auto-save 1.5s, histórico de versões) com `SandboxPreview` (`iframe` com handshake `ping`/`ready` + Python em Pyodide Worker). |
 | `/comunidade` | `src/app/comunidade/page.tsx` | Busca `@` e feed de projetos (`CommunityHub`). |
 | `/comunidade/perfil` | `src/app/comunidade/perfil/page.tsx` | Perfil público por `?u=` ou `?id=` (`PublicProfileView` em `<Suspense>`), badges/XP e botão denunciar/bloquear (`ReportBlockModal`). |

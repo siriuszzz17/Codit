@@ -216,7 +216,15 @@ for _tc in _cases:
         with contextlib.redirect_stdout(_stdout), contextlib.redirect_stderr(_stderr):
             _actual = eval(_tc["expression"], _ns)
         _expected = _tc.get("expected")
-        _passed = _actual == _expected
+        if (
+            isinstance(_actual, (int, float))
+            and not isinstance(_actual, bool)
+            and isinstance(_expected, (int, float))
+            and not isinstance(_expected, bool)
+        ):
+            _passed = abs(float(_actual) - float(_expected)) <= 1e-9
+        else:
+            _passed = _actual == _expected
         _results.append({
             "id": _tc["id"],
             "label": _tc["label"],

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { OctopyHintPanel } from "@/components/learning/octopy-hint-panel";
+import { LessonAiAssistant } from "@/components/learning/lesson-ai-assistant";
+import { LessonMarkdownBlocks } from "@/components/learning/lesson-markdown";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { SkeletonList } from "@/components/ui/skeleton";
 import { emitAppToast } from "@/lib/app-toast";
@@ -14,6 +15,13 @@ import {
   runLessonAssertions,
   type AssertRunSummary,
 } from "@/modules/learning/assert-runner";
+import {
+  extractFailedCasesForAi,
+} from "@/modules/learning/lesson-ai-tutor-service";
+import {
+  extractFunctionSignature,
+  splitLessonSections,
+} from "@/modules/learning/lesson-markdown";
 import {
   PYODIDE_EXECUTION_TIMEOUT_MS,
   runPythonLessonAssertions,
@@ -40,7 +48,6 @@ export function LessonWorkbench() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [code, setCode] = useState("");
-  const [revealedHintLevel, setRevealedHintLevel] = useState(0);
   const [running, setRunning] = useState(false);
   const [savingAttempt, setSavingAttempt] = useState(false);
   const [runSummary, setRunSummary] = useState<AssertRunSummary | null>(null);
@@ -78,7 +85,6 @@ export function LessonWorkbench() {
         setErrorMessage(null);
         if (result) {
           setCode(result.progress?.best_code || result.lesson.starter_code);
-          setRevealedHintLevel(result.progress?.max_hint_level_used ?? 0);
         }
         setLoadedSlug(slug);
       } catch (err) {
@@ -148,7 +154,7 @@ export function LessonWorkbench() {
                 passedCases: summary.passedCount,
                 totalCases: summary.totalCount,
                 executionMs: summary.executionMs,
-                hintLevelUsed: revealedHintLevel,
+                hintLevelUsed: 0,
                 failedCaseIds,
               },
               client,
@@ -241,8 +247,19 @@ export function LessonWorkbench() {
     );
   }
 
-  const lessonPassed = Boolean(runSummary?.passed) || alreadyCompleted;
   const isPythonLesson = bundle.lesson.language.toLowerCase() === "python";
+  const lessonSections = splitLessonSections(bundle.lesson.content_md);
+  const functionSignature = extractFunctionSignature(
+    bundle.lesson.starter_code,
+    bundle.lesson.language,
+  );
+  const totalCases = bundle.lesson.test_cases.length;
+  const passedCases = runSummary?.passedCount ?? 0;
+  const progressPercent =
+    runSummary && totalCases > 0
+      ? Math.round((passedCases / totalCases) * 100)
+      : 0;
+  const failedCasesForAi = extractFailedCasesForAi(runSummary?.results);
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-7">
@@ -286,45 +303,127 @@ export function LessonWorkbench() {
         </div>
       </div>
 
-      {/* Área dividida: Enunciado + Testes + Octopy | Editor + Console */}
+      {/* Área dividida: Tarefa + Casos de teste | Editor + Console */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.15fr]">
-        {/* Coluna esquerda */}
+        {/* Coluna esquerda: Painel da tarefa */}
         <div className="space-y-4">
           <section
             aria-labelledby="lesson-instructions-title"
-            className="rounded-2xl border border-border bg-surface p-5"
+            className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface"
           >
-            <h2
-              id="lesson-instructions-title"
-              className="text-sm font-bold text-foreground"
-            >
-              Enunciado
-            </h2>
-            <p className="mt-1 text-xs text-muted">{bundle.lesson.summary}</p>
-            <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-              {bundle.lesson.content_md}
+            {/* Objetivo */}
+            <div className="p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2
+                  id="lesson-instructions-title"
+                  className="text-sm font-bold text-foreground"
+                >
+                  Objetivo
+                </h2>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-border bg-surface-muted px-2.5 py-0.5 font-mono text-[11px] font-semibold text-foreground">
+                    {isPythonLesson ? "Python" : "JavaScript"}
+                  </span>
+                  {alreadyCompleted ? (
+                    <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                      Concluída
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-border bg-surface-muted px-2.5 py-0.5 font-mono text-[11px] font-semibold text-foreground">
+                      +{bundle.lesson.xp_reward} XP
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {bundle.lesson.summary ? (
+                <p className="mt-1.5 text-xs text-muted">
+                  {bundle.lesson.summary}
+                </p>
+              ) : null}
+
+              {lessonSections.objectiveBlocks.length > 0 ? (
+                <div className="mt-3">
+                  <LessonMarkdownBlocks blocks={lessonSections.objectiveBlocks} />
+                </div>
+              ) : null}
             </div>
+
+            {/* Assinatura da função */}
+            {functionSignature ? (
+              <div className="bg-surface-muted/35 px-5 py-3.5">
+                <p className="text-xs font-bold text-foreground">
+                  Assinatura da função
+                </p>
+                <div className="mt-2 overflow-x-auto rounded-xl border border-border/80 bg-[#0f101a] px-3.5 py-2.5 font-mono text-xs text-[#eef0ff] dark:border-white/10">
+                  <code>{functionSignature}</code>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Regras */}
+            {lessonSections.rulesBlocks.length > 0 ? (
+              <div className="p-5">
+                <h3 className="text-xs font-bold text-foreground">Regras</h3>
+                <div className="mt-2.5">
+                  <LessonMarkdownBlocks blocks={lessonSections.rulesBlocks} />
+                </div>
+              </div>
+            ) : null}
+
+            {/* Seções adicionais */}
+            {lessonSections.extraBlocks.length > 0 ? (
+              <div className="p-5">
+                <LessonMarkdownBlocks blocks={lessonSections.extraBlocks} />
+              </div>
+            ) : null}
           </section>
 
-          {/* Casos de teste */}
+          {/* Status dos casos de teste */}
           <section
             aria-labelledby="lesson-tests-title"
             className="rounded-2xl border border-border bg-surface p-4"
           >
-            <div className="flex items-center justify-between gap-2">
-              <h2
-                id="lesson-tests-title"
-                className="text-sm font-bold text-foreground"
-              >
-                Casos de teste ({bundle.lesson.test_cases.length})
-              </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2
+                  id="lesson-tests-title"
+                  className="text-sm font-bold text-foreground"
+                >
+                  Status dos casos de teste
+                </h2>
+                <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 font-mono text-[11px] font-semibold text-muted">
+                  {totalCases}
+                </span>
+              </div>
               {runSummary ? (
-                <span className="font-mono text-xs text-muted">
+                <span
+                  className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] font-bold ${
+                    runSummary.passed
+                      ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-300"
+                      : "bg-red-600/15 text-red-700 dark:text-red-300"
+                  }`}
+                >
                   {runSummary.passedCount}/{runSummary.totalCount} aprovados ·{" "}
                   {runSummary.executionMs}ms
                 </span>
-              ) : null}
+              ) : (
+                <span className="font-mono text-[11px] text-muted">
+                  Aguardando execução
+                </span>
+              )}
             </div>
+
+            {runSummary ? (
+              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
+                <div
+                  className={`h-full rounded-full transition-all duration-200 ${
+                    runSummary.passed ? "bg-emerald-500" : "bg-red-500"
+                  }`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            ) : null}
 
             {pyodideProgress && pyodideProgress.stage !== "ready" ? (
               <div
@@ -374,7 +473,7 @@ export function LessonWorkbench() {
                         {tc.label}
                       </span>
                       <span
-                        className={`rounded-full px-2 py-0.5 font-mono text-[11px] font-bold ${
+                        className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[11px] font-bold ${
                           !res
                             ? "bg-surface text-muted"
                             : res.passed
@@ -385,14 +484,14 @@ export function LessonWorkbench() {
                         {!res ? "Aguardando" : res.passed ? "Passou" : "Falhou"}
                       </span>
                     </div>
-                    <p className="mt-1 font-mono text-[11px] text-muted">
+                    <p className="mt-1.5 font-mono text-[11px] text-muted">
                       {tc.expression} === {JSON.stringify(tc.expected)}
                     </p>
                     {res && !res.passed ? (
                       <p className="mt-1 font-mono text-[11px] text-red-700 dark:text-red-300">
                         {res.errorMessage
                           ? `Erro: ${res.errorMessage}`
-                          : `Recebido: ${res.actualFormatted}`}
+                          : `Esperado: ${res.expectedFormatted} · Recebido: ${res.actualFormatted}`}
                       </p>
                     ) : null}
                   </li>
@@ -401,22 +500,12 @@ export function LessonWorkbench() {
             </ul>
           </section>
 
-          <OctopyHintPanel
-            hints={bundle.lesson.hints}
-            solutionCode={bundle.lesson.solution_code}
-            baseXp={bundle.lesson.xp_reward}
-            alreadyCompleted={alreadyCompleted}
-            lessonPassed={lessonPassed}
-            revealedLevel={revealedHintLevel}
-            onRevealLevel={setRevealedHintLevel}
-            onApplySolution={(solution) => {
-              setCode(solution);
-              emitAppToast({
-                tone: "info",
-                title: "Solução aplicada no editor",
-                detail: "Execute os testes para validar e registrar sua lição.",
-              });
-            }}
+          <LessonAiAssistant
+            key={bundle.lesson.slug}
+            enunciado={bundle.lesson.content_md}
+            codigoAtual={code}
+            failedCases={failedCasesForAi}
+            isAuthenticated={Boolean(user)}
           />
         </div>
 

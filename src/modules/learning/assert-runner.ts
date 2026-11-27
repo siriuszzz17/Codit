@@ -115,6 +115,15 @@ export function buildAssertHarnessCode(
 
   function deepEqual(a, b) {
     if (Object.is(a, b)) return true;
+    if (
+      typeof a === "number" &&
+      typeof b === "number" &&
+      Number.isFinite(a) &&
+      Number.isFinite(b) &&
+      Math.abs(a - b) <= 1e-9
+    ) {
+      return true;
+    }
     if (typeof a !== typeof b || a === null || b === null) return false;
     if (Array.isArray(a) || Array.isArray(b)) {
       if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;

@@ -1,9 +1,9 @@
 # Capacitor & Android Nativo — Codit (`TCC-Codit`)
 
-## 1. Configuração Capacitor & Build Android (`v0.1.16`)
+## 1. Configuração Capacitor & Build Android (`v0.1.18`)
 
 - **`capacitor.config.ts`:** `appId: "com.codit.app"`, `appName: "Codit"`, `webDir: "out"`, `server.androidScheme: "https"`, `SystemBars.insetsHandling: "disable"`, `LocalNotifications` (`ic_stat_codit`, `#8B6BFF`), `PushNotifications.presentationOptions: []`.
-- **`android/app/build.gradle`:** `versionCode 17`, `versionName "0.1.16"`, `outputFileName = "Codit-mobile.apk"`, `com.google.firebase:firebase-messaging:25.0.1` + `google-services.json`.
+- **`android/app/build.gradle`:** `versionCode 19`, `versionName "0.1.18"`, `outputFileName = "Codit-mobile.apk"`, `com.google.firebase:firebase-messaging:25.0.1` + `google-services.json`.
 - **Ponte `window.CoditNative` (`MainActivity.java` & `src/lib/codit-native-bridge.ts`):**
   - Safe-area/IME (`getInsets`), Screen Share `MediaProjection` (`isScreenCaptureSupported`, `startScreenCapture`, `stopScreenCapture`, `getScreenFrameSeq`, `getScreenFrameDataUrl`, `getScreenDimensions`), Sessão REST (`syncAuthSession`, `clearAuthSession`), Notificações/Chamadas (`showRichNotification`, `dismissNotificationTag`, `startOrUpdateCallNotification`, `stopCallNotification`, `consumePendingNavigationHref`).
   - Eventos WebView: `codit:native-screen-{started,stopped,cancelled,error}`, `codit:native-call-action`, `codit:native-reply-sent`, `codit:native-notification-reply`, `codit:native-navigate`.

@@ -1,6 +1,6 @@
 # Banco de Dados — Codit (`TCC-Codit`)
 
-## 1. Migrações Versionadas (`supabase/migrations/` — 18 arquivos)
+## 1. Migrações Versionadas (`supabase/migrations/` — 19 arquivos)
 
 1. `20261122000001_init_profiles_and_sandbox_projects.sql` — `profiles`, `sandbox_projects`, RLS base.
 2. `20261123000001_enhance_profiles_and_projects.sql` — customização de perfil e 15 linguagens em `sandbox_projects`.
@@ -20,6 +20,7 @@
 16. `20261126000007_add_observability_and_learning_analytics.sql` — `error_events` e `get_learning_analytics_summary()`.
 17. `20261127000001_add_sandbox_multifile_and_versions.sql` — coluna `files` JSONB em `sandbox_projects` e tabela `sandbox_project_versions` com RLS restrito ao dono.
 18. `20261127000002_add_failed_case_ids_to_lesson_attempts.sql` — coluna `failed_case_ids` em `exercise_submissions` e `record_lesson_attempt` com 8º parâmetro opcional `p_failed_case_ids` + badge `python_fundamentals_complete`.
+19. `20261127000003_fix_lesson_markdown_and_precision.sql` — normaliza quebras de linha `\n` reais nos enunciados `content_md` e corrige precisão numérica IEEE 754 na lição `funcoes-e-calculos`.
 
 ---
 
