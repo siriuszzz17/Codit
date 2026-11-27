@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HeroWorkbench } from "@/components/home/hero-workbench";
+import { FirstStepsCard } from "@/components/onboarding/first-steps-card";
 
 interface WorkspaceArea {
   href: string;
@@ -125,6 +126,12 @@ export default function HomePage() {
                 Começar gratuitamente
               </Link>
               <Link
+                href="/trilhas"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-accent"
+              >
+                Explorar trilhas
+              </Link>
+              <Link
                 href="/projetos"
                 className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-accent"
               >
@@ -147,6 +154,8 @@ export default function HomePage() {
 
           <HeroWorkbench />
         </section>
+
+        <FirstStepsCard />
 
         {/* Diretório unificado dos espaços do Codit */}
         <section aria-labelledby="areas-title" className="space-y-4">

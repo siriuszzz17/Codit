@@ -10,6 +10,7 @@ Rotas App Router, layout compartilhado, navegação e interface.
 - src/app/auth/page.tsx
 - src/app/conta/page.tsx
 - src/app/projetos/page.tsx
+- src/app/trilhas/page.tsx e src/app/trilhas/licao/page.tsx — catálogo de trilhas, exercícios com runner isolado e Tutor Octopy.
 - src/app/comunidade/page.tsx
 - src/app/comunidade/perfil/page.tsx
 - src/app/mensagens/page.tsx
@@ -22,7 +23,7 @@ Rotas App Router, layout compartilhado, navegação e interface.
 - src/components/messaging/global-call-overlay.tsx — modal de chamada recebida (voz/vídeo/recusar com contagem), áudio WebRTC persistente e barra flutuante.
 
 ## Rotas
-/, /auth, /conta, /projetos, /comunidade, /comunidade/perfil, /mensagens, /offline.
+/, /trilhas, /trilhas/licao, /auth, /conta, /projetos, /comunidade, /comunidade/perfil, /mensagens, /offline.
 
 ## Dependências
 [[Auth]], [[Perfis]], [[Sandbox]], [[Comunidade]], [[Mensagens]], [[Notificacoes]] e [[design-system]].

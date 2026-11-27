@@ -11,7 +11,8 @@ export type MissingMigrationFile =
   | "20261123000003_fix_grants_rls_and_username_cooldown.sql"
   | "20261124000002_add_embedded_messaging.sql"
   | "20261124000004_add_notifications_system.sql"
-  | "20261125000001_add_android_push_notifications.sql";
+  | "20261125000001_add_android_push_notifications.sql"
+  | "20261126000002_add_learning_mvp_and_gamification.sql";
 
 export interface SupabaseErrorContext {
   status?: number | null;
@@ -208,6 +209,16 @@ export function detectMissingMigrationName(
 
   const { message, details, hint } = extractSupabaseErrorMeta(error);
   const combinedLower = `${message} ${details} ${hint}`.toLowerCase();
+
+  if (
+    combinedLower.includes("record_lesson_attempt") ||
+    combinedLower.includes("user_lesson_progress") ||
+    combinedLower.includes("exercise_submissions") ||
+    combinedLower.includes("onboarding_completed_at") ||
+    /(?:^|[\s.'"])(tracks|lessons)(?:[\s.'"]|$)/.test(combinedLower)
+  ) {
+    return "20261126000002_add_learning_mvp_and_gamification.sql";
+  }
 
   if (
     combinedLower.includes("push_devices") ||
@@ -605,6 +616,12 @@ function resolveSupabaseDatabaseErrorMessage(
     const missingMigration = detectMissingMigrationName(error);
     const codeSuffix = codeUpper ? ` (código ${codeUpper})` : "";
 
+    if (missingMigration === "20261126000002_add_learning_mvp_and_gamification.sql") {
+      return {
+        detail: `A estrutura de trilhas e gamificação ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261126000002_add_learning_mvp_and_gamification.sql no SQL Editor do projeto.`,
+        meta,
+      };
+    }
     if (missingMigration === "20261125000001_add_android_push_notifications.sql") {
       return {
         detail: `A estrutura de push Android ainda não foi aplicada no Supabase${codeSuffix}. Execute a migração 20261125000001_add_android_push_notifications.sql no SQL Editor do projeto.`,

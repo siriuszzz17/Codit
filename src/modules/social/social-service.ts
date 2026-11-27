@@ -103,6 +103,9 @@ export type RawPublicProfileDbRow = Pick<
       | "avatar_frame"
       | "octopy_companion"
       | "skills"
+      | "xp_total"
+      | "current_streak"
+      | "badges"
     >
   >;
 
@@ -143,6 +146,12 @@ export function normalizePublicProfileRow(
     avatar_frame: getAvatarFrameMeta(raw.avatar_frame).id,
     octopy_companion: getOctopyCompanionMeta(raw.octopy_companion).id,
     skills,
+    xp_total: typeof raw.xp_total === "number" ? raw.xp_total : 0,
+    current_streak:
+      typeof raw.current_streak === "number" ? raw.current_streak : 0,
+    badges: Array.isArray(raw.badges)
+      ? raw.badges.filter((item): item is string => typeof item === "string")
+      : [],
     created_at: raw.created_at,
     updated_at: raw.updated_at,
   };
@@ -162,15 +171,33 @@ export function mergeSelfPublicProfileFallback(
     | "avatar_frame"
     | "octopy_companion"
     | "skills"
+    | "xp_total"
+    | "current_streak"
+    | "badges"
   > | null,
   hasPublicCustomizationColumns: boolean,
 ): PublicProfileRow {
-  if (
-    hasPublicCustomizationColumns ||
-    !ownProfile ||
-    ownProfile.id !== publicProfile.id
-  ) {
+  if (!ownProfile || ownProfile.id !== publicProfile.id) {
     return publicProfile;
+  }
+
+  const mergedGamification = {
+    xp_total: Math.max(publicProfile.xp_total ?? 0, ownProfile.xp_total ?? 0),
+    current_streak: Math.max(
+      publicProfile.current_streak ?? 0,
+      ownProfile.current_streak ?? 0,
+    ),
+    badges:
+      (ownProfile.badges?.length ?? 0) >= (publicProfile.badges?.length ?? 0)
+        ? (ownProfile.badges ?? [])
+        : (publicProfile.badges ?? []),
+  };
+
+  if (hasPublicCustomizationColumns) {
+    return {
+      ...publicProfile,
+      ...mergedGamification,
+    };
   }
 
   return {
@@ -184,6 +211,7 @@ export function mergeSelfPublicProfileFallback(
     avatar_frame: ownProfile.avatar_frame,
     octopy_companion: ownProfile.octopy_companion,
     skills: ownProfile.skills,
+    ...mergedGamification,
   };
 }
 

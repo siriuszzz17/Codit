@@ -18,9 +18,16 @@ import {
 } from "@/lib/social-events";
 
 describe("navigation helpers", () => {
-  it("exposes dedicated top-level navigation routes for home, projects, community, messages and profile", () => {
+  it("exposes dedicated top-level navigation routes for home, tracks, projects, community, messages and profile", () => {
     const hrefs = PRIMARY_NAV_ITEMS.map((item) => item.href);
-    expect(hrefs).toEqual(["/", "/projetos", "/comunidade", "/mensagens", "/conta"]);
+    expect(hrefs).toEqual([
+      "/",
+      "/trilhas",
+      "/projetos",
+      "/comunidade",
+      "/mensagens",
+      "/conta",
+    ]);
   });
 
   it("normalizes pathnames safely", () => {

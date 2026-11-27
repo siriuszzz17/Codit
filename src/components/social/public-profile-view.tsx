@@ -33,6 +33,7 @@ import {
   computeLanguageBreakdown,
   getLanguageMeta,
 } from "@/modules/sandbox/language-catalog";
+import { getBadgeMeta } from "@/modules/learning/learning-schemas";
 import {
   getPublicProfileBundle,
   mergeSelfPublicProfileFallback,
@@ -704,7 +705,19 @@ export function PublicProfileView() {
               </div>
 
               {/* Métricas públicas integradas em faixa única */}
-              <div className="mt-5 grid grid-cols-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-muted/35 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="mt-5 grid grid-cols-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-muted/35 sm:grid-cols-5 sm:divide-x sm:divide-y-0">
+                <div className="px-4 py-3">
+                  <p className="text-[11px] font-medium text-muted">XP total</p>
+                  <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+                    {displayProfile.xp_total ?? 0}
+                  </p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-[11px] font-medium text-muted">Sequência</p>
+                  <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+                    {displayProfile.current_streak ?? 0}d
+                  </p>
+                </div>
                 <div className="px-4 py-3">
                   <p className="text-[11px] font-medium text-muted">Amigos</p>
                   <p className="mt-0.5 text-lg font-bold text-foreground">
@@ -742,6 +755,23 @@ export function PublicProfileView() {
                   </div>
                 </div>
               </div>
+
+              {(displayProfile.badges?.length ?? 0) > 0 ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {(displayProfile.badges ?? []).map((badgeId) => {
+                    const meta = getBadgeMeta(badgeId);
+                    return (
+                      <span
+                        key={badgeId}
+                        title={meta.description}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.toneClass}`}
+                      >
+                        {meta.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
 
               {breakdown.length > 0 ? (
                 <div className="mt-4 space-y-2">

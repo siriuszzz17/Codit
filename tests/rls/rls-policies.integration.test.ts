@@ -15,28 +15,34 @@ interface TestActor {
 }
 
 function readSupabaseStatusEnv(): Record<string, string> {
-  try {
-    const raw = execSync("npx supabase status -o env", {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    const parsed: Record<string, string> = {};
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq === -1) continue;
-      const key = trimmed.slice(0, eq).trim();
-      const value = trimmed
-        .slice(eq + 1)
-        .trim()
-        .replace(/^"(.*)"$/, "$1");
-      parsed[key] = value;
+  const commands = ["supabase status -o env", "npx supabase status -o env"];
+  for (const command of commands) {
+    try {
+      const raw = execSync(command, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const parsed: Record<string, string> = {};
+      for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eq = trimmed.indexOf("=");
+        if (eq === -1) continue;
+        const key = trimmed.slice(0, eq).trim();
+        const value = trimmed
+          .slice(eq + 1)
+          .trim()
+          .replace(/^"(.*)"$/, "$1");
+        parsed[key] = value;
+      }
+      if (Object.keys(parsed).length > 0) {
+        return parsed;
+      }
+    } catch {
+      continue;
     }
-    return parsed;
-  } catch {
-    return {};
   }
+  return {};
 }
 
 function resolveLocalSupabaseEnv(): LocalSupabaseEnv {

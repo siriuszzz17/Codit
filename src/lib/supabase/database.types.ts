@@ -139,6 +139,11 @@ export type ProfileRow = {
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
   notification_prefs?: NotificationPreferencesJson;
+  xp_total?: number;
+  current_streak?: number;
+  last_activity_date?: string | null;
+  badges?: string[];
+  onboarding_completed_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -168,6 +173,11 @@ export type ProfileInsert = {
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
   notification_prefs?: NotificationPreferencesJson;
+  xp_total?: number;
+  current_streak?: number;
+  last_activity_date?: string | null;
+  badges?: string[];
+  onboarding_completed_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -195,6 +205,11 @@ export type ProfileUpdate = {
   wallpaper_preset?: WallpaperPresetId;
   wallpaper_intensity?: WallpaperIntensity;
   notification_prefs?: NotificationPreferencesJson;
+  xp_total?: number;
+  current_streak?: number;
+  last_activity_date?: string | null;
+  badges?: string[];
+  onboarding_completed_at?: string | null;
   updated_at?: string;
 };
 
@@ -214,6 +229,9 @@ export type PublicProfileRow = {
   avatar_frame: ProfileAvatarFrame;
   octopy_companion: OctopyCompanionMood;
   skills: string[];
+  xp_total?: number;
+  current_streak?: number;
+  badges?: string[];
   created_at: string;
   updated_at: string;
 };
@@ -524,6 +542,96 @@ export type PushDeviceUpdate = {
   last_seen_at?: string;
 };
 
+export type TrackDifficulty = "beginner" | "intermediate" | "advanced";
+
+export type LessonProgressStatus = "not_started" | "in_progress" | "completed";
+
+export type LessonHintJson = {
+  level: 1 | 2 | 3;
+  title: string;
+  content: string;
+};
+
+export type LessonTestCaseJson = {
+  id: string;
+  label: string;
+  expression: string;
+  expected: unknown;
+};
+
+export type TrackRow = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  difficulty: TrackDifficulty;
+  language: string;
+  estimated_minutes: number;
+  order_index: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LessonRow = {
+  id: string;
+  track_id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  content_md: string;
+  starter_code: string;
+  solution_code: string;
+  language: string;
+  order_index: number;
+  xp_reward: number;
+  hints: LessonHintJson[];
+  test_cases: LessonTestCaseJson[];
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserLessonProgressRow = {
+  user_id: string;
+  lesson_id: string;
+  status: LessonProgressStatus;
+  best_code: string | null;
+  attempts_count: number;
+  max_hint_level_used: number;
+  xp_awarded: number;
+  completed_at: string | null;
+  last_attempt_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExerciseSubmissionRow = {
+  id: string;
+  user_id: string;
+  lesson_id: string;
+  code: string;
+  passed: boolean;
+  passed_cases: number;
+  total_cases: number;
+  execution_ms: number;
+  hint_level_used: number;
+  xp_earned: number;
+  created_at: string;
+};
+
+export type RecordLessonAttemptRpcResult = {
+  status: LessonProgressStatus;
+  already_completed: boolean;
+  xp_earned: number;
+  xp_total: number;
+  current_streak: number;
+  badges: string[];
+  newly_unlocked_badges: string[];
+  attempts_count: number;
+  completed_at: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -715,6 +823,80 @@ export type Database = {
           },
         ];
       };
+      tracks: {
+        Row: TrackRow;
+        Insert: Partial<TrackRow> & Pick<TrackRow, "slug" | "title" | "description">;
+        Update: Partial<TrackRow>;
+        Relationships: [];
+      };
+      lessons: {
+        Row: LessonRow;
+        Insert: Partial<LessonRow> &
+          Pick<
+            LessonRow,
+            | "track_id"
+            | "slug"
+            | "title"
+            | "summary"
+            | "content_md"
+            | "starter_code"
+            | "solution_code"
+          >;
+        Update: Partial<LessonRow>;
+        Relationships: [
+          {
+            foreignKeyName: "lessons_track_id_fkey";
+            columns: ["track_id"];
+            isOneToOne: false;
+            referencedRelation: "tracks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      user_lesson_progress: {
+        Row: UserLessonProgressRow;
+        Insert: Partial<UserLessonProgressRow> &
+          Pick<UserLessonProgressRow, "user_id" | "lesson_id">;
+        Update: Partial<UserLessonProgressRow>;
+        Relationships: [
+          {
+            foreignKeyName: "user_lesson_progress_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "user_lesson_progress_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      exercise_submissions: {
+        Row: ExerciseSubmissionRow;
+        Insert: Partial<ExerciseSubmissionRow> &
+          Pick<ExerciseSubmissionRow, "user_id" | "lesson_id" | "code">;
+        Update: Partial<ExerciseSubmissionRow>;
+        Relationships: [
+          {
+            foreignKeyName: "exercise_submissions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "exercise_submissions_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -796,6 +978,18 @@ export type Database = {
           p_token: string;
         };
         Returns: undefined;
+      };
+      record_lesson_attempt: {
+        Args: {
+          p_lesson_id: string;
+          p_code: string;
+          p_passed: boolean;
+          p_passed_cases: number;
+          p_total_cases: number;
+          p_execution_ms?: number;
+          p_hint_level_used?: number;
+        };
+        Returns: RecordLessonAttemptRpcResult;
       };
     };
     Enums: Record<string, never>;

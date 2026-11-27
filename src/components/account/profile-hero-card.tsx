@@ -15,6 +15,7 @@ import {
   isAllowedAvatarPath,
 } from "@/modules/profiles/profile-themes";
 import { computeLanguageBreakdown } from "@/modules/sandbox/language-catalog";
+import { getBadgeMeta } from "@/modules/learning/learning-schemas";
 
 interface ProfileHeroCardProps {
   profile: ProfileRow;
@@ -88,6 +89,9 @@ export function ProfileHeroCard({
     (project) => project.visibility === "public_portfolio",
   ).length;
   const pinnedCount = projects.filter((project) => project.is_pinned).length;
+  const xpTotal = profile.xp_total ?? 0;
+  const currentStreak = profile.current_streak ?? 0;
+  const badges = profile.badges ?? [];
 
   return (
     <section
@@ -219,6 +223,12 @@ export function ProfileHeroCard({
           {/* Ações rápidas do perfil */}
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:pb-1">
             <Link
+              href="/trilhas"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface-muted px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-accent sm:text-sm"
+            >
+              Trilhas
+            </Link>
+            <Link
               href="/projetos"
               className="inline-flex min-h-10 items-center justify-center rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 sm:text-sm"
             >
@@ -327,8 +337,20 @@ export function ProfileHeroCard({
           ) : null}
         </div>
 
-        {/* Métricas integradas e Distribuição de Linguagens */}
-        <div className="mt-5 grid grid-cols-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-muted/35 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+        {/* Métricas integradas e Gamificação */}
+        <div className="mt-5 grid grid-cols-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-muted/35 sm:grid-cols-6 sm:divide-x sm:divide-y-0">
+          <div className="px-3.5 py-2.5">
+            <p className="text-[11px] font-medium text-muted">XP total</p>
+            <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+              {xpTotal}
+            </p>
+          </div>
+          <div className="px-3.5 py-2.5">
+            <p className="text-[11px] font-medium text-muted">Sequência</p>
+            <p className="mt-0.5 font-mono text-lg font-bold text-foreground">
+              {currentStreak}d
+            </p>
+          </div>
           <div className="px-3.5 py-2.5">
             <p className="text-[11px] font-medium text-muted">
               Projetos salvos
@@ -374,6 +396,23 @@ export function ProfileHeroCard({
             </p>
           </div>
         </div>
+
+        {badges.length > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {badges.map((badgeId) => {
+              const meta = getBadgeMeta(badgeId);
+              return (
+                <span
+                  key={badgeId}
+                  title={meta.description}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.toneClass}`}
+                >
+                  {meta.label}
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
 
         {breakdown.length > 0 ? (
           <div className="mt-4 space-y-2">
