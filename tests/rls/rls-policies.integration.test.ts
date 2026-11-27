@@ -170,7 +170,7 @@ describe("Supabase RLS & SECURITY DEFINER integration suite", () => {
       .insert({
         user_id: userA.id,
         title: "Projeto Privado RLS",
-        language: "javascript",
+        primary_language: "javascript",
         source_code: "console.log('privado');",
         visibility: "private",
       })
@@ -191,7 +191,7 @@ describe("Supabase RLS & SECURITY DEFINER integration suite", () => {
       .insert({
         user_id: userA.id,
         title: "Tentativa IDOR",
-        language: "javascript",
+        primary_language: "javascript",
         source_code: "console.log('idor');",
         visibility: "private",
       });
@@ -378,7 +378,7 @@ describe("Supabase RLS & SECURITY DEFINER integration suite", () => {
       await userC.client
         .from("notifications")
         .select("id")
-        .eq("user_id", userA.id);
+        .eq("recipient_id", userA.id);
     expect(cReadsNotificationsErr).toBeNull();
     expect(cReadsNotifications ?? []).toHaveLength(0);
 
