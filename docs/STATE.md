@@ -36,6 +36,5 @@
 
 ## 3. Pendências Ativas & Próximos Passos Priorizados
 
-1. **[P0 — Supabase Remoto]** Aplicar no projeto Supabase de produção as migrações `20261126000001` a `20261127000003`, validar o bucket `chat-attachments` e publicar as Edge Functions `send-push` e `lesson-ai-tutor` (com `AI_PROVIDER` / `AI_PROVIDER_API_KEY`).
-2. **[P1 — Limpeza de Worktrees]** Remover ou arquivar worktrees secundários já integrados na `master` (`Segurança`, `Ultra`, `Chamadas-not`, `SetupTauri`).
-3. **[P2 — Sandbox Remoto Compilado]** Integrar `CodeExecutionProvider` (Judge0 CE / Piston) para as 10 linguagens compiladas/backend restantes do catálogo de 15 linguagens.
+1. **[P1 — Limpeza de Worktrees]** Remover ou arquivar worktrees secundários já integrados na `master` (`Ultra`, `erros-trillhas`, `SetupTauri`).
+2. **[P2 — Sandbox Remoto Compilado]** Integrar `CodeExecutionProvider` (Judge0 CE / Piston) para as 10 linguagens compiladas/backend restantes do catálogo de 15 linguagens.

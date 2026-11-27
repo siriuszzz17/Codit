@@ -6,10 +6,12 @@
  *   - SUPABASE_URL (automático no Supabase)
  *   - SUPABASE_SERVICE_ROLE_KEY (automático no Supabase)
  *   - AI_PROVIDER ("gemini" | "openai", padrão "gemini")
- *   - AI_PROVIDER_API_KEY
+ *   - AI_PROVIDER_API_KEY (única ou separada por vírgula)
+ *   - AI_PROVIDER_API_KEYS (opcional: lista separada por vírgula/linha com 2+ chaves)
+ *   - AI_PROVIDER_API_KEY_1 .. AI_PROVIDER_API_KEY_10 (opcional: chaves numeradas)
  *   - AI_MODEL (opcional)
  *   - AI_FALLBACK_PROVIDER (opcional: "gemini" | "openai")
- *   - AI_FALLBACK_API_KEY (opcional)
+ *   - AI_FALLBACK_API_KEY / AI_FALLBACK_API_KEYS / AI_FALLBACK_API_KEY_1..10 (opcional)
  *   - AI_FALLBACK_MODEL (opcional)
  */
 
@@ -17,14 +19,15 @@ import {
   AI_REQUEST_TIMEOUT_MS,
   buildGeminiRequestBody,
   buildOpenAiRequestBody,
-  DEFAULT_GEMINI_MODEL,
-  DEFAULT_OPENAI_MODEL,
+  buildProviderChainFromEnv,
   extractGeminiReply,
   extractOpenAiReply,
   MAX_PAYLOAD_BYTES,
+  ProviderKeyCooldownTracker,
   UserRateLimiter,
   validateLessonTutorInput,
   type LessonTutorInput,
+  type ProviderConfig,
 } from "./helpers.ts";
 
 const UUID_REGEX =
@@ -37,25 +40,23 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AiProvider = "gemini" | "openai";
-
-interface ProviderConfig {
-  provider: AiProvider;
-  apiKey: string;
-  model: string;
-}
-
 class TutorUpstreamError extends Error {
-  readonly code: "timeout" | "upstream_error" | "invalid_response";
+  readonly code: "timeout" | "rate_limited" | "auth_error" | "upstream_error" | "invalid_response";
+  readonly retryAfter: string | null;
 
-  constructor(code: "timeout" | "upstream_error" | "invalid_response") {
+  constructor(
+    code: "timeout" | "rate_limited" | "auth_error" | "upstream_error" | "invalid_response",
+    retryAfter: string | null = null,
+  ) {
     super(code);
     this.name = "TutorUpstreamError";
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
 const rateLimiter = new UserRateLimiter();
+const keyCooldowns = new ProviderKeyCooldownTracker();
 
 function jsonResponse(
   body: unknown,
@@ -126,52 +127,8 @@ async function authenticateBearerUser(
   }
 }
 
-function parseProviderName(raw: string | undefined): AiProvider | null {
-  const normalized = (raw ?? "").trim().toLowerCase();
-  if (normalized === "gemini" || normalized === "openai") {
-    return normalized;
-  }
-  return null;
-}
-
 function resolveProviderChain(): ProviderConfig[] {
-  const chain: ProviderConfig[] = [];
-
-  const primaryProvider =
-    parseProviderName(Deno.env.get("AI_PROVIDER")) ?? "gemini";
-  const primaryKey = Deno.env.get("AI_PROVIDER_API_KEY")?.trim() ?? "";
-  const primaryModel =
-    Deno.env.get("AI_MODEL")?.trim() ||
-    (primaryProvider === "gemini"
-      ? DEFAULT_GEMINI_MODEL
-      : DEFAULT_OPENAI_MODEL);
-
-  if (primaryKey) {
-    chain.push({
-      provider: primaryProvider,
-      apiKey: primaryKey,
-      model: primaryModel,
-    });
-  }
-
-  const fallbackProvider = parseProviderName(
-    Deno.env.get("AI_FALLBACK_PROVIDER"),
-  );
-  const fallbackKey = Deno.env.get("AI_FALLBACK_API_KEY")?.trim() ?? "";
-  if (fallbackProvider && fallbackKey) {
-    const fallbackModel =
-      Deno.env.get("AI_FALLBACK_MODEL")?.trim() ||
-      (fallbackProvider === "gemini"
-        ? DEFAULT_GEMINI_MODEL
-        : DEFAULT_OPENAI_MODEL);
-    chain.push({
-      provider: fallbackProvider,
-      apiKey: fallbackKey,
-      model: fallbackModel,
-    });
-  }
-
-  return chain;
+  return buildProviderChainFromEnv((name) => Deno.env.get(name));
 }
 
 async function callProvider(
@@ -208,6 +165,15 @@ async function callProvider(
     }
 
     if (!response.ok) {
+      if (response.status === 429) {
+        throw new TutorUpstreamError(
+          "rate_limited",
+          response.headers.get("retry-after"),
+        );
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new TutorUpstreamError("auth_error");
+      }
       throw new TutorUpstreamError("upstream_error");
     }
 
@@ -297,7 +263,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: validated.error }, 400);
   }
 
-  const providers = resolveProviderChain();
+  const providers = keyCooldowns.orderCandidates(resolveProviderChain());
   if (providers.length === 0) {
     return jsonResponse(
       { error: "Assistente IA não configurado no servidor." },
@@ -310,12 +276,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
   for (const config of providers) {
     try {
       const reply = await callProvider(config, validated.data);
+      keyCooldowns.clear(config.slot);
       return jsonResponse({ reply }, 200);
     } catch (err) {
-      lastErrorCode =
-        err instanceof TutorUpstreamError ? err.code : "upstream_error";
+      if (err instanceof TutorUpstreamError) {
+        lastErrorCode = err.code;
+        if (err.code === "rate_limited") {
+          keyCooldowns.markRateLimited(config.slot, err.retryAfter);
+        } else if (err.code === "auth_error") {
+          keyCooldowns.markAuthFailed(config.slot);
+        }
+      } else {
+        lastErrorCode = "upstream_error";
+      }
       console.error(
-        `[lesson-ai-tutor] provider=${config.provider} code=${lastErrorCode}`,
+        `[lesson-ai-tutor] slot=${config.slot} code=${lastErrorCode}`,
       );
     }
   }

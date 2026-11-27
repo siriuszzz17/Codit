@@ -9,11 +9,14 @@ import {
   buildCompactTutorUserPrompt,
   buildGeminiRequestBody,
   buildOpenAiRequestBody,
+  buildProviderChainFromEnv,
   DEFAULT_USER_MESSAGE,
   extractGeminiReply,
   extractOpenAiReply,
   LESSON_TUTOR_SYSTEM_PROMPT,
   MAX_OUTPUT_TOKENS,
+  parseApiKeyList,
+  ProviderKeyCooldownTracker,
   UserRateLimiter,
   validateLessonTutorInput,
 } from "../../supabase/functions/lesson-ai-tutor/helpers";
@@ -147,6 +150,71 @@ describe("lesson-ai-tutor helpers", () => {
       }),
     ).toBe("Multiplique o parâmetro por 2.");
     expect(extractOpenAiReply({})).toBeNull();
+  });
+
+  it("supports 3+ Gemini keys via comma list or numbered secrets and skips rate-limited keys in order", () => {
+    expect(parseApiKeyList(["key-1, key-2\nkey-3", "key-2;key-4"])).toEqual([
+      "key-1",
+      "key-2",
+      "key-3",
+      "key-4",
+    ]);
+
+    const env: Record<string, string> = {
+      AI_PROVIDER: "gemini",
+      AI_MODEL: "gemini-2.5-flash",
+      AI_PROVIDER_API_KEYS: "k1, k2",
+      AI_PROVIDER_API_KEY_3: "k3",
+      AI_FALLBACK_PROVIDER: "gemini",
+      AI_FALLBACK_MODEL: "gemini-2.5-flash-lite",
+      AI_FALLBACK_API_KEY: "k4",
+    };
+
+    const chain = buildProviderChainFromEnv((name) => env[name]);
+    expect(chain.map((c) => [c.slot, c.apiKey, c.model])).toEqual([
+      ["gemini#1", "k1", "gemini-2.5-flash"],
+      ["gemini#2", "k2", "gemini-2.5-flash"],
+      ["gemini#3", "k3", "gemini-2.5-flash"],
+      ["fallback:gemini#1", "k4", "gemini-2.5-flash-lite"],
+    ]);
+
+    let now = 10_000;
+    const tracker = new ProviderKeyCooldownTracker(() => now);
+
+    // Ordem inicial: #1 -> #2 -> #3 -> fallback
+    expect(tracker.orderCandidates(chain).map((c) => c.slot)).toEqual([
+      "gemini#1",
+      "gemini#2",
+      "gemini#3",
+      "fallback:gemini#1",
+    ]);
+
+    // Chave #1 bate 429: próximas requisições começam pela #2
+    tracker.markRateLimited("gemini#1", "30");
+    expect(tracker.orderCandidates(chain).map((c) => c.slot)).toEqual([
+      "gemini#2",
+      "gemini#3",
+      "fallback:gemini#1",
+      "gemini#1",
+    ]);
+
+    // Chave #2 também bate 429: próximas começam pela #3
+    tracker.markRateLimited("gemini#2");
+    expect(tracker.orderCandidates(chain).map((c) => c.slot)).toEqual([
+      "gemini#3",
+      "fallback:gemini#1",
+      "gemini#1",
+      "gemini#2",
+    ]);
+
+    // Após 31s, chave #1 sai do cooldown e volta ao topo
+    now += 31_000;
+    expect(tracker.orderCandidates(chain).map((c) => c.slot)).toEqual([
+      "gemini#1",
+      "gemini#3",
+      "fallback:gemini#1",
+      "gemini#2",
+    ]);
   });
 });
 

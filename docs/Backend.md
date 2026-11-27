@@ -6,7 +6,7 @@
 2. **PostgREST + RLS + RPCs `SECURITY DEFINER`:** toda lógica transacional (trilhas/XP, chat rico, chamadas, moderação, LGPD e analytics) roda no PostgreSQL via RPCs autenticadas chamadas por `src/modules/*/*-service.ts`.
 3. **Supabase Storage (`chat-attachments`):** bucket privado (`file_size_limit = 5242880`, MIME `image/png|jpeg|webp|gif`), caminho `<conversation_id>/<sender_id>/<uuid>.<ext>`, protegido pelas políticas `chat_attachments_select_member` e `chat_attachments_insert_member`.
 4. **Edge Function Deno (`supabase/functions/send-push/{index.ts,helpers.ts}`):** despacho FCM HTTP v1 `data-only` (OAuth2 RS256), coordenação de estado/timeout `60s` de `call_sessions` e resposta rápida `RemoteInput`.
-5. **Edge Function Deno (`supabase/functions/lesson-ai-tutor/{index.ts,helpers.ts}`):** proxy autenticado do Assistente IA socrático (`Gemini` / `OpenAI`, timeout `12s`, rate-limit `6 req/min` + cooldown `4s` por `userId`, payload máx. `32 KB`).
+5. **Edge Function Deno (`supabase/functions/lesson-ai-tutor/{index.ts,helpers.ts}`):** proxy autenticado do Assistente IA socrático (`Gemini` / `OpenAI`, failover sequencial multi-chave via `AI_PROVIDER_API_KEYS` / `AI_PROVIDER_API_KEY_1..10` com cooldown automático em `429`/`401`/`403`, timeout `12s`, rate-limit `6 req/min` + cooldown `4s` por `userId`, payload máx. `32 KB`).
 6. **Helpers RFC 9457 (`src/lib/problem-details.ts`, `src/lib/problem-response.ts`):** padronização de erros com observador global conectado à telemetria (`setProblemDetailsObserver`).
 
 ---

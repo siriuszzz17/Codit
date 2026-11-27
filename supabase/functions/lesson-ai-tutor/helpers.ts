@@ -18,6 +18,20 @@ export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 export const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 export const MAX_OUTPUT_TOKENS = 260;
 
+export const KEY_RATE_LIMIT_COOLDOWN_MS = 60_000;
+export const KEY_AUTH_ERROR_COOLDOWN_MS = 300_000;
+export const KEY_MAX_COOLDOWN_MS = 300_000;
+export const MAX_NUMBERED_API_KEYS = 10;
+
+export type AiProvider = "gemini" | "openai";
+
+export interface ProviderConfig {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  slot: string;
+}
+
 export const LESSON_TUTOR_SYSTEM_PROMPT = [
   "Você é o Octopy, tutor socrático de programação do Codit.",
   "Responda sempre em português (pt-BR), de forma direta e didática.",
@@ -332,4 +346,156 @@ export function extractOpenAiReply(payload: unknown): string | null {
   const first = choices[0] as { message?: { content?: unknown } };
   const content = first?.message?.content;
   return typeof content === "string" && content.trim() ? content.trim() : null;
+}
+
+export function parseProviderName(raw: string | undefined): AiProvider | null {
+  const normalized = (raw ?? "").trim().toLowerCase();
+  if (normalized === "gemini" || normalized === "openai") {
+    return normalized;
+  }
+  return null;
+}
+
+/**
+ * Extrai múltiplas chaves de API separadas por vírgula, ponto e vírgula ou quebra de linha,
+ * preservando a ordem de prioridade e removendo duplicatas.
+ */
+export function parseApiKeyList(
+  rawValues: ReadonlyArray<string | undefined>,
+): string[] {
+  const seen = new Set<string>();
+  const keys: string[] = [];
+
+  for (const raw of rawValues) {
+    if (!raw) continue;
+    for (const part of raw.split(/[,;\r\n]+/)) {
+      const cleaned = part.trim();
+      if (!cleaned || seen.has(cleaned)) continue;
+      seen.add(cleaned);
+      keys.push(cleaned);
+    }
+  }
+
+  return keys;
+}
+
+/**
+ * Monta a cadeia sequencial de chaves/provedores a partir de um leitor de variáveis de ambiente.
+ * Suporta:
+ * - AI_PROVIDER_API_KEY (única ou separada por vírgula)
+ * - AI_PROVIDER_API_KEYS (lista separada por vírgula/linha)
+ * - AI_PROVIDER_API_KEY_1 .. AI_PROVIDER_API_KEY_10
+ * - AI_FALLBACK_PROVIDER + AI_FALLBACK_API_KEY / AI_FALLBACK_API_KEYS / AI_FALLBACK_API_KEY_1..10
+ */
+export function buildProviderChainFromEnv(
+  getEnv: (name: string) => string | undefined,
+): ProviderConfig[] {
+  const chain: ProviderConfig[] = [];
+
+  const primaryProvider = parseProviderName(getEnv("AI_PROVIDER")) ?? "gemini";
+  const primaryModel =
+    getEnv("AI_MODEL")?.trim() ||
+    (primaryProvider === "gemini"
+      ? DEFAULT_GEMINI_MODEL
+      : DEFAULT_OPENAI_MODEL);
+
+  const primaryRawKeys: Array<string | undefined> = [
+    getEnv("AI_PROVIDER_API_KEY"),
+    getEnv("AI_PROVIDER_API_KEYS"),
+  ];
+  for (let i = 1; i <= MAX_NUMBERED_API_KEYS; i += 1) {
+    primaryRawKeys.push(getEnv(`AI_PROVIDER_API_KEY_${i}`));
+  }
+
+  const primaryKeys = parseApiKeyList(primaryRawKeys);
+  primaryKeys.forEach((apiKey, index) => {
+    chain.push({
+      provider: primaryProvider,
+      apiKey,
+      model: primaryModel,
+      slot: `${primaryProvider}#${index + 1}`,
+    });
+  });
+
+  const fallbackProvider = parseProviderName(getEnv("AI_FALLBACK_PROVIDER"));
+  if (fallbackProvider) {
+    const fallbackModel =
+      getEnv("AI_FALLBACK_MODEL")?.trim() ||
+      (fallbackProvider === "gemini"
+        ? DEFAULT_GEMINI_MODEL
+        : DEFAULT_OPENAI_MODEL);
+
+    const fallbackRawKeys: Array<string | undefined> = [
+      getEnv("AI_FALLBACK_API_KEY"),
+      getEnv("AI_FALLBACK_API_KEYS"),
+    ];
+    for (let i = 1; i <= MAX_NUMBERED_API_KEYS; i += 1) {
+      fallbackRawKeys.push(getEnv(`AI_FALLBACK_API_KEY_${i}`));
+    }
+
+    const fallbackKeys = parseApiKeyList(fallbackRawKeys);
+    fallbackKeys.forEach((apiKey, index) => {
+      chain.push({
+        provider: fallbackProvider,
+        apiKey,
+        model: fallbackModel,
+        slot: `fallback:${fallbackProvider}#${index + 1}`,
+      });
+    });
+  }
+
+  return chain;
+}
+
+/**
+ * Controla cooldown em memória por slot de chave: usa a 1ª chave até ela bater limite (429/401/403),
+ * pula imediatamente para a 2ª, depois 3ª, e volta a tentar chaves anteriores após o cooldown expirar.
+ */
+export class ProviderKeyCooldownTracker {
+  private readonly cooldownUntil = new Map<string, number>();
+  private readonly nowFn: () => number;
+
+  constructor(nowFn: () => number = () => Date.now()) {
+    this.nowFn = nowFn;
+  }
+
+  markRateLimited(slot: string, retryAfterHeader?: string | null): void {
+    const parsedSeconds = retryAfterHeader ? Number(retryAfterHeader) : Number.NaN;
+    const durationMs =
+      Number.isFinite(parsedSeconds) && parsedSeconds > 0
+        ? Math.min(KEY_MAX_COOLDOWN_MS, Math.ceil(parsedSeconds * 1000))
+        : KEY_RATE_LIMIT_COOLDOWN_MS;
+    this.cooldownUntil.set(slot, this.nowFn() + durationMs);
+  }
+
+  markAuthFailed(slot: string): void {
+    this.cooldownUntil.set(slot, this.nowFn() + KEY_AUTH_ERROR_COOLDOWN_MS);
+  }
+
+  clear(slot: string): void {
+    this.cooldownUntil.delete(slot);
+  }
+
+  isCoolingDown(slot: string): boolean {
+    const until = this.cooldownUntil.get(slot);
+    if (until === undefined) return false;
+    if (this.nowFn() >= until) {
+      this.cooldownUntil.delete(slot);
+      return false;
+    }
+    return true;
+  }
+
+  orderCandidates(chain: readonly ProviderConfig[]): ProviderConfig[] {
+    const ready: ProviderConfig[] = [];
+    const cooling: ProviderConfig[] = [];
+    for (const item of chain) {
+      if (this.isCoolingDown(item.slot)) {
+        cooling.push(item);
+      } else {
+        ready.push(item);
+      }
+    }
+    return [...ready, ...cooling];
+  }
 }
